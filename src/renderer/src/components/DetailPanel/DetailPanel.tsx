@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Star, FileContent, StarType } from '@shared/types'
 import { CONSTELLATION_PALETTE, STAR_TYPES } from '@shared/types'
 import { fetchContent, openFile, rawUrl, fetchNeighborhood, setStarType as apiSetStarType } from '../../api'
+import { defaultStarType, defaultStarTypeReason } from '../StarMap/autoStarType'
 
 const STAR_TYPE_LABELS: Record<StarType, string> = {
   'red-giant': 'Red giant',
@@ -145,7 +146,14 @@ export default function DetailPanel({
           disabled={typeSaving}
           onClick={() => setTypeOpen(!typeOpen)}
         >
-          {star.starType ? STAR_TYPE_LABELS[star.starType] : 'Default (cluster hue)'}
+          {star.starType
+            ? STAR_TYPE_LABELS[star.starType]
+            : (() => {
+                const auto = defaultStarType(star.name, star.mimeType, star.category)
+                return auto
+                  ? `Default → ${STAR_TYPE_LABELS[auto]} (from ${defaultStarTypeReason(star.name)})`
+                  : 'Default (cluster hue)'
+              })()}
           <span className="detail-panel-startype-caret">▾</span>
         </button>
         {typeOpen && (
@@ -166,7 +174,12 @@ export default function DetailPanel({
                 }}
                 aria-current={star.starType === null}
               >
-                Default (cluster hue)
+                {(() => {
+                  const auto = defaultStarType(star.name, star.mimeType, star.category)
+                  return auto
+                    ? `Default → ${STAR_TYPE_LABELS[auto]} (from ${defaultStarTypeReason(star.name)})`
+                    : 'Default (cluster hue)'
+                })()}
               </button>
             </li>
             {STAR_TYPES.map(t => (
