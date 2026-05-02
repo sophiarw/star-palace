@@ -533,8 +533,12 @@ Visual mode (after F4 / F5 land):
 
 - `src/renderer/src/hooks/useVimMode.ts` — single keydown listener, mode
   state machine, dispatches to actions.
-- `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx` — overlay shown
-  on `?`.
+- `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx` — **persistent
+  side panel** (left or right edge), NOT a transient overlay. Required
+  because F6 departs from vim orthodoxy in places (notably `y` =
+  save-as-collection rather than yank-paths). Keep the cheatsheet visible
+  by default so the user doesn't have to memorize the deltas. Toggle hide
+  via `?`. Compact, mono font, two-column.
 - Existing `<input>` elements (search bar) need to suppress global key
   handling; use `e.target instanceof HTMLInputElement` guard.
 
