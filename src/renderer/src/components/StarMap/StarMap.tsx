@@ -9,6 +9,7 @@ import {
   tempBucketFor,
   spriteCoreRadius,
 } from './sprites'
+import { getBackdrop } from './background'
 
 interface Camera {
   cx: number  // world x at canvas center
@@ -21,10 +22,6 @@ interface Props {
   clusters: Cluster[]
   searchHighlights: SearchResult[]  // highlighted from search
   onReady?: () => void
-}
-
-interface StarfieldDot {
-  x: number; y: number; r: number; alpha: number
 }
 
 const HIGHLIGHT_COLOR = '#ffe066'
@@ -41,21 +38,6 @@ function screenToWorld(sx: number, sy: number, cam: Camera, w: number, h: number
   return [(sx - w / 2) / cam.zoom + cam.cx, (sy - h / 2) / cam.zoom + cam.cy]
 }
 
-function makeStarfield(w: number, h: number): StarfieldDot[] {
-  const dots: StarfieldDot[] = []
-  // Simple deterministic pseudo-random from position
-  for (let i = 0; i < 200; i++) {
-    const seed = i * 2654435761
-    dots.push({
-      x: ((seed >>> 0) % w),
-      y: (((seed * 1664525) >>> 0) % h),
-      r: 0.5 + ((seed * 1013904223) >>> 0) / 2 ** 32,
-      alpha: 0.2 + (((seed * 22695477) >>> 0) / 2 ** 32) * 0.6,
-    })
-  }
-  return dots
-}
-
 export default function StarMap({ stars, clusters, searchHighlights, onReady }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
@@ -70,7 +52,6 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
   const highlightsRef = useRef(searchHighlights)
   const edgesRef = useRef(edges)
   const neighborStarsRef = useRef(neighborStars)
-  const starfieldRef = useRef<StarfieldDot[]>([])
   const animRef = useRef<number | null>(null)
   const isDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
@@ -130,7 +111,6 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
     const resize = () => {
       canvas.width = window.innerWidth
       canvas.height = window.innerHeight
-      starfieldRef.current = makeStarfield(canvas.width, canvas.height)
     }
     resize()
     window.addEventListener('resize', resize)
@@ -151,29 +131,18 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
     const highlights = highlightSet.current
     const hasHighlights = highlights.size > 0
 
-    // Background
-    ctx.fillStyle = '#020b18'
-    ctx.fillRect(0, 0, w, h)
+    // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies)
+    const backdrop = getBackdrop(w, h)
+    ctx.drawImage(backdrop, 0, 0)
 
-    // Vignette
+    // Vignette to keep focus toward center
     const vignette = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
     vignette.addColorStop(0, 'rgba(0,0,0,0)')
-    vignette.addColorStop(1, 'rgba(0,8,20,0.5)')
+    vignette.addColorStop(1, 'rgba(0,4,12,0.55)')
     ctx.fillStyle = vignette
     ctx.fillRect(0, 0, w, h)
 
-    // Decorative starfield (fixed, behind everything)
-    ctx.save()
-    for (const dot of starfieldRef.current) {
-      ctx.globalAlpha = dot.alpha
-      ctx.fillStyle = '#a8d8ff'
-      ctx.beginPath()
-      ctx.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2)
-      ctx.fill()
-    }
-    ctx.restore()
-
-    // Constellation hulls (nebula blobs at cluster centroids)
+    // Constellation nebulae — multi-stop gradients with subtle elliptical squish per cluster
     ctx.save()
     ctx.globalCompositeOperation = 'screen'
     for (const cluster of currentClusters) {
@@ -181,14 +150,23 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
       const [sx, sy] = worldToScreen(cluster.centroidX, cluster.centroidY, cam, w, h)
       const r = Math.max(40, Math.sqrt(cluster.memberCount) * 25 * cam.zoom)
       const color = CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
-      const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r)
-      grad.addColorStop(0, color + '22')
-      grad.addColorStop(0.5, color + '11')
+      // Deterministic squish + rotation from cluster id
+      const squish = 0.6 + ((cluster.id * 2654435761) >>> 0) % 100 / 250
+      const rot = (((cluster.id * 1664525) >>> 0) % 360) * Math.PI / 180
+      ctx.save()
+      ctx.translate(sx, sy)
+      ctx.rotate(rot)
+      ctx.scale(1, squish)
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r)
+      grad.addColorStop(0, color + '33')
+      grad.addColorStop(0.25, color + '1f')
+      grad.addColorStop(0.6, color + '10')
       grad.addColorStop(1, 'transparent')
       ctx.fillStyle = grad
       ctx.beginPath()
-      ctx.arc(sx, sy, r, 0, Math.PI * 2)
+      ctx.arc(0, 0, r, 0, Math.PI * 2)
       ctx.fill()
+      ctx.restore()
     }
     ctx.restore()
 
