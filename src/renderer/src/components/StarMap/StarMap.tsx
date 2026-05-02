@@ -12,6 +12,7 @@ import {
   hashStr,
 } from './sprites'
 import { getBackdrop } from './background'
+import type { VimAction } from '../../hooks/useVimMode'
 
 interface Camera {
   cx: number  // world x at canvas center
@@ -26,6 +27,8 @@ interface Props {
   selectedId: string | null
   onSelect: (id: string | null) => void
   onReady?: () => void
+  vimAction?: VimAction | null
+  onHoveredChange?: (id: string | null) => void
 }
 
 const HIGHLIGHT_COLOR = '#ffe066'
@@ -111,7 +114,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -162,6 +165,89 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   useEffect(() => {
     starIndex.current = new Map(stars.map(s => [s.id, s]))
   }, [stars])
+
+  // Propagate hovered id to parent
+  useEffect(() => {
+    onHoveredChange?.(hoveredId)
+  }, [hoveredId, onHoveredChange])
+
+  // Handle imperative vim actions from useVimMode
+  useEffect(() => {
+    if (!vimAction) return
+    const canvas = canvasRef.current
+    const cam = camRef.current
+    const currentStars = starsRef.current
+
+    if (vimAction.type === 'pan') {
+      const newCam = {
+        ...cam,
+        cx: cam.cx + vimAction.dx / cam.zoom,
+        cy: cam.cy + vimAction.dy / cam.zoom,
+      }
+      camRef.current = newCam
+      setCam(newCam)
+      return
+    }
+
+    if (vimAction.type === 'zoom') {
+      const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.zoom * vimAction.factor))
+      const newCam = { ...cam, zoom: newZoom }
+      camRef.current = newCam
+      setCam(newCam)
+      return
+    }
+
+    if (vimAction.type === 'fitAll') {
+      if (!canvas || currentStars.length === 0) return
+      const w = canvas.width, h = canvas.height
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+      for (const s of currentStars) {
+        if (s.x < minX) minX = s.x
+        if (s.x > maxX) maxX = s.x
+        if (s.y < minY) minY = s.y
+        if (s.y > maxY) maxY = s.y
+      }
+      const rangeX = maxX - minX || 1
+      const rangeY = maxY - minY || 1
+      const zoom = Math.min(w / rangeX, h / rangeY) * 0.9
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      const newCam = { cx, cy, zoom }
+      camRef.current = newCam
+      setCam(newCam)
+      return
+    }
+
+    if (vimAction.type === 'fitCluster') {
+      const clusterId = vimAction.clusterId
+      const members = currentStars.filter(s => s.clusterId === clusterId)
+      if (!canvas || members.length === 0) return
+      const w = canvas.width, h = canvas.height
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+      for (const s of members) {
+        if (s.x < minX) minX = s.x
+        if (s.x > maxX) maxX = s.x
+        if (s.y < minY) minY = s.y
+        if (s.y > maxY) maxY = s.y
+      }
+      const rangeX = (maxX - minX) || 100
+      const rangeY = (maxY - minY) || 100
+      const zoom = Math.min(w / (rangeX + 80), h / (rangeY + 80), 4)
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      const newCam = { cx, cy, zoom }
+      camRef.current = newCam
+      setCam(newCam)
+      return
+    }
+
+    if (vimAction.type === 'panTo') {
+      const newCam = { ...cam, cx: vimAction.wx, cy: vimAction.wy }
+      camRef.current = newCam
+      setCam(newCam)
+      return
+    }
+  }, [vimAction])
 
   // Fit all stars into view on first load
   useEffect(() => {
@@ -289,11 +375,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.globalCompositeOperation = 'lighter'
     for (const star of currentStars) {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
-
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
       const isNeighbor = neighbors.has(star.id)
+      // Neighbors and selected star bypass the cull: their sprites peek in from the canvas
+      // edge as you zoom. Canvas clips naturally; off-screen draws are near-free.
+      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) {
+        if (!isNeighbor && !isSelected) continue
+      }
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
 
@@ -382,7 +471,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const isNeighbor = neighbors.has(star.id)
         if (!isHighlighted && !isSelected && !isNeighbor) continue
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-        if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+        if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) {
+          if (!isNeighbor && !isSelected) continue
+        }
 
         const sb = sizeBucketFor(star.viewCount)
         let scaleR = drawScale
@@ -428,13 +519,18 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     if (selectedId && currentNeighbors.length > 0) {
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1
       ctx.fillStyle = NEIGHBOR_RING_COLOR
       for (const n of currentNeighbors) {
-        const [nx, ny] = worldToScreen(n.x, n.y, cam, w, h)
+        // Prefer coords from the main star index (always valid); neighborhood
+        // endpoint may return null x/y for not-yet-projected stars.
+        const canonical = starIndex.current.get(n.id) ?? n
+        const [nx, ny] = worldToScreen(canonical.x, canonical.y, cam, w, h)
+        if (!isFinite(nx) || !isFinite(ny)) continue
         if (nx >= 0 && nx <= w && ny >= 0 && ny <= h) continue
         const m = canvasEdgeIntersection(w / 2, h / 2, nx, ny, w, h, 16)
         const angle = Math.atan2(ny - h / 2, nx - w / 2)
-        drawChevron(ctx, m.x, m.y, angle, 8)
+        drawChevron(ctx, m.x, m.y, angle, 10)
       }
       ctx.restore()
     }
