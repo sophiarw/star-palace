@@ -11,8 +11,8 @@ import { OllamaClient } from './embedding/OllamaClient'
 import { EmbeddingEngine } from './embedding/EmbeddingEngine'
 import { Relayouter } from './layout/Relayouter'
 import { indexPath } from './pipeline/Insert'
-import type { MapStats, ViewportResult, SearchResult, FileContent } from '../shared/types'
-import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES } from '../shared/types'
+import type { MapStats, ViewportResult, SearchResult, FileContent, StarType } from '../shared/types'
+import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES, isStarType } from '../shared/types'
 
 const RAW_MIME_ALLOW = /^image\/(png|jpeg|gif|webp|svg\+xml)$/
 
@@ -91,6 +91,23 @@ app.get('/api/map/stats', (_req, res) => {
     clusterCount: db.getClusters().length,
   }
   res.json(stats)
+})
+
+// --- Tag manual star type override ---
+app.post('/api/file/:id/star-type', (req, res) => {
+  const body = req.body as { starType?: unknown }
+  let starType: StarType | null
+  if (body.starType === null || body.starType === undefined) {
+    starType = null
+  } else if (isStarType(body.starType)) {
+    starType = body.starType
+  } else {
+    return res.status(400).json({ error: 'invalid starType' })
+  }
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  db.setStarType(req.params.id, starType)
+  res.json({ ok: true, starType })
 })
 
 // --- Open file in OS default app ---

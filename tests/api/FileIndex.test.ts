@@ -23,6 +23,7 @@ function makeFile(overrides: Partial<IndexedFile> = {}): Omit<IndexedFile, 'isSt
     firstSeen: 1000,
     viewCount: 0,
     isPinned: false,
+    starType: null,
     ...overrides,
   }
 }
@@ -110,5 +111,27 @@ describe('FileIndex', () => {
     const stars = idx.listInViewport(0, 0, 10, 10)
     expect(stars).toHaveLength(1)
     expect(stars[0].id).toBe('star1')
+  })
+
+  it('round-trips star_type tagging', () => {
+    idx.upsert(makeFile({ id: 'tag1', path: '/t1' }))
+    expect(idx.get('tag1')!.starType).toBeNull()
+
+    idx.setStarType('tag1', 'pulsar')
+    expect(idx.get('tag1')!.starType).toBe('pulsar')
+
+    idx.setStarType('tag1', 'red-giant')
+    expect(idx.get('tag1')!.starType).toBe('red-giant')
+
+    idx.setStarType('tag1', null)
+    expect(idx.get('tag1')!.starType).toBeNull()
+  })
+
+  it('preserves star_type across upsert', () => {
+    idx.upsert(makeFile({ id: 'tag2', path: '/t2' }))
+    idx.setStarType('tag2', 'quasar')
+    // Re-upsert as if a re-index happened
+    idx.upsert(makeFile({ id: 'tag2', path: '/t2', size: 200 }))
+    expect(idx.get('tag2')!.starType).toBe('quasar')
   })
 })

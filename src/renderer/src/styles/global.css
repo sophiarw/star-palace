@@ -249,6 +249,85 @@ body {
   background: rgba(74, 158, 255, 0.28);
 }
 
+.detail-panel-startype {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  position: relative;
+}
+
+.detail-panel-startype-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.detail-panel-startype-chip {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.detail-panel-startype-chip:hover {
+  border-color: var(--accent);
+}
+
+.detail-panel-startype-chip[disabled] {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.detail-panel-startype-caret {
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.detail-panel-startype-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: rgba(8, 18, 36, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  list-style: none;
+  z-index: 95;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.detail-panel-startype-menu button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.detail-panel-startype-menu button:hover {
+  background: rgba(74, 158, 255, 0.18);
+}
+
+.detail-panel-startype-menu button[aria-current="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .detail-panel-content {
   border: 1px solid var(--border);
   border-radius: 8px;
