@@ -7,6 +7,7 @@ import {
   getStarSprite,
   getTypedStarSprite,
   sizeBucketFor,
+  zoomBoostedBucket,
   tempBucketFor,
   spriteCoreRadius,
   hashStr,
@@ -30,9 +31,29 @@ interface Props {
 
 const HIGHLIGHT_COLOR = '#ffe066'
 const EDGE_COLOR = 'rgba(120, 180, 255, 0.45)'
-const DIM_ALPHA = 0.25
+const DIM_ALPHA = 0.08
 const SPRITE_HOVER_SCALE = 1.35
+const SPRITE_HIGHLIGHT_SCALE = 1.6
+const SPRITE_HIGHLIGHT_PULSE = 0.35  // extra scale at pulse peak
+const SEARCH_PULSE_MS = 200
 const CULL_MARGIN = 48
+const ZOOM_MAX = 100
+const ZOOM_MIN = 0.05
+
+// Zoom-aware exposure: dim when zoomed out, brighten when zoomed in.
+const EXPOSURE_REF_ZOOM = 1.0
+const EXPOSURE_MIN = 0.3
+const EXPOSURE_MAX = 1.6
+const EXPOSURE_GAMMA = 0.55
+
+function exposureFor(zoom: number): number {
+  const e = Math.pow(zoom / EXPOSURE_REF_ZOOM, EXPOSURE_GAMMA)
+  return Math.max(EXPOSURE_MIN, Math.min(EXPOSURE_MAX, e))
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3)
+}
 
 function worldToScreen(wx: number, wy: number, cam: Camera, w: number, h: number): [number, number] {
   return [(wx - cam.cx) * cam.zoom + w / 2, (wy - cam.cy) * cam.zoom + h / 2]
@@ -58,6 +79,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   const animRef = useRef<number | null>(null)
   const isDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
+  const searchPulseStart = useRef<number>(0)
 
   // Keep refs in sync
   useEffect(() => { starsRef.current = stars }, [stars])
@@ -65,6 +87,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   useEffect(() => { highlightsRef.current = searchHighlights }, [searchHighlights])
   useEffect(() => { edgesRef.current = edges }, [edges])
   useEffect(() => { neighborStarsRef.current = neighborStars }, [neighborStars])
+
+  // Trigger pulse on each new search-result set
+  useEffect(() => {
+    if (searchHighlights.length > 0) {
+      searchPulseStart.current = performance.now()
+    }
+  }, [searchHighlights])
 
   const clusterMap = useRef<Map<number, Cluster>>(new Map())
   useEffect(() => {
@@ -133,6 +162,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const currentNeighbors = neighborStarsRef.current
     const highlights = highlightSet.current
     const hasHighlights = highlights.size > 0
+    const exposure = exposureFor(cam.zoom)
+    const pulseT = Math.min(1, (performance.now() - searchPulseStart.current) / SEARCH_PULSE_MS)
+    const pulseScale = pulseT < 1 ? SPRITE_HIGHLIGHT_PULSE * (1 - easeOutCubic(pulseT)) : 0
 
     // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies)
     const backdrop = getBackdrop(w, h)
@@ -153,9 +185,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const [sx, sy] = worldToScreen(cluster.centroidX, cluster.centroidY, cam, w, h)
       const r = Math.max(40, Math.sqrt(cluster.memberCount) * 25 * cam.zoom)
       const color = CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
-      // Deterministic squish + rotation from cluster id
       const squish = 0.6 + ((cluster.id * 2654435761) >>> 0) % 100 / 250
       const rot = (((cluster.id * 1664525) >>> 0) % 360) * Math.PI / 180
+      ctx.globalAlpha = exposure
       ctx.save()
       ctx.translate(sx, sy)
       ctx.rotate(rot)
@@ -186,7 +218,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (!src || !dst) continue
         const [sx, sy] = worldToScreen(src.x, src.y, cam, w, h)
         const [dx, dy] = worldToScreen(dst.x, dst.y, cam, w, h)
-        ctx.globalAlpha = edge.weight * 0.55
+        ctx.globalAlpha = edge.weight * 0.55 * exposure
         ctx.beginPath()
         ctx.moveTo(sx, sy)
         ctx.lineTo(dx, dy)
@@ -203,10 +235,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
       const isHighlighted = highlights.has(star.id)
-      const alpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
-      ctx.globalAlpha = alpha
+      const dimAlpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
+      ctx.globalAlpha = dimAlpha * exposure
 
-      const sb = sizeBucketFor(star.viewCount)
+      const baseSb = sizeBucketFor(star.viewCount)
+      const sb = zoomBoostedBucket(baseSb, cam.zoom)
       let sprite: HTMLCanvasElement
       if (star.starType) {
         sprite = getTypedStarSprite(star.starType, sb)
@@ -217,7 +250,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         sprite = getStarSprite(colorIndex, tb, sb)
       }
       const sw = sprite.width, sh = sprite.height
-      const scale = star.id === hoveredId ? SPRITE_HOVER_SCALE : 1
+      let scale = 1
+      if (star.id === hoveredId) scale *= SPRITE_HOVER_SCALE
+      if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
       const drawW = sw * scale, drawH = sh * scale
       ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
     }
@@ -236,6 +271,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       ctx.save()
       ctx.globalCompositeOperation = 'lighter'
+      ctx.globalAlpha = exposure
 
       if (star.starType === 'pulsar') {
         const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
@@ -286,12 +322,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
         if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
-        const sb = sizeBucketFor(star.viewCount)
-        const r = spriteCoreRadius(sb)
+        const sb = zoomBoostedBucket(sizeBucketFor(star.viewCount), cam.zoom)
+        const r = spriteCoreRadius(sb) * (isHighlighted ? SPRITE_HIGHLIGHT_SCALE + pulseScale : 1)
 
         if (isSelected) {
           ctx.globalCompositeOperation = 'lighter'
-          ctx.globalAlpha = 0.9
+          ctx.globalAlpha = 0.9 * exposure
           ctx.fillStyle = '#ffffff'
           ctx.beginPath()
           ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2)
@@ -489,7 +525,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const w = canvas.width, h = canvas.height
     const factor = e.deltaY < 0 ? 1.1 : 0.9
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
-    const newZoom = Math.max(0.05, Math.min(10, camRef.current.zoom * factor))
+    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camRef.current.zoom * factor))
     // Zoom towards cursor
     const newCam = {
       cx: wx - (e.clientX - w / 2) / newZoom,

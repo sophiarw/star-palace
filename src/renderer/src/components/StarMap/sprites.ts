@@ -1,7 +1,7 @@
 import { CONSTELLATION_PALETTE } from '@shared/types'
 import type { StarType } from '@shared/types'
 
-const SIZE_RADII = [3, 4.5, 6, 8, 11] as const
+const SIZE_RADII = [3, 4.5, 6, 8, 11, 16, 22] as const
 export const SIZE_BUCKET_COUNT = SIZE_RADII.length
 export const TEMP_BUCKET_COUNT = 4
 
@@ -57,6 +57,15 @@ export function sizeBucketFor(viewCount: number): number {
   if (viewCount < 12) return 2
   if (viewCount < 40) return 3
   return 4
+}
+
+// At high zoom, picking a larger sprite bucket keeps stars sharp.
+// Returns a sprite index >= sizeBucketFor() based on camera zoom.
+export function zoomBoostedBucket(base: number, zoom: number): number {
+  let boost = 0
+  if (zoom > 4) boost = 1
+  if (zoom > 16) boost = 2
+  return Math.min(SIZE_BUCKET_COUNT - 1, base + boost)
 }
 
 export function spriteCoreRadius(sizeBucket: number): number {
