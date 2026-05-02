@@ -5,12 +5,16 @@ import type { SearchResult } from '@shared/types'
 interface Props {
   onResults: (results: SearchResult[]) => void
   onClear: () => void
+  onFocus?: () => void
+  inputRef?: React.RefObject<HTMLInputElement>
 }
 
-export default function SearchBar({ onResults, onClear }: Props) {
+export default function SearchBar({ onResults, onClear, onFocus, inputRef }: Props) {
   const [value, setValue] = useState('')
   const [searching, setSearching] = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const internalRef = useRef<HTMLInputElement>(null)
+  const resolvedRef = inputRef ?? internalRef
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
@@ -46,11 +50,13 @@ export default function SearchBar({ onResults, onClear }: Props) {
   return (
     <div className="search-bar">
       <input
+        ref={resolvedRef}
         className="search-input"
         type="text"
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onFocus={onFocus}
         placeholder={searching ? 'Searching…' : 'Search the sky…'}
         spellCheck={false}
         autoComplete="off"
