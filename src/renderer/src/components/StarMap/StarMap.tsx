@@ -12,6 +12,7 @@ import {
   hashStr,
 } from './sprites'
 import { getBackdrop } from './background'
+import { defaultStarType } from './autoStarType'
 import type { VimAction } from '../../hooks/useVimMode'
 
 interface Camera {
@@ -388,8 +389,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       const sb = sizeBucketFor(star.viewCount)
       let sprite: HTMLCanvasElement
-      if (star.starType) {
-        sprite = getTypedStarSprite(star.starType, sb)
+      const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
+      if (effectiveType) {
+        sprite = getTypedStarSprite(effectiveType, sb)
       } else {
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
@@ -410,7 +412,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // Animation overlay — pulsar rotating beam + quasar jet flicker. Cardinality is small.
     const tNow = performance.now() / 1000
     for (const star of currentStars) {
-      if (star.starType !== 'pulsar' && star.starType !== 'quasar') continue
+      const animType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
+      if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
@@ -422,7 +425,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.globalCompositeOperation = 'lighter'
       ctx.globalAlpha = exposure
 
-      if (star.starType === 'pulsar') {
+      if (animType === 'pulsar') {
         const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
         const reach = r * 6
         const dx = Math.cos(angle) * reach
