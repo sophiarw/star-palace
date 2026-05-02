@@ -5,6 +5,9 @@ import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
 import StatsBar from './components/StatsBar/StatsBar'
 import DetailPanel from './components/DetailPanel/DetailPanel'
+import Cheatsheet from './components/Cheatsheet/Cheatsheet'
+import { useVimMode } from './hooks/useVimMode'
+import type { VimAction } from './hooks/useVimMode'
 
 const STATS_POLL_MS = 10_000  // re-poll stats every 10s
 
@@ -15,7 +18,16 @@ export default function App() {
   const [highlights, setHighlights] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [showCheatsheet, setShowCheatsheet] = useState(true)
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const layoutVersionRef = useRef<number>(-1)
+
+  // Ref to focus the search input from vim '/'
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Pending vim action to send to StarMap (new object ref each dispatch so the same action fires repeatedly)
+  const [vimAction, setVimAction] = useState<VimAction | null>(null)
 
   const loadMap = useCallback(async () => {
     try {
@@ -63,15 +75,6 @@ export default function App() {
     setStars(prev => prev.map(s => s.id === id ? { ...s, starType } : s))
   }, [])
 
-  // Esc closes the detail panel
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedId(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   const starsById = useMemo(() => new Map(stars.map(s => [s.id, s])), [stars])
   const clustersById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters])
 
@@ -79,6 +82,48 @@ export default function App() {
   const selectedCluster = selectedStar?.clusterId !== null && selectedStar?.clusterId !== undefined
     ? clustersById.get(selectedStar.clusterId) ?? null
     : null
+
+  // Each dispatch spreads into a new object so repeated identical actions still
+  // trigger the StarMap useEffect (React bails out when state is the same ref).
+  const dispatchVimAction = useCallback((action: VimAction) => {
+    setVimAction({ ...action })
+  }, [])
+
+  const handleFocusSearch = useCallback(() => {
+    searchInputRef.current?.focus()
+  }, [])
+
+  const handleEscape = useCallback(() => {
+    setSelectedId(null)
+    setHighlights([])
+    handleClearSearch()
+  }, [handleClearSearch])
+
+  const handleSelectHovered = useCallback(() => {
+    if (hoveredId) setSelectedId(hoveredId)
+  }, [hoveredId])
+
+  const handleToggleCheatsheet = useCallback(() => {
+    setShowCheatsheet(v => !v)
+  }, [])
+
+  const handleOpenTypeDropdown = useCallback(() => {
+    setTypeDropdownOpen(true)
+  }, [])
+
+  const { mode } = useVimMode({
+    onAction: dispatchVimAction,
+    onFocusSearch: handleFocusSearch,
+    onEscape: handleEscape,
+    onSelectHovered: handleSelectHovered,
+    hoveredId,
+    selectedId,
+    selectedStar,
+    searchHighlights: highlights,
+    onStarTypeChange: handleStarTypeChange,
+    onToggleCheatsheet: handleToggleCheatsheet,
+    onOpenTypeDropdown: handleOpenTypeDropdown,
+  })
 
   const showEmpty = stars.length === 0
 
@@ -90,14 +135,18 @@ export default function App() {
         searchHighlights={highlights}
         selectedId={selectedId}
         onSelect={handleSelect}
+        vimAction={vimAction}
+        onHoveredChange={setHoveredId}
       />
 
       <SearchBar
+        inputRef={searchInputRef}
         onResults={handleSearchResults}
         onClear={handleClearSearch}
+        onFocus={() => { /* mode transitions handled in useVimMode */ }}
       />
 
-      <StatsBar stats={stats} starCount={stars.length} />
+      <StatsBar stats={stats} starCount={stars.length} vimMode={mode} />
 
       {selectedStar && (
         <DetailPanel
@@ -107,7 +156,13 @@ export default function App() {
           onClose={() => setSelectedId(null)}
           onSelectNeighbor={(id) => setSelectedId(id)}
           onStarTypeChange={handleStarTypeChange}
+          typeDropdownOpen={typeDropdownOpen}
+          onTypeDropdownChange={setTypeDropdownOpen}
         />
+      )}
+
+      {showCheatsheet && (
+        <Cheatsheet onClose={() => setShowCheatsheet(false)} />
       )}
 
       {showEmpty && (
