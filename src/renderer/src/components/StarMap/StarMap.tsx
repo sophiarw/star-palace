@@ -163,6 +163,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const currentNeighbors = neighborStarsRef.current
     const highlights = highlightSet.current
     const hasHighlights = highlights.size > 0
+    const hasFocus = hasHighlights || selectedId !== null
     const exposure = exposureFor(cam.zoom)
     const pulseT = Math.min(1, (performance.now() - searchPulseStart.current) / SEARCH_PULSE_MS)
     const pulseScale = pulseT < 1 ? SPRITE_HIGHLIGHT_PULSE * (1 - easeOutCubic(pulseT)) : 0
@@ -237,7 +238,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
-      const dimAlpha = hasHighlights && !isHighlighted && !isSelected ? DIM_ALPHA : 1
+      const dimAlpha = hasFocus && !isHighlighted && !isSelected ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
 
       const baseSb = sizeBucketFor(star.viewCount)
@@ -362,7 +363,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
       const isHighlighted = highlights.has(star.id)
-      const alpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
+      const isSelected = star.id === selectedId
+      const alpha = hasFocus && !isHighlighted && !isSelected ? DIM_ALPHA : 1
       if (alpha <= 0.5) continue
 
       const r = spriteCoreRadius(sizeBucketFor(star.viewCount))
