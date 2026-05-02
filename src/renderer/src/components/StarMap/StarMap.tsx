@@ -3,6 +3,12 @@ import type { Star, Cluster, SearchResult, Edge } from '@shared/types'
 import { CONSTELLATION_PALETTE } from '@shared/types'
 import { fetchNeighborhood, edgeFromNeighborhood, openFile } from '../../api'
 import HoverCard from '../HoverCard/HoverCard'
+import {
+  getStarSprite,
+  sizeBucketFor,
+  tempBucketFor,
+  spriteCoreRadius,
+} from './sprites'
 
 interface Camera {
   cx: number  // world x at canvas center
@@ -21,16 +27,11 @@ interface StarfieldDot {
   x: number; y: number; r: number; alpha: number
 }
 
-const BASE_STAR_RADIUS = 3
-const MAX_STAR_RADIUS = 12
-const GLOW_BLUR = 10
 const HIGHLIGHT_COLOR = '#ffe066'
-const EDGE_COLOR = 'rgba(100, 160, 255, 0.3)'
+const EDGE_COLOR = 'rgba(120, 180, 255, 0.45)'
 const DIM_ALPHA = 0.25
-
-function starRadius(viewCount: number): number {
-  return BASE_STAR_RADIUS + Math.min(Math.log1p(viewCount) * 1.5, MAX_STAR_RADIUS - BASE_STAR_RADIUS)
-}
+const SPRITE_HOVER_SCALE = 1.35
+const CULL_MARGIN = 48
 
 function worldToScreen(wx: number, wy: number, cam: Camera, w: number, h: number): [number, number] {
   return [(wx - cam.cx) * cam.zoom + w / 2, (wy - cam.cy) * cam.zoom + h / 2]
@@ -191,9 +192,10 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
     }
     ctx.restore()
 
-    // Edges (selected neighborhood only)
+    // Edges (selected neighborhood only) — additive screen blend for filament feel
     if (currentEdges.length > 0) {
       ctx.save()
+      ctx.globalCompositeOperation = 'screen'
       ctx.strokeStyle = EDGE_COLOR
       ctx.lineWidth = 1
       const originStar = selectedId ? starIndex.current.get(selectedId) : null
@@ -203,8 +205,7 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
         if (!src || !dst) continue
         const [sx, sy] = worldToScreen(src.x, src.y, cam, w, h)
         const [dx, dy] = worldToScreen(dst.x, dst.y, cam, w, h)
-        const alpha = edge.weight * 0.4
-        ctx.globalAlpha = alpha
+        ctx.globalAlpha = edge.weight * 0.55
         ctx.beginPath()
         ctx.moveTo(sx, sy)
         ctx.lineTo(dx, dy)
@@ -213,56 +214,82 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
       ctx.restore()
     }
 
-    // Stars
+    // Main star pass — sprite-cached, additive blend so overlapping halos bloom together
     ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
     for (const star of currentStars) {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-      if (sx < -20 || sx > w + 20 || sy < -20 || sy > h + 20) continue
+      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
-      const r = starRadius(star.viewCount)
-      const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
-      const color = cluster ? CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length] : '#4a5568'
-
-      const isHighlighted = highlights.size > 0 && highlights.has(star.id)
-      const isSelected = star.id === selectedId
-      const isHovered = star.id === hoveredId
-
-      let alpha = 1
-      if (hasHighlights && !isHighlighted) alpha = DIM_ALPHA
-
+      const isHighlighted = highlights.has(star.id)
+      const alpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
       ctx.globalAlpha = alpha
 
-      // Glow
-      const glowColor = isHighlighted || isSelected ? HIGHLIGHT_COLOR : color
-      ctx.shadowColor = glowColor
-      ctx.shadowBlur = isHighlighted || isHovered ? GLOW_BLUR * 2 : GLOW_BLUR
+      const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
+      const colorIndex = cluster ? cluster.colorIndex : -1
+      const sb = sizeBucketFor(star.viewCount)
+      const tb = tempBucketFor(star.id)
+      const sprite = getStarSprite(colorIndex, tb, sb)
+      const sw = sprite.width, sh = sprite.height
+      const scale = star.id === hoveredId ? SPRITE_HOVER_SCALE : 1
+      const drawW = sw * scale, drawH = sh * scale
+      ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+    }
+    ctx.restore()
 
-      // Star body
-      ctx.fillStyle = isHighlighted ? HIGHLIGHT_COLOR : (isSelected ? '#fff' : color)
-      ctx.beginPath()
-      ctx.arc(sx, sy, r * (isHovered ? 1.4 : 1), 0, Math.PI * 2)
-      ctx.fill()
+    // Decoration pass — gold rings (highlighted) + bright white core (selected). Small cardinality.
+    if (hasHighlights || selectedId) {
+      ctx.save()
+      for (const star of currentStars) {
+        const isHighlighted = highlights.has(star.id)
+        const isSelected = star.id === selectedId
+        if (!isHighlighted && !isSelected) continue
+        const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
+        if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
-      // Highlight ring
-      if (isHighlighted) {
-        ctx.shadowBlur = 0
-        ctx.strokeStyle = HIGHLIGHT_COLOR
-        ctx.lineWidth = 2
-        ctx.globalAlpha = alpha * 0.8
-        ctx.beginPath()
-        ctx.arc(sx, sy, r + 3, 0, Math.PI * 2)
-        ctx.stroke()
+        const sb = sizeBucketFor(star.viewCount)
+        const r = spriteCoreRadius(sb)
+
+        if (isSelected) {
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.globalAlpha = 0.9
+          ctx.fillStyle = '#ffffff'
+          ctx.beginPath()
+          ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        if (isHighlighted) {
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.strokeStyle = HIGHLIGHT_COLOR
+          ctx.lineWidth = 2
+          ctx.globalAlpha = 0.85
+          ctx.beginPath()
+          ctx.arc(sx, sy, r + 4, 0, Math.PI * 2)
+          ctx.stroke()
+        }
       }
+      ctx.restore()
+    }
 
-      // Label (only when zoomed in enough or hovered)
-      if ((cam.zoom > 1.5 || isHovered) && alpha > 0.5) {
-        ctx.shadowBlur = 0
-        ctx.fillStyle = '#c8dff5'
-        ctx.font = `${Math.min(11, 8 + cam.zoom * 1.5)}px monospace`
-        ctx.globalAlpha = Math.min(1, (cam.zoom - 0.8) * 2) * alpha
-        const name = star.name.replace(/\.[^.]+$/, '')
-        ctx.fillText(name, sx + r + 3, sy + 4)
-      }
+    // Labels — only when zoomed in or hovered
+    ctx.save()
+    for (const star of currentStars) {
+      const isHovered = star.id === hoveredId
+      if (cam.zoom <= 1.5 && !isHovered) continue
+      const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
+      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+
+      const isHighlighted = highlights.has(star.id)
+      const alpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
+      if (alpha <= 0.5) continue
+
+      const r = spriteCoreRadius(sizeBucketFor(star.viewCount))
+      ctx.fillStyle = '#c8dff5'
+      ctx.font = `${Math.min(11, 8 + cam.zoom * 1.5)}px monospace`
+      ctx.globalAlpha = Math.min(1, (cam.zoom - 0.8) * 2) * alpha
+      const name = star.name.replace(/\.[^.]+$/, '')
+      ctx.fillText(name, sx + r + 4, sy + 4)
     }
     ctx.restore()
   }, [hoveredId, selectedId])
