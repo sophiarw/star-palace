@@ -1,4 +1,4 @@
-import type { ViewportResult, MapStats, SearchResult, Star, Edge } from '@shared/types'
+import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent } from '@shared/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BASE = `http://127.0.0.1:${(import.meta as any).env?.VITE_DAEMON_PORT ?? 7373}`
@@ -54,6 +54,16 @@ export async function fetchNeighborhood(id: string): Promise<NeighborhoodResult>
 export async function openFile(id: string): Promise<void> {
   const res = await fetch(`${BASE}/api/file/${id}/open`, { method: 'POST' })
   if (!res.ok) throw new Error(`openFile: ${res.status}`)
+}
+
+export async function fetchContent(id: string): Promise<FileContent> {
+  const res = await fetch(`${BASE}/api/file/${id}/content`)
+  if (!res.ok) throw new Error(`fetchContent: ${res.status}`)
+  return res.json()
+}
+
+export function rawUrl(id: string): string {
+  return `${BASE}/api/file/${id}/raw`
 }
 
 export function edgeFromNeighborhood(fileId: string, neighbors: { file: Star; weight: number }[]): Edge[] {

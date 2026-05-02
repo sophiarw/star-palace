@@ -3,6 +3,7 @@ import cors from 'cors'
 import { homedir, platform } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
+import { readFile, stat } from 'fs/promises'
 import { exec } from 'child_process'
 import { FileIndex } from './db/FileIndex'
 import { HnswIndex } from './ann/HnswIndex'
@@ -10,8 +11,10 @@ import { OllamaClient } from './embedding/OllamaClient'
 import { EmbeddingEngine } from './embedding/EmbeddingEngine'
 import { Relayouter } from './layout/Relayouter'
 import { indexPath } from './pipeline/Insert'
-import type { MapStats, ViewportResult, SearchResult } from '../shared/types'
-import { DAEMON_PORT, CONSTELLATION_PALETTE } from '../shared/types'
+import type { MapStats, ViewportResult, SearchResult, FileContent } from '../shared/types'
+import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES } from '../shared/types'
+
+const RAW_MIME_ALLOW = /^image\/(png|jpeg|gif|webp|svg\+xml)$/
 
 const DATA_DIR = process.env.STARPALACE_DIR ?? join(homedir(), '.starpalace')
 const DB_PATH = process.env.STARPALACE_DB ?? join(DATA_DIR, 'index.db')
@@ -148,6 +151,47 @@ app.get('/api/file/:id', (req, res) => {
   db.incrementViewCount(req.params.id)
   const { embedding: _emb, ...safeFile } = file
   res.json(safeFile)
+})
+
+// --- File content for in-app viewer (text only; capped at VIEW_BYTES) ---
+app.get('/api/file/:id/content', async (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+
+  if (file.category === 'media') {
+    const payload: FileContent = { content: null, mimeType: file.mimeType, truncated: false, size: file.size }
+    return res.json(payload)
+  }
+
+  try {
+    const onDisk = await stat(file.path)
+    if (onDisk.size === 0) {
+      const payload: FileContent = { content: '', mimeType: file.mimeType, truncated: false, size: 0 }
+      return res.json(payload)
+    }
+    const buf = await readFile(file.path)
+    const truncated = buf.length > VIEW_BYTES
+    const slice = truncated ? buf.subarray(0, VIEW_BYTES) : buf
+    const payload: FileContent = {
+      content: slice.toString('utf8'),
+      mimeType: file.mimeType,
+      truncated,
+      size: onDisk.size,
+    }
+    res.json(payload)
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// --- Raw file bytes (image-only allowlist) — bypasses Vite CSP for <img src> ---
+app.get('/api/file/:id/raw', (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  if (!RAW_MIME_ALLOW.test(file.mimeType)) {
+    return res.status(415).json({ error: 'unsupported media type' })
+  }
+  res.sendFile(file.path)
 })
 
 // --- Neighborhood ---

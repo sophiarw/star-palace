@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import type { Star, Cluster, SearchResult, Edge } from '@shared/types'
 import { CONSTELLATION_PALETTE } from '@shared/types'
-import { fetchNeighborhood, edgeFromNeighborhood, openFile } from '../../api'
+import { fetchNeighborhood, edgeFromNeighborhood } from '../../api'
 import HoverCard from '../HoverCard/HoverCard'
 import {
   getStarSprite,
@@ -21,6 +21,8 @@ interface Props {
   stars: Star[]
   clusters: Cluster[]
   searchHighlights: SearchResult[]  // highlighted from search
+  selectedId: string | null
+  onSelect: (id: string | null) => void
   onReady?: () => void
 }
 
@@ -38,12 +40,11 @@ function screenToWorld(sx: number, sy: number, cam: Camera, w: number, h: number
   return [(sx - w / 2) / cam.zoom + cam.cx, (sy - h / 2) / cam.zoom + cam.cy]
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, onReady }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 })
   const [edges, setEdges] = useState<Edge[]>([])
   const [neighborStars, setNeighborStars] = useState<Star[]>([])
@@ -379,7 +380,7 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
     isDragging.current = false
   }, [])
 
-  const handleClick = useCallback(async (e: React.MouseEvent) => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
     if (Math.abs(e.clientX - lastMouse.current.x) > 3 || Math.abs(e.clientY - lastMouse.current.y) > 3) return
     const canvas = canvasRef.current
     if (!canvas) return
@@ -398,22 +399,28 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
       }
     }
 
-    if (clicked) {
-      setSelectedId(clicked)
-      try {
-        const hood = await fetchNeighborhood(clicked)
-        setEdges(edgeFromNeighborhood(clicked, hood.neighbors))
-        setNeighborStars(hood.neighbors.map(n => n.file))
-      } catch {
-        setEdges([])
-        setNeighborStars([])
-      }
-    } else {
-      setSelectedId(null)
+    onSelect(clicked)
+  }, [onSelect])
+
+  // Fetch neighborhood whenever the externally-controlled selection changes
+  useEffect(() => {
+    if (!selectedId) {
       setEdges([])
       setNeighborStars([])
+      return
     }
-  }, [])
+    let cancelled = false
+    fetchNeighborhood(selectedId).then(hood => {
+      if (cancelled) return
+      setEdges(edgeFromNeighborhood(selectedId, hood.neighbors))
+      setNeighborStars(hood.neighbors.map(n => n.file))
+    }).catch(() => {
+      if (cancelled) return
+      setEdges([])
+      setNeighborStars([])
+    })
+    return () => { cancelled = true }
+  }, [selectedId])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
@@ -456,13 +463,12 @@ export default function StarMap({ stars, clusters, searchHighlights, onReady }: 
         onMouseLeave={handleMouseUp}
         onClick={handleClick}
       />
-      {hoveredStar && !isDragging.current && (
+      {hoveredStar && !isDragging.current && hoveredStar.id !== selectedId && (
         <HoverCard
           star={hoveredStar}
           position={hoverPos}
           clusterSize={hoveredCluster?.memberCount ?? null}
           clusterColorIndex={hoveredCluster?.colorIndex ?? null}
-          onOpen={() => openFile(hoveredStar.id).catch(console.error)}
         />
       )}
     </>

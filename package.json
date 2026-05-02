@@ -20,6 +20,8 @@
     "express": "^4.19.2",
     "hnswlib-node": "^3.0.0",
     "ml-pca": "^4.1.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "undici": "^7.25.0"
   },
   "devDependencies": {

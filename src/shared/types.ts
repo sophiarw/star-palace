@@ -83,6 +83,16 @@ export interface SearchResult {
   path: string
 }
 
+// File content payload for in-app viewer
+export interface FileContent {
+  content: string | null   // null when binary/media; viewer should fall back to /raw
+  mimeType: string
+  truncated: boolean       // true if content was capped at VIEW_BYTES
+  size: number             // total file size on disk
+}
+
+export const VIEW_BYTES = 120 * 1024  // viewer cap; larger than embedding's MAX_TEXT_BYTES
+
 export const CONSTELLATION_PALETTE = [
   '#b388ff', '#80cbc4', '#f48fb1', '#a5d6a7', '#ffcc80', '#ef9a9a',
 ] as const
