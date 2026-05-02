@@ -15,12 +15,12 @@ Decisions already locked:
 
 | ID | Feature | Effort | Notes |
 |---|---|---|---|
-| F1 | Search pop + extended zoom + zoom-exposure | XS | Visual only; same-day. |
-| F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. |
+| F1 | Search pop + extended zoom + zoom-exposure | XS | Visual only; same-day. | **DONE** |
+| F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. | **IN PROGRESS** |
 | F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. |
 | F4 | Manual reposition + pin | M | New columns; embedding-delta math. |
 | F5 | Virtual collections | M-L | New tables + endpoints + render hull. |
-| F6 | Vim mode | M | Pure UI; no backend. |
+| F6 | Vim mode | M | Pure UI; no backend. | **DONE** |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. |
 | F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. |
 

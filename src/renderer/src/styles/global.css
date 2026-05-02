@@ -508,6 +508,127 @@ body {
   white-space: nowrap;
 }
 
+/* Vim mode indicator in stats bar */
+
+.stats-bar-mode {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+
+.stats-bar-mode--normal {
+  color: #4a9eff;
+}
+
+.stats-bar-mode--search {
+  color: #ffe066;
+}
+
+/* Cheatsheet panel */
+
+.cheatsheet-panel {
+  position: fixed;
+  top: 80px;
+  right: 16px;
+  width: 320px;
+  z-index: 90;
+  background: rgba(2, 11, 24, 0.93);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(14px);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.55);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+}
+
+.cheatsheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cheatsheet-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.cheatsheet-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.cheatsheet-close:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.cheatsheet-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cheatsheet-table tr:not(:last-child) td {
+  padding-bottom: 4px;
+}
+
+.cheatsheet-key {
+  white-space: nowrap;
+  padding-right: 10px;
+  vertical-align: top;
+  width: 1%;
+}
+
+.cheatsheet-key kbd {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.cheatsheet-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  vertical-align: top;
+}
+
+.cheatsheet-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.cheatsheet-note kbd {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
 /* Empty state */
 
 .empty-state {

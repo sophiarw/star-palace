@@ -30,6 +30,8 @@ interface Props {
   onClose: () => void
   onSelectNeighbor: (id: string) => void
   onStarTypeChange: (id: string, type: StarType | null) => void
+  typeDropdownOpen?: boolean
+  onTypeDropdownChange?: (open: boolean) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -60,12 +62,21 @@ export default function DetailPanel({
   onClose,
   onSelectNeighbor,
   onStarTypeChange,
+  typeDropdownOpen,
+  onTypeDropdownChange,
 }: Props) {
   const [content, setContent] = useState<FileContent | null>(null)
   const [contentError, setContentError] = useState<string | null>(null)
   const [neighbors, setNeighbors] = useState<NeighborSummary[]>([])
-  const [typeOpen, setTypeOpen] = useState(false)
+  const [typeOpenInternal, setTypeOpenInternal] = useState(false)
   const [typeSaving, setTypeSaving] = useState(false)
+
+  // Allow external control of the type dropdown (for vim 't' binding)
+  const typeOpen = typeDropdownOpen !== undefined ? typeDropdownOpen : typeOpenInternal
+  const setTypeOpen = (open: boolean) => {
+    setTypeOpenInternal(open)
+    onTypeDropdownChange?.(open)
+  }
 
   useEffect(() => {
     setContent(null)
@@ -132,7 +143,7 @@ export default function DetailPanel({
         <button
           className="detail-panel-startype-chip"
           disabled={typeSaving}
-          onClick={() => setTypeOpen(o => !o)}
+          onClick={() => setTypeOpen(!typeOpen)}
         >
           {star.starType ? STAR_TYPE_LABELS[star.starType] : 'Default (cluster hue)'}
           <span className="detail-panel-startype-caret">▾</span>
