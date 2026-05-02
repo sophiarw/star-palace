@@ -15,7 +15,7 @@ Decisions already locked:
 
 | ID | Feature | Effort | Notes |
 |---|---|---|---|
-| F1 | Search pop + extended zoom | XS | Visual only; same-day. |
+| F1 | Search pop + extended zoom + zoom-exposure | XS | Visual only; same-day. |
 | F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. |
 | F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. |
 | F4 | Manual reposition + pin | M | New columns; embedding-delta math. |
@@ -25,9 +25,9 @@ Decisions already locked:
 
 ---
 
-## F1 — Search pop + extended zoom
+## F1 — Search pop + extended zoom + zoom-exposure
 
-Two trivial renderer-only changes; bundle in one branch.
+Three trivial renderer-only changes; bundle in one branch.
 
 ### F1a — Search pop
 
@@ -99,6 +99,81 @@ the user can keep zooming until single stars fill the screen.
   pins more accurate, not break them.
 - Backdrop (`background.ts`): renders at 1× viewport size; doesn't pan with
   the camera, so it stays correct at any zoom.
+
+### F1c — Zoom-aware exposure
+
+Today the main star pass uses `globalCompositeOperation = 'lighter'`
+(additive). When zoomed out, hundreds of stars project onto each pixel and
+their halos sum to pure white — the sky blows out. When zoomed in, the
+same stars are spread across many pixels and look dim. Real telescopes
+behave the opposite way: zooming in *gains* light (longer exposure per
+pixel of subject), zooming out *attenuates* (smaller subject, less light).
+
+Add a single global exposure scalar driven by camera zoom: dim when
+zoomed out, brighten when zoomed in. One number, applied as `globalAlpha`
+multiplier on the main star pass and the constellation-nebula pass.
+
+#### Math
+
+Map `cam.zoom` (range `[0.05, 100]` after F1b) to an exposure multiplier
+in `[0.3, 1.6]`. Logarithmic so it feels even across the wide range:
+
+```ts
+const ZOOM_REF = 1.0           // exposure = 1.0 at this zoom
+const EXP_MIN = 0.3
+const EXP_MAX = 1.6
+const exposure = clamp(
+  Math.pow(cam.zoom / ZOOM_REF, 0.55),
+  EXP_MIN,
+  EXP_MAX
+)
+```
+
+`pow(x, 0.55)` is roughly `sqrt(x)` and gives a perceptually even ramp:
+zoom 0.1 → exposure 0.30 (clamped), zoom 1 → 1.0, zoom 10 → 1.6
+(clamped), zoom 100 → 1.6. Tunable via the constants.
+
+#### Acceptance
+
+- Zoom out to fit-all: sky no longer blows out; individual cluster blobs
+  read distinctly. White isn't pure 255,255,255 in dense regions.
+- Zoom in to ~10: brightness comparable to today's "looks right" zoom.
+- Zoom in to 100: stars stay readable, halos don't get washed out (sprite
+  cache still fine; this is alpha math, not sprite scale).
+- Backdrop, edges, decoration (gold rings, white selected core) all
+  modulate with the same exposure so the scene stays balanced.
+
+#### Implementation surface
+
+- `src/renderer/src/components/StarMap/StarMap.tsx`
+  - Compute `exposure` once per frame from `cam.zoom`.
+  - Multiply into `ctx.globalAlpha` for: main star pass, animation overlay
+    (pulsar/quasar), nebula pass, edges pass.
+  - Skip applying to backdrop image (already pre-baked) — though we may
+    want a separate fade-out at extreme zoom-out (constants reserved,
+    tune in QA).
+
+#### Edge cases
+
+- Search active: the dim-non-match logic and exposure compose naturally —
+  `alpha = matchAlpha * exposure`; no special-case.
+- Selected white-core overlay: also multiplied so it doesn't pop unnaturally.
+- F4 drag: live-preview drawing uses the same exposure value so the
+  dragged star matches its peers.
+
+#### Tuning hooks
+
+Expose `ZOOM_REF`, `EXP_MIN`, `EXP_MAX`, and the `pow(..., 0.55)` exponent
+as named constants at the top of `StarMap.tsx` so we can tune without
+diving into the draw loop.
+
+#### Out of scope
+
+- HDR / tone-mapping (real Reinhard / ACES). Single linear scalar is
+  enough for now.
+- Per-cluster exposure (some constellations dimmer than others).
+- User-facing exposure slider (could ship as a follow-up if the auto curve
+  feels wrong).
 
 ---
 
