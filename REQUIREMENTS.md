@@ -18,8 +18,8 @@ Locked decisions:
 |---|---|---|---|---|
 | F1 | Search pop + extended zoom + zoom-exposure | XS | Visual only; same-day. | **DONE** |
 | — | **BUG**: neighbor stars still vanish at high zoom despite bypass-cull fix | — | Root cause unclear; multiple fix attempts failed. | **OPEN** |
-| F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. | **IN PROGRESS** |
-| F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. | **CLAIMED 2026-05-02** |
+| F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. | **DONE** |
+| F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. | **DONE** |
 | F4 | Manual reposition + pin | M | New columns; embedding-delta math. | |
 | F5 | Virtual collections | M-L | New tables + endpoints + render hull. | |
 | F6 | Vim mode | M | Pure UI; no backend. | **IN PROGRESS** |

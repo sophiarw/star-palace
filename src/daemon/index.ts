@@ -10,6 +10,8 @@ import { HnswIndex } from './ann/HnswIndex'
 import { OllamaClient } from './embedding/OllamaClient'
 import { EmbeddingEngine } from './embedding/EmbeddingEngine'
 import { Relayouter } from './layout/Relayouter'
+import { PC_COUNT } from './layout/Pca'
+import { LAYOUT_THRESHOLD } from '../shared/types'
 import { indexPath } from './pipeline/Insert'
 import type { MapStats, ViewportResult, SearchResult, FileContent, StarType } from '../shared/types'
 import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES, isStarType } from '../shared/types'
@@ -30,6 +32,22 @@ const ollamaClient = new OllamaClient()
 export const embedEngine = new EmbeddingEngine(ollamaClient)
 export const relayouter = new Relayouter(db)
 relayouter.loadExisting()
+
+// F3 migration: if persisted model has fewer than PC_COUNT components, retrain
+// once at startup so /api/map/projection can serve the full PC matrix.
+if (
+  relayouter.isReady &&
+  relayouter.componentCount < PC_COUNT &&
+  db.countWithEmbeddings() >= LAYOUT_THRESHOLD
+) {
+  console.log(`[F3] Upgrading PCA from ${relayouter.componentCount} → ${PC_COUNT} components…`)
+  try {
+    relayouter.train()
+    console.log(`[F3] Upgrade complete (componentCount=${relayouter.componentCount}).`)
+  } catch (err) {
+    console.warn(`[F3] Upgrade failed: ${String(err)}`)
+  }
+}
 
 export const app = express()
 app.use(cors())
@@ -78,6 +96,18 @@ app.get('/api/map/all', (_req, res) => {
   const stars = db.listInViewport(-Infinity, -Infinity, Infinity, Infinity)
   const clusters = db.getClusters()
   res.json({ stars, clusters })
+})
+
+// --- Projection (F3 PC dial) ---
+app.get('/api/map/projection', (_req, res) => {
+  if (!relayouter.isReady) {
+    return res.json({ componentCount: 0, files: [] })
+  }
+  const files = relayouter.getAllProjections()
+  res.json({
+    componentCount: relayouter.componentCount,
+    files,
+  })
 })
 
 // --- Stats ---

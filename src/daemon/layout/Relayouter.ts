@@ -1,5 +1,5 @@
 import type { FileIndex } from '../db/FileIndex'
-import { StarPca, scalePositions } from './Pca'
+import { StarPca, scalePositions, type PcaModel } from './Pca'
 import { recomputeClusters, updateClusterCentroids } from './clustering'
 import { LAYOUT_THRESHOLD } from '../../shared/types'
 
@@ -36,6 +36,26 @@ export class Relayouter {
   projectOne(embedding: Float32Array): [number, number] | null {
     if (!this.pca) return null
     return this.pca.project(embedding)
+  }
+
+  get componentCount(): number {
+    return this.pca?.componentCount ?? 0
+  }
+
+  getModel(): PcaModel | null {
+    return this.pca?.toJSON() ?? null
+  }
+
+  // For each file with an embedding, return its projection onto all PCs.
+  getAllProjections(): { id: string; pcs: number[] }[] {
+    if (!this.pca) return []
+    const files = this.db.listWithEmbeddings()
+    const out: { id: string; pcs: number[] }[] = []
+    for (const f of files) {
+      if (!f.embedding) continue
+      out.push({ id: f.id, pcs: this.pca.projectAll(f.embedding) })
+    }
+    return out
   }
 
   // Train PCA on all embeddings, project all files, write x/y, bump layout_version.

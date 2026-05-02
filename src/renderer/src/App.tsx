@@ -8,6 +8,8 @@ import DetailPanel from './components/DetailPanel/DetailPanel'
 import Cheatsheet from './components/Cheatsheet/Cheatsheet'
 import { useVimMode } from './hooks/useVimMode'
 import type { VimAction } from './hooks/useVimMode'
+import PCDial from './components/PCDial/PCDial'
+import { usePcDial } from './hooks/usePcDial'
 
 const STATS_POLL_MS = 10_000  // re-poll stats every 10s
 
@@ -75,7 +77,25 @@ export default function App() {
     setStars(prev => prev.map(s => s.id === id ? { ...s, starType } : s))
   }, [])
 
-  const starsById = useMemo(() => new Map(stars.map(s => [s.id, s])), [stars])
+  const pcDial = usePcDial()
+
+  const projectedStars = useMemo(() => {
+    if (!pcDial.ready || pcDial.scaledById.size === 0) return stars
+    return stars.map(s => {
+      const proj = pcDial.scaledById.get(s.id)
+      return proj ? { ...s, x: proj[0], y: proj[1] } : s
+    })
+  }, [stars, pcDial.ready, pcDial.scaledById])
+
+  const projectedHighlights = useMemo(() => {
+    if (!pcDial.ready || pcDial.scaledById.size === 0) return highlights
+    return highlights.map(h => {
+      const proj = pcDial.scaledById.get(h.id)
+      return proj ? { ...h, x: proj[0], y: proj[1] } : h
+    })
+  }, [highlights, pcDial.ready, pcDial.scaledById])
+
+  const starsById = useMemo(() => new Map(projectedStars.map(s => [s.id, s])), [projectedStars])
   const clustersById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters])
 
   const selectedStar = selectedId ? starsById.get(selectedId) ?? null : null
@@ -130,9 +150,9 @@ export default function App() {
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#020b18' }}>
       <StarMap
-        stars={stars}
+        stars={projectedStars}
         clusters={clusters}
-        searchHighlights={highlights}
+        searchHighlights={projectedHighlights}
         selectedId={selectedId}
         onSelect={handleSelect}
         vimAction={vimAction}
@@ -144,6 +164,13 @@ export default function App() {
         onResults={handleSearchResults}
         onClear={handleClearSearch}
         onFocus={() => { /* mode transitions handled in useVimMode */ }}
+      />
+
+      <PCDial
+        axisX={pcDial.axisX}
+        axisY={pcDial.axisY}
+        componentCount={pcDial.componentCount}
+        onChange={pcDial.setAxes}
       />
 
       <StatsBar stats={stats} starCount={stars.length} vimMode={mode} />

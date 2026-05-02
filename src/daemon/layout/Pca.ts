@@ -1,8 +1,11 @@
 import { PCA } from 'ml-pca'
 
+export const PC_COUNT = 8
+
 export interface PcaModel {
-  components: number[][]  // [2 x dim] eigenvectors
+  components: number[][]  // [K x dim] eigenvectors (rows = PCs)
   mean: number[]          // [dim] column means
+  componentCount: number
 }
 
 export class StarPca {
@@ -14,26 +17,30 @@ export class StarPca {
     this.mean = mean
   }
 
+  get componentCount(): number {
+    return this.components.length
+  }
+
   static train(embeddings: Float32Array[]): StarPca {
     if (embeddings.length < 2) {
       throw new Error(`PCA requires at least 2 samples, got ${embeddings.length}`)
     }
-    // ml-pca expects rows x cols 2D array
+    const dim = embeddings[0].length
     const matrix = embeddings.map(v => Array.from(v))
-    const pca = new PCA(matrix, { center: true, scale: false, nCompNIPALS: 2 })
+    const pca = new PCA(matrix, { center: true, scale: false })
 
     // getEigenvectors() returns a [dim x nComp] matrix.
-    // Each COLUMN is a principal component direction — extract columns 0 and 1.
+    // Each COLUMN is a principal component direction.
     const loadings = pca.getEigenvectors().to2DArray() as number[][]
-    const nComp = loadings[0]?.length ?? 0
-    if (nComp < 2) throw new Error(`PCA produced ${nComp} components; need ≥2`)
-    const components = [
-      loadings.map(row => row[0]),  // PC1: length = dim
-      loadings.map(row => row[1]),  // PC2: length = dim
-    ]
+    const nCompAvail = loadings[0]?.length ?? 0
+    const k = Math.min(PC_COUNT, nCompAvail, dim, embeddings.length - 1)
+    if (k < 2) throw new Error(`PCA produced ${nCompAvail} components; need ≥2`)
 
-    // mean = pca was centered; we need to store the column means manually
-    const dim = embeddings[0].length
+    const components: number[][] = []
+    for (let c = 0; c < k; c++) {
+      components.push(loadings.map(row => row[c]))
+    }
+
     const mean = new Array<number>(dim).fill(0)
     for (const v of embeddings) {
       for (let j = 0; j < dim; j++) mean[j] += v[j]
@@ -43,27 +50,59 @@ export class StarPca {
     return new StarPca(components, mean)
   }
 
-  project(embedding: Float32Array): [number, number] {
+  // Default: PC1 × PC2 (back-compat).
+  project(embedding: Float32Array, axisX = 0, axisY = 1): [number, number] {
+    if (axisX < 0 || axisX >= this.components.length) {
+      throw new Error(`axisX ${axisX} out of range [0, ${this.components.length})`)
+    }
+    if (axisY < 0 || axisY >= this.components.length) {
+      throw new Error(`axisY ${axisY} out of range [0, ${this.components.length})`)
+    }
     const dim = embedding.length
+    const cx = this.components[axisX]
+    const cy = this.components[axisY]
     let x = 0, y = 0
     for (let j = 0; j < dim; j++) {
       const centered = embedding[j] - this.mean[j]
-      x += this.components[0][j] * centered
-      y += this.components[1][j] * centered
+      x += cx[j] * centered
+      y += cy[j] * centered
     }
     return [x, y]
   }
 
-  serialize(): Buffer {
-    const payload: PcaModel = {
+  // Project an embedding onto all K components. Used by the renderer dial.
+  projectAll(embedding: Float32Array): number[] {
+    const dim = embedding.length
+    const k = this.components.length
+    const out = new Array<number>(k).fill(0)
+    for (let c = 0; c < k; c++) {
+      const comp = this.components[c]
+      let acc = 0
+      for (let j = 0; j < dim; j++) {
+        acc += comp[j] * (embedding[j] - this.mean[j])
+      }
+      out[c] = acc
+    }
+    return out
+  }
+
+  toJSON(): PcaModel {
+    return {
       components: this.components,
       mean: this.mean,
+      componentCount: this.components.length,
     }
-    return Buffer.from(JSON.stringify(payload))
+  }
+
+  serialize(): Buffer {
+    return Buffer.from(JSON.stringify(this.toJSON()))
   }
 
   static deserialize(buf: Buffer): StarPca {
-    const payload = JSON.parse(buf.toString('utf8')) as PcaModel
+    const payload = JSON.parse(buf.toString('utf8')) as Partial<PcaModel>
+    if (!payload.components || !payload.mean) {
+      throw new Error('PcaModel missing components or mean')
+    }
     return new StarPca(payload.components, payload.mean)
   }
 }

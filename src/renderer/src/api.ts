@@ -16,6 +16,17 @@ export async function fetchViewport(x1: number, y1: number, x2: number, y2: numb
   return res.json()
 }
 
+export interface ProjectionPayload {
+  componentCount: number
+  files: { id: string; pcs: number[] }[]
+}
+
+export async function fetchProjection(): Promise<ProjectionPayload> {
+  const res = await fetch(`${BASE}/api/map/projection`)
+  if (!res.ok) throw new Error(`fetchProjection: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchStats(): Promise<MapStats> {
   const res = await fetch(`${BASE}/api/map/stats`)
   if (!res.ok) throw new Error(`fetchStats: ${res.status}`)
