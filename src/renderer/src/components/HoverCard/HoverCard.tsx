@@ -6,7 +6,6 @@ interface Props {
   position: { x: number; y: number }
   clusterSize: number | null
   clusterColorIndex: number | null
-  onOpen: () => void
 }
 
 function formatBytes(bytes: number): string {
@@ -19,10 +18,9 @@ function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-export default function HoverCard({ star, position, clusterSize, clusterColorIndex, onOpen }: Props) {
+export default function HoverCard({ star, position, clusterSize, clusterColorIndex }: Props) {
   const clusterColor = clusterColorIndex !== null ? CONSTELLATION_PALETTE[clusterColorIndex % CONSTELLATION_PALETTE.length] : null
 
-  // Offset card so it doesn't overlap the star
   let left = position.x + 16
   let top = position.y - 8
   if (left + 280 > window.innerWidth - 20) left = position.x - 296
@@ -32,7 +30,7 @@ export default function HoverCard({ star, position, clusterSize, clusterColorInd
     <div className="hover-card" style={{ left, top }}>
       <div className="hover-card-header">
         <div className="hover-card-name">{star.name}</div>
-        <button className="hover-card-open-btn" onClick={onOpen} title="Open file">↗</button>
+        <span className="hover-card-hint">click to open</span>
       </div>
       <div className="hover-card-path">{star.path}</div>
       <div className="hover-card-meta">

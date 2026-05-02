@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { Star, Cluster, MapStats, SearchResult } from '@shared/types'
 import { fetchAll, fetchStats } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
 import StatsBar from './components/StatsBar/StatsBar'
+import DetailPanel from './components/DetailPanel/DetailPanel'
 
 const STATS_POLL_MS = 10_000  // re-poll stats every 10s
 
@@ -13,6 +14,7 @@ export default function App() {
   const [stats, setStats] = useState<MapStats | null>(null)
   const [highlights, setHighlights] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const layoutVersionRef = useRef<number>(-1)
 
   const loadMap = useCallback(async () => {
@@ -53,6 +55,27 @@ export default function App() {
     setHighlights([])
   }, [])
 
+  const handleSelect = useCallback((id: string | null) => {
+    setSelectedId(id)
+  }, [])
+
+  // Esc closes the detail panel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const starsById = useMemo(() => new Map(stars.map(s => [s.id, s])), [stars])
+  const clustersById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters])
+
+  const selectedStar = selectedId ? starsById.get(selectedId) ?? null : null
+  const selectedCluster = selectedStar?.clusterId !== null && selectedStar?.clusterId !== undefined
+    ? clustersById.get(selectedStar.clusterId) ?? null
+    : null
+
   const showEmpty = stars.length === 0
 
   return (
@@ -61,6 +84,8 @@ export default function App() {
         stars={stars}
         clusters={clusters}
         searchHighlights={highlights}
+        selectedId={selectedId}
+        onSelect={handleSelect}
       />
 
       <SearchBar
@@ -69,6 +94,16 @@ export default function App() {
       />
 
       <StatsBar stats={stats} starCount={stars.length} />
+
+      {selectedStar && (
+        <DetailPanel
+          star={selectedStar}
+          clusterColorIndex={selectedCluster?.colorIndex ?? null}
+          clusterMemberCount={selectedCluster?.memberCount ?? null}
+          onClose={() => setSelectedId(null)}
+          onSelectNeighbor={(id) => setSelectedId(id)}
+        />
+      )}
 
       {showEmpty && (
         <div className="empty-state">
