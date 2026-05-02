@@ -1,0 +1,189 @@
+import express from 'express'
+import cors from 'cors'
+import { homedir, platform } from 'os'
+import { join } from 'path'
+import { mkdirSync } from 'fs'
+import { exec } from 'child_process'
+import { FileIndex } from './db/FileIndex'
+import { HnswIndex } from './ann/HnswIndex'
+import { OllamaClient } from './embedding/OllamaClient'
+import { EmbeddingEngine } from './embedding/EmbeddingEngine'
+import { Relayouter } from './layout/Relayouter'
+import { indexPath } from './pipeline/Insert'
+import type { MapStats, ViewportResult, SearchResult } from '../shared/types'
+import { DAEMON_PORT, CONSTELLATION_PALETTE } from '../shared/types'
+
+const DATA_DIR = process.env.STARPALACE_DIR ?? join(homedir(), '.starpalace')
+const DB_PATH = process.env.STARPALACE_DB ?? join(DATA_DIR, 'index.db')
+const HNSW_PATH = join(DATA_DIR, 'hnsw.bin')
+
+mkdirSync(DATA_DIR, { recursive: true })
+
+export const db = new FileIndex({ dbPath: DB_PATH })
+export const hnsw = new HnswIndex({ persistPath: HNSW_PATH })
+hnsw.load()
+
+const ollamaClient = new OllamaClient()
+export const embedEngine = new EmbeddingEngine(ollamaClient)
+export const relayouter = new Relayouter(db)
+relayouter.loadExisting()
+
+export const app = express()
+app.use(cors())
+app.use(express.json({ limit: '5mb' }))
+
+// --- Health ---
+app.get('/api/health', async (_req, res) => {
+  const ollamaOk = await ollamaClient.isAvailable()
+  res.json({
+    ok: true,
+    indexed: db.count(),
+    indexedWithEmbedding: db.countWithEmbeddings(),
+    layoutVersion: relayouter.currentVersion,
+    ollamaAvailable: ollamaOk,
+  })
+})
+
+// --- Index a directory ---
+app.post('/api/index', async (req, res) => {
+  const { path } = req.body as { path?: string }
+  if (!path) return res.status(400).json({ error: 'path required' })
+  try {
+    const stats = await indexPath(path, { db, hnsw, embedEngine, relayouter })
+    hnsw.save()
+    res.json(stats)
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// --- Viewport query ---
+app.get('/api/map/viewport', (req, res) => {
+  const x1 = parseFloat(req.query.x1 as string ?? '-Infinity')
+  const y1 = parseFloat(req.query.y1 as string ?? '-Infinity')
+  const x2 = parseFloat(req.query.x2 as string ?? 'Infinity')
+  const y2 = parseFloat(req.query.y2 as string ?? 'Infinity')
+
+  const stars = db.listInViewport(x1, y1, x2, y2)
+  const clusters = db.getClusters()
+  const result: ViewportResult = { stars, clusters }
+  res.json(result)
+})
+
+// --- All stars (for initial full-sky load) ---
+app.get('/api/map/all', (_req, res) => {
+  const stars = db.listInViewport(-Infinity, -Infinity, Infinity, Infinity)
+  const clusters = db.getClusters()
+  res.json({ stars, clusters })
+})
+
+// --- Stats ---
+app.get('/api/map/stats', (_req, res) => {
+  const meta = db.getLatestLayoutMeta()
+  const stats: MapStats = {
+    total: db.count(),
+    indexedWithEmbedding: db.countWithEmbeddings(),
+    layoutVersion: relayouter.currentVersion,
+    lastRefitAt: meta?.computed_at ?? null,
+    clusterCount: db.getClusters().length,
+  }
+  res.json(stats)
+})
+
+// --- Open file in OS default app ---
+app.post('/api/file/:id/open', (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  const cmd = platform() === 'win32' ? `start "" "${file.path}"` : platform() === 'darwin' ? `open "${file.path}"` : `xdg-open "${file.path}"`
+  exec(cmd, err => {
+    if (err) return res.status(500).json({ error: String(err) })
+    res.json({ ok: true })
+  })
+})
+
+// --- Force relayout ---
+app.post('/api/relayout', async (_req, res) => {
+  try {
+    await relayouter.train()
+    hnsw.save()
+    res.json({ ok: true, layoutVersion: relayouter.currentVersion, nodeCount: db.countWithEmbeddings() })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// --- Search ---
+app.post('/api/search', async (req, res) => {
+  const { query, limit } = req.body as { query?: string; limit?: number }
+  if (!query) return res.status(400).json({ error: 'query required' })
+
+  try {
+    const embedResult = await embedEngine.embed(query)
+    const k = limit ?? 20
+    const knnResults = hnsw.searchKNN(embedResult.embedding, k)
+
+    const results: SearchResult[] = []
+    for (const r of knnResults) {
+      const file = db.get(r.id)
+      if (!file || file.x === null || file.y === null) continue
+      results.push({
+        id: r.id,
+        x: file.x,
+        y: file.y,
+        score: 1 - r.distance,
+        name: file.name,
+        path: file.path,
+      })
+    }
+    res.json({ results })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// --- File metadata ---
+app.get('/api/file/:id', (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  db.incrementViewCount(req.params.id)
+  const { embedding: _emb, ...safeFile } = file
+  res.json(safeFile)
+})
+
+// --- Neighborhood ---
+app.get('/api/file/:id/neighborhood', (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+
+  const edges = db.getEdgesFrom(req.params.id)
+  const neighbors = edges.map(e => {
+    const neighbor = db.get(e.dstId)
+    if (!neighbor) return null
+    const { embedding: _emb, ...safe } = neighbor
+    return { file: safe, weight: e.weight }
+  }).filter(Boolean)
+
+  const clusterColor = file.clusterId !== null
+    ? CONSTELLATION_PALETTE[db.getCluster(file.clusterId)?.colorIndex ?? 0]
+    : null
+
+  res.json({ file: { ...file, embedding: undefined }, neighbors, clusterColor })
+})
+
+export function startDaemon(port = DAEMON_PORT): void {
+  app.listen(port, '127.0.0.1', () => {
+    console.log(`Star Palace daemon listening on http://127.0.0.1:${port}`)
+    console.log(`  DB: ${DB_PATH}`)
+    console.log(`  Stars indexed: ${db.count()} (${db.countWithEmbeddings()} with embeddings)`)
+    if (!relayouter.isReady) {
+      console.log(`  Layout: not yet trained (need ${db.countWithEmbeddings()} / 200 embeddings)`)
+    } else {
+      console.log(`  Layout: version ${relayouter.currentVersion}`)
+    }
+  })
+}
+
+// Allow direct execution
+if (require.main === module) {
+  startDaemon()
+}

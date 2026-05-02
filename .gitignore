@@ -1,0 +1,10 @@
+node_modules/
+dist-web/
+dummy-corpus/
+*.js.map
+.DS_Store
+.env
+.env.*
+*.log
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

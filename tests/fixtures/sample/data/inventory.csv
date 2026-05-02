@@ -1,0 +1,5 @@
+sku,warehouse,qty,reorder_point,supplier
+SKU-001,WH-A,450,100,Acme Corp
+SKU-002,WH-B,120,50,Beta Supply
+SKU-003,WH-A,89,75,Acme Corp
+SKU-004,WH-C,310,80,Gamma Ltd
