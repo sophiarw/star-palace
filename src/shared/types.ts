@@ -37,6 +37,24 @@ export interface Star extends FileNode {
   firstSeen: number
   viewCount: number
   isPinned: boolean
+  starType: StarType | null  // manual override; null = default cluster-hue rendering
+}
+
+export const STAR_TYPES = [
+  'red-giant',
+  'blue-supergiant',
+  'white-dwarf',
+  'neutron-star',
+  'pulsar',
+  'binary',
+  'quasar',
+  'black-hole',
+  'nebula',
+] as const
+export type StarType = typeof STAR_TYPES[number]
+
+export function isStarType(value: unknown): value is StarType {
+  return typeof value === 'string' && (STAR_TYPES as readonly string[]).includes(value)
 }
 
 // Edge: persisted top-K nearest-neighbor link

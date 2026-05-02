@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import type { FileNode, FileCategory, Star, Edge, Cluster } from '../../shared/types'
+import type { FileNode, FileCategory, Star, StarType, Edge, Cluster } from '../../shared/types'
 
 export interface IndexedFile extends FileNode {
   // star-palace fields
@@ -13,6 +13,7 @@ export interface IndexedFile extends FileNode {
   firstSeen: number
   viewCount: number
   isPinned: boolean
+  starType: StarType | null
 }
 
 export interface FileIndexOptions {
@@ -87,6 +88,17 @@ export class FileIndex {
         drift_score      REAL
       );
     `)
+
+    // Additive migrations — safe to run on every startup
+    if (!this.hasColumn('files', 'star_type')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN star_type TEXT;`)
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_star_type ON files(star_type);`)
+  }
+
+  private hasColumn(table: string, col: string): boolean {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+    return rows.some(r => r.name === col)
   }
 
   upsert(file: Omit<IndexedFile, 'isStale'>): void {
@@ -95,12 +107,12 @@ export class FileIndex {
         id, path, platform, name, mime_type, category, size,
         created_at, modified_at, stale,
         embedding, content_hash, x, y, z,
-        cluster_id, layout_version, first_seen, view_count, is_pinned
+        cluster_id, layout_version, first_seen, view_count, is_pinned, star_type
       ) VALUES (
         @id, @path, @platform, @name, @mime_type, @category, @size,
         @created_at, @modified_at, 0,
         @embedding, @content_hash, @x, @y, @z,
-        @cluster_id, @layout_version, @first_seen, @view_count, @is_pinned
+        @cluster_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type
       )
       ON CONFLICT(id) DO UPDATE SET
         path = excluded.path,
@@ -116,6 +128,7 @@ export class FileIndex {
         y = COALESCE(excluded.y, files.y),
         cluster_id = COALESCE(excluded.cluster_id, files.cluster_id),
         layout_version = excluded.layout_version
+        -- star_type intentionally not updated; manual tagging persists across re-index
     `).run({
       id: file.id,
       path: file.path,
@@ -136,6 +149,7 @@ export class FileIndex {
       first_seen: file.firstSeen,
       view_count: file.viewCount,
       is_pinned: file.isPinned ? 1 : 0,
+      star_type: file.starType,
     })
   }
 
@@ -157,6 +171,10 @@ export class FileIndex {
 
   incrementViewCount(id: string): void {
     this.db.prepare(`UPDATE files SET view_count = view_count + 1 WHERE id = ?`).run(id)
+  }
+
+  setStarType(id: string, starType: StarType | null): void {
+    this.db.prepare(`UPDATE files SET star_type = ? WHERE id = ?`).run(starType, id)
   }
 
   get(id: string): IndexedFile | null {
@@ -323,6 +341,7 @@ interface DbRow {
   first_seen: number
   view_count: number
   is_pinned: number
+  star_type: string | null
 }
 
 interface EdgeRow {
@@ -377,6 +396,7 @@ function rowToFile(row: DbRow): IndexedFile {
     firstSeen: row.first_seen,
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
+    starType: row.star_type as StarType | null,
   }
 }
 
@@ -399,6 +419,7 @@ function rowToStar(row: DbRow): Star {
     firstSeen: row.first_seen,
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
+    starType: row.star_type as StarType | null,
   }
 }
 

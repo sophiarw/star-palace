@@ -55,6 +55,7 @@ beforeAll(() => {
       firstSeen: 1000,
       viewCount: 0,
       isPinned: false,
+      starType: null,
     })
     hnsw.addPoint(emb, `seed${i}`)
   }
@@ -158,5 +159,36 @@ describe('POST /api/index', () => {
   it('400 on missing path', async () => {
     const res = await request(app).post('/api/index').send({})
     expect(res.status).toBe(400)
+  })
+})
+
+describe('POST /api/file/:id/star-type', () => {
+  it('404 on unknown id', async () => {
+    const res = await request(app).post('/api/file/nonexistent/star-type').send({ starType: 'pulsar' })
+    expect(res.status).toBe(404)
+  })
+
+  it('400 on invalid type', async () => {
+    const res = await request(app).post('/api/file/seed0/star-type').send({ starType: 'banana' })
+    expect(res.status).toBe(400)
+  })
+
+  it('accepts a valid type and persists it', async () => {
+    const set = await request(app).post('/api/file/seed0/star-type').send({ starType: 'pulsar' })
+    expect(set.status).toBe(200)
+    expect(set.body.starType).toBe('pulsar')
+
+    const got = await request(app).get('/api/file/seed0')
+    expect(got.body.starType).toBe('pulsar')
+  })
+
+  it('clears with null', async () => {
+    await request(app).post('/api/file/seed0/star-type').send({ starType: 'red-giant' })
+    const cleared = await request(app).post('/api/file/seed0/star-type').send({ starType: null })
+    expect(cleared.status).toBe(200)
+    expect(cleared.body.starType).toBeNull()
+
+    const got = await request(app).get('/api/file/seed0')
+    expect(got.body.starType).toBeNull()
   })
 })

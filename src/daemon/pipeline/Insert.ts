@@ -87,6 +87,7 @@ export async function insertOne(
     firstSeen: existing?.firstSeen ?? now,
     viewCount: existing?.viewCount ?? 0,
     isPinned: existing?.isPinned ?? false,
+    starType: existing?.starType ?? null,
   })
 
   if (!embedResult) return  // no embedding — done
