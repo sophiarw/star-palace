@@ -486,6 +486,46 @@ body {
   flex-shrink: 0;
 }
 
+/* PC dial */
+
+.pc-dial {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.pc-dial-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pc-dial-select {
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 3px 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.pc-dial-select:focus {
+  border-color: var(--accent);
+}
+
 /* Stats bar */
 
 .stats-bar {
