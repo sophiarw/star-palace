@@ -34,12 +34,14 @@ interface Props {
 
 const HIGHLIGHT_COLOR = '#ffe066'
 const NEIGHBOR_RING_COLOR = 'rgba(140, 200, 255, 0.85)'
+const SELECTED_RING_COLOR = '#fff4d0'  // warm white, distinct from gold + cyan
 const EDGE_COLOR = 'rgba(120, 180, 255, 0.45)'
 const DIM_ALPHA = 0.08
 const SPRITE_HOVER_SCALE = 1.35
 const SPRITE_HIGHLIGHT_SCALE = 1.6
 const SPRITE_HIGHLIGHT_PULSE = 0.35  // extra scale at pulse peak
-const SPRITE_SELECTED_SCALE = 5
+const SPRITE_SELECTED_SCALE = 2.0
+const SPRITE_SELECTED_BOOST_ALPHA = 0.6  // additive re-draw of sprite for brightness pop
 const SPRITE_NEIGHBOR_SCALE = 1.6
 const SEARCH_PULSE_MS = 200
 const CULL_MARGIN = 48
@@ -371,7 +373,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
 
-    // Main star pass — sprite-cached, additive blend so overlapping halos bloom together
+    // Main star pass — sprite-cached, additive blend so overlapping halos bloom together.
+    // Side-channel: record per-star sprite metadata for the decoration pass so it doesn't
+    // recompute the sprite + scale twice per frame.
+    interface DrawnSprite { sprite: HTMLCanvasElement; sx: number; sy: number; drawW: number; drawH: number }
+    const drawnByFocusId = new Map<string, DrawnSprite>()
+
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
     for (const star of currentStars) {
@@ -406,6 +413,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (isSelected) scale *= SPRITE_SELECTED_SCALE
       const drawW = sw * scale, drawH = sh * scale
       ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+      if (isSelected || isHighlighted || isNeighbor) {
+        drawnByFocusId.set(star.id, { sprite, sx, sy, drawW, drawH })
+      }
     }
     ctx.restore()
 
@@ -464,8 +474,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
 
-    // Decoration pass — gold rings (highlighted) + bright white core (selected) + cyan rings on
-    // neighbors so they remain visible through the selected star's bright halo at high zoom.
+    // Decoration pass — additive sprite re-draw (selected) + warm-white selection ring +
+    // gold ring (highlighted) + cyan ring (neighbors). No solid fills; the typed sprite
+    // stays the visual identity at every zoom.
     if (hasFocus) {
       ctx.save()
       for (const star of currentStars) {
@@ -473,10 +484,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const isSelected = star.id === selectedId
         const isNeighbor = neighbors.has(star.id)
         if (!isHighlighted && !isSelected && !isNeighbor) continue
-        const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-        if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) {
-          if (!isNeighbor && !isSelected) continue
-        }
+        const drawn = drawnByFocusId.get(star.id)
+        if (!drawn) continue  // off-screen + not selected/neighbor — main pass culled
+        const { sprite, sx, sy, drawW, drawH } = drawn
 
         const sb = sizeBucketFor(star.viewCount)
         let scaleR = drawScale
@@ -486,12 +496,19 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const r = spriteCoreRadius(sb) * scaleR
 
         if (isSelected) {
+          // Brightness boost: redraw the cached sprite once more in additive mode so
+          // the whole halo + core gets +alpha without any solid-color overlay.
           ctx.globalCompositeOperation = 'lighter'
-          ctx.globalAlpha = 0.9 * exposure
-          ctx.fillStyle = '#ffffff'
+          ctx.globalAlpha = SPRITE_SELECTED_BOOST_ALPHA * exposure
+          ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.strokeStyle = SELECTED_RING_COLOR
+          ctx.lineWidth = 2.5
+          ctx.globalAlpha = 0.95
           ctx.beginPath()
-          ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2)
-          ctx.fill()
+          ctx.arc(sx, sy, r + 6, 0, Math.PI * 2)
+          ctx.stroke()
         }
 
         if (isNeighbor && !isSelected) {
