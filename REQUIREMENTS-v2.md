@@ -22,6 +22,7 @@ Decisions already locked:
 | F5 | Virtual collections | M-L | New tables + endpoints + render hull. |
 | F6 | Vim mode | M | Pure UI; no backend. |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. |
+| F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. |
 
 ---
 
@@ -641,6 +642,221 @@ walking up from a file's `tree_node_id`.
 ### Effort
 
 - Largest of the seven. Estimate: 1–2 weeks.
+
+---
+
+## F8 — Procedural per-file graphics
+
+### Goal
+
+Every file in the sky should look genuinely unique. Today the visual
+identity comes from cluster hue + temperature jitter + size bucket — about
+120 distinct sprites for 18,800 files. F8 layers procedurally-generated
+detail on top so that two files in the same cluster + same size still look
+different. The procedural variation derives from a deterministic hash so
+the same file always looks the same.
+
+### Decisions locked
+
+- **Seed source**: `Star.id` (FNV-1a 32-bit hash already exists as
+  `hashStr` in `sprites.ts`). Same id → same look forever; renames /
+  content edits don't reroll.
+- **Cache strategy**: LRU per-file sprites, cap **500 entries**. On
+  eviction the next render rebuilds. Bucket sprites continue to handle
+  the common case (off-screen / tiny on-screen stars).
+- **Scope**: applies to all four surfaces — typed-star sprites
+  (F8a), default cluster-hue stars (F8b), cluster nebulae (F8c), and a
+  brand-new deep-zoom planet view (F8d).
+
+### Seed plumbing
+
+A small RNG helper, deterministic and cheap:
+
+```ts
+// src/renderer/src/components/StarMap/proc.ts
+export function seedFromId(id: string): () => number {
+  let s = hashStr(id) >>> 0
+  return () => {                          // mulberry32
+    s = (s + 0x6D2B79F5) >>> 0
+    let t = s
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+```
+
+All procedural draws sample from `rng()` so the visual is purely a function
+of `id`.
+
+### F8a — Typed-star instance variation
+
+Each typed sprite (red giant, blue supergiant, …, nebula) currently has a
+single canonical look. Add a per-id seed so that two red giants don't look
+identical:
+
+- Rotation: `rng() * 2π` for the dominant axis (jets, spikes, halo squish).
+- Halo squish: `0.7 + rng() * 0.6` for the elliptical eccentricity.
+- Spike count for "spiky" types (blue supergiant, neutron star): pick from
+  `[6, 8]` weighted by `rng()`. Pulsar's beam tilt also rng-seeded.
+- Color jitter: ±8% hue shift inside the type's palette so deep reds vs
+  more orange reds, etc.
+- Nebula type: 2–4 filament arms, lengths and hues seeded.
+- Black hole: accretion ring tilt and ring-thickness seeded.
+- Binary: separation distance and core size ratio seeded.
+
+#### Implementation surface
+
+- `sprites.ts`: extend `getTypedStarSprite(type, sizeBucket)` →
+  `getTypedStarSprite(type, sizeBucket, starId)`. Cache key adds a 12-bit
+  hash of the id (so we don't get one entry per file but one per ~4096
+  variants per type). At ~9 types × 7 sizes × 4096 hashes that's an
+  intentionally-bounded space — but the LRU cap controls the working set.
+- StarMap callers pass `star.id` through.
+
+### F8b — Default cluster-hue micro-jitter
+
+Today default stars vary on (cluster_color, temp_bucket, size_bucket) →
+~120 sprites. Layer micro-detail on top:
+
+- Per-id rotation: 0–2π applied at draw time via `ctx.rotate`. No new
+  sprite needed; just rotate the cached sprite.
+- Per-id alpha jitter: ±10% on the global brightness. Some stars
+  brighter than others within the same bucket.
+- Per-id micro-spike-count: half of stars get the 6-spike variant, half a
+  4-spike variant (where the second is a new sprite generation path —
+  cached on `(colorIndex, tempBucket, sizeBucket, spikeVariant)`,
+  doubling the bucket count from 120 → 240, still small).
+
+The drawn sprite stays bucket-keyed; the variation comes from runtime
+rotation + alpha multiplied per id. This avoids expanding the sprite cache.
+
+### F8c — Procedural cluster nebulae
+
+Today each cluster's blob is a 4-stop radial gradient with deterministic
+elliptical squish from `cluster.id`. Replace with a procedural shape:
+
+- Worley/voronoi noise for filament structure.
+- 2–3 internal hot spots (smaller bright cores embedded in the blob).
+- 1–3 dark dust lanes carved with negative-blend strokes.
+- Color: cluster's palette hue + a complementary accent at the rim.
+- Per-cluster seed = `cluster.id` (not file id); blob is fixed per
+  cluster.
+
+#### Render strategy
+
+Pre-render each cluster's nebula to an offscreen canvas keyed on
+`(cluster.id, nebulaResolution)`. Re-render only when memberCount changes
+substantially (every 20% delta). Drawn at world-space size (scales with
+zoom) like today.
+
+### F8d — Deep-zoom planet view (NEW)
+
+When a single star occupies more than ~80 px on screen (i.e. user zoomed
+in tight), switch from "star sprite" to "planet disc" rendering. Each
+file becomes a unique procedurally-rendered planet.
+
+#### Threshold
+
+`screenRadius = spriteCoreRadius(sb) * scale > 80` → planet mode.
+At `cam.zoom = 100` (the F1b max) this triggers for any file.
+
+#### Planet generation
+
+Per-id seeded:
+
+- **Disc color palette**: 3–5 colors. Half the time pull from the
+  cluster's hue family; half the time roll randomly within "habitable"
+  visual ranges (terrestrial blues/greens/browns, gas-giant bands,
+  ice whites, lava reds).
+- **Surface pattern** (one per id, seeded):
+  - *Terrestrial*: voronoi continents over base ocean color.
+  - *Gas giant*: horizontal banded perlin noise; Jupiter-style.
+  - *Ice*: low-saturation marble pattern.
+  - *Lava*: cracks via reaction-diffusion (cheap pre-baked variant).
+  - *Cratered moon*: random circles via Poisson disc sampling.
+- **Atmosphere ring**: faint glow on the limb, color-complementary to
+  surface.
+- **Optional** (post-MVP): rings (à la Saturn), small moons orbiting.
+
+#### Render surface
+
+- New `src/renderer/src/components/StarMap/planet.ts` with
+  `renderPlanet(starId, radiusPx): HTMLCanvasElement`.
+- LRU cache, cap 500. Sized by current screen radius rounded to a few
+  steps (e.g. 64, 128, 256 px) so we don't generate one canvas per pixel.
+- StarMap main pass: when planet mode triggers, swap `getStarSprite` →
+  `renderPlanet`.
+
+#### Rotation
+
+Planet appears to spin slowly. Per-frame `ctx.rotate` at draw time;
+angular velocity seeded per id (some planets faster, some retrograde).
+Only animates when in planet mode (cardinality is small at deep zoom).
+
+### LRU cache (cross-cutting)
+
+Single shared LRU at the top of `sprites.ts` (or a new
+`spriteCache.ts`):
+
+```ts
+class LRUSpriteCache<K> {
+  constructor(public cap: number) { ... }
+  get(key: K): HTMLCanvasElement | null { ... }
+  set(key: K, sprite: HTMLCanvasElement): void { ... }
+}
+```
+
+- F8a: 500-entry cap shared across all typed-star variants.
+- F8c: separate cluster-nebula cache, cap = cluster count (~40), no
+  eviction needed.
+- F8d: 500-entry cap, separate (planet sprites are bigger memory).
+- F8b: NO cache (rotation/alpha applied at draw time on existing buckets).
+
+Total max memory: ~500 × 64 KB (typed) + ~500 × 256 KB (planets) +
+~40 × 64 KB (nebulae) ≈ 160 MB. Tunable.
+
+### Acceptance
+
+- Two red giants in different files visibly different (rotation, halo
+  squish, hue jitter).
+- Cluster nebulae look like real nebulae — wisps and dust lanes — not
+  perfect ellipses.
+- Same file, opened twice with daemon restart: identical visuals.
+- Zoom in past `cam.zoom > ~30` on a single star → smooth transition
+  into a unique planet disc with surface pattern.
+- Steady 60 fps at default zoom (cache stays warm).
+- Memory steady-state under ~200 MB renderer-side.
+
+### Edge cases
+
+- Star with no cluster (`clusterId === null`): use the random-roll path
+  for planet palette.
+- Files with no embedding (binary/media): same procedural path applies;
+  visual still derived from `id`.
+- Cache thrash on rapid zoom oscillation: LRU should absorb; if not, add
+  a "warm zone" of sticky entries.
+
+### Out of scope (v1 of F8)
+
+- Animated cloud bands on planets (just rotation for now).
+- Per-cluster "galactic" rendering (spiral arms vs elliptical galaxy
+  morphology) — could be a follow-up.
+- WebGL shader path. F8d via canvas2d should be tractable; if perf
+  fails, revisit on the 3D branch.
+- User-customisable seed override (e.g. "let me re-roll this file's
+  look"). Keep deterministic.
+
+### Effort
+
+Largest visual feature in v2 — comparable to F7 in scope. Recommend
+splitting into commits:
+
+1. F8a — typed-star variants (1 day)
+2. F8b — default-star jitter (½ day)
+3. F8c — procedural cluster nebulae (1 day)
+4. F8d — deep-zoom planet view (2–3 days; the surface shaders carry
+   most of the work)
 
 ---
 
