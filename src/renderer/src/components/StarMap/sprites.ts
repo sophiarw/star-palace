@@ -59,15 +59,6 @@ export function sizeBucketFor(viewCount: number): number {
   return 4
 }
 
-// At high zoom, picking a larger sprite bucket keeps stars sharp.
-// Returns a sprite index >= sizeBucketFor() based on camera zoom.
-export function zoomBoostedBucket(base: number, zoom: number): number {
-  let boost = 0
-  if (zoom > 4) boost = 1
-  if (zoom > 16) boost = 2
-  return Math.min(SIZE_BUCKET_COUNT - 1, base + boost)
-}
-
 export function spriteCoreRadius(sizeBucket: number): number {
   const idx = Math.max(0, Math.min(SIZE_RADII.length - 1, sizeBucket))
   return SIZE_RADII[idx]

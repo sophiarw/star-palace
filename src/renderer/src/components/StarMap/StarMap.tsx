@@ -7,7 +7,6 @@ import {
   getStarSprite,
   getTypedStarSprite,
   sizeBucketFor,
-  zoomBoostedBucket,
   tempBucketFor,
   spriteCoreRadius,
   hashStr,
@@ -54,6 +53,17 @@ function exposureFor(zoom: number): number {
   return Math.max(EXPOSURE_MIN, Math.min(EXPOSURE_MAX, e))
 }
 
+// Continuous draw-time scale for cached bucket sprites. Keeps sprites looking
+// proportionally large at high zoom without swapping cache buckets — purely
+// monotonic, no thresholds.
+const ZOOM_DRAW_REF = 1
+const ZOOM_DRAW_MAX = 4
+const ZOOM_DRAW_GAMMA = 0.5
+
+function zoomDrawScale(zoom: number): number {
+  return Math.min(ZOOM_DRAW_MAX, Math.pow(Math.max(zoom, 0.001) / ZOOM_DRAW_REF, ZOOM_DRAW_GAMMA))
+}
+
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3)
 }
@@ -64,6 +74,41 @@ function worldToScreen(wx: number, wy: number, cam: Camera, w: number, h: number
 
 function screenToWorld(sx: number, sy: number, cam: Camera, w: number, h: number): [number, number] {
   return [(sx - w / 2) / cam.zoom + cam.cx, (sy - h / 2) / cam.zoom + cam.cy]
+}
+
+// Intersection of the segment from (cx, cy) toward (tx, ty) with the canvas
+// rectangle, inset by `inset` pixels on every side. Used to project an
+// off-screen point onto the visible boundary.
+function canvasEdgeIntersection(
+  cx: number, cy: number,
+  tx: number, ty: number,
+  w: number, h: number,
+  inset: number,
+): { x: number; y: number } {
+  const dx = tx - cx, dy = ty - cy
+  const left = inset, right = w - inset
+  const top = inset, bottom = h - inset
+  let t = Infinity
+  if (dx > 0) t = Math.min(t, (right - cx) / dx)
+  else if (dx < 0) t = Math.min(t, (left - cx) / dx)
+  if (dy > 0) t = Math.min(t, (bottom - cy) / dy)
+  else if (dy < 0) t = Math.min(t, (top - cy) / dy)
+  if (!isFinite(t)) t = 0
+  return { x: cx + dx * t, y: cy + dy * t }
+}
+
+function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, size = 8): void {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(angle)
+  ctx.beginPath()
+  ctx.moveTo(size, 0)
+  ctx.lineTo(-size * 0.6, size * 0.55)
+  ctx.lineTo(-size * 0.3, 0)
+  ctx.lineTo(-size * 0.6, -size * 0.55)
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
 }
 
 export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady }: Props) {
@@ -173,6 +218,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const hasHighlights = highlights.size > 0
     const hasFocus = hasHighlights || selectedId !== null
     const exposure = exposureFor(cam.zoom)
+    const drawScale = zoomDrawScale(cam.zoom)
     const pulseT = Math.min(1, (performance.now() - searchPulseStart.current) / SEARCH_PULSE_MS)
     const pulseScale = pulseT < 1 ? SPRITE_HIGHLIGHT_PULSE * (1 - easeOutCubic(pulseT)) : 0
 
@@ -193,7 +239,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     for (const cluster of currentClusters) {
       if (cluster.centroidX === null || cluster.centroidY === null) continue
       const [sx, sy] = worldToScreen(cluster.centroidX, cluster.centroidY, cam, w, h)
-      const r = Math.max(40, Math.sqrt(cluster.memberCount) * 25 * cam.zoom)
+      const intrinsic = Math.sqrt(cluster.memberCount) * 25 * cam.zoom
+      const r = Math.sqrt(intrinsic * intrinsic + 20 * 20)  // soft floor near 20 px
       const color = CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
       const squish = 0.6 + ((cluster.id * 2654435761) >>> 0) % 100 / 250
       const rot = (((cluster.id * 1664525) >>> 0) % 360) * Math.PI / 180
@@ -250,8 +297,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
 
-      const baseSb = sizeBucketFor(star.viewCount)
-      const sb = zoomBoostedBucket(baseSb, cam.zoom)
+      const sb = sizeBucketFor(star.viewCount)
       let sprite: HTMLCanvasElement
       if (star.starType) {
         sprite = getTypedStarSprite(star.starType, sb)
@@ -262,7 +308,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         sprite = getStarSprite(colorIndex, tb, sb)
       }
       const sw = sprite.width, sh = sprite.height
-      let scale = 1
+      let scale = drawScale
       if (star.id === hoveredId) scale *= SPRITE_HOVER_SCALE
       if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
       if (isNeighbor && !isSelected) scale *= SPRITE_NEIGHBOR_SCALE
@@ -338,8 +384,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
         if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
-        const sb = zoomBoostedBucket(sizeBucketFor(star.viewCount), cam.zoom)
-        let scaleR = 1
+        const sb = sizeBucketFor(star.viewCount)
+        let scaleR = drawScale
         if (isHighlighted) scaleR *= SPRITE_HIGHLIGHT_SCALE + pulseScale
         if (isNeighbor && !isSelected) scaleR *= SPRITE_NEIGHBOR_SCALE
         if (isSelected) scaleR *= SPRITE_SELECTED_SCALE
@@ -377,24 +423,41 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
 
-    // Labels — only when zoomed in or hovered
+    // Off-screen neighbor markers — draw a chevron at the canvas edge for each
+    // neighbor whose center is outside the viewport, pointing toward it.
+    if (selectedId && currentNeighbors.length > 0) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.fillStyle = NEIGHBOR_RING_COLOR
+      for (const n of currentNeighbors) {
+        const [nx, ny] = worldToScreen(n.x, n.y, cam, w, h)
+        if (nx >= 0 && nx <= w && ny >= 0 && ny <= h) continue
+        const m = canvasEdgeIntersection(w / 2, h / 2, nx, ny, w, h, 16)
+        const angle = Math.atan2(ny - h / 2, nx - w / 2)
+        drawChevron(ctx, m.x, m.y, angle, 8)
+      }
+      ctx.restore()
+    }
+
+    // Labels — alpha tapers smoothly from zoom 0.8 upward; no hard cutoff.
     ctx.save()
     for (const star of currentStars) {
-      const isHovered = star.id === hoveredId
-      if (cam.zoom <= 1.5 && !isHovered) continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
+      const isHovered = star.id === hoveredId
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
       const isNeighbor = neighbors.has(star.id)
-      const alpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
-      if (alpha <= 0.5) continue
+      const focusAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
+      const zoomAlpha = isHovered ? 1 : Math.max(0, Math.min(1, (cam.zoom - 0.8) * 2))
+      const alpha = focusAlpha * zoomAlpha
+      if (alpha < 0.05) continue
 
-      const r = spriteCoreRadius(sizeBucketFor(star.viewCount))
+      const r = spriteCoreRadius(sizeBucketFor(star.viewCount)) * drawScale
       ctx.fillStyle = '#c8dff5'
       ctx.font = `${Math.min(11, 8 + cam.zoom * 1.5)}px monospace`
-      ctx.globalAlpha = Math.min(1, (cam.zoom - 0.8) * 2) * alpha
+      ctx.globalAlpha = alpha
       const name = star.name.replace(/\.[^.]+$/, '')
       ctx.fillText(name, sx + r + 4, sy + 4)
     }
