@@ -89,6 +89,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   useEffect(() => { edgesRef.current = edges }, [edges])
   useEffect(() => { neighborStarsRef.current = neighborStars }, [neighborStars])
 
+  const neighborSet = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    neighborSet.current = new Set(neighborStars.map(n => n.id))
+  }, [neighborStars])
+
   // Trigger pulse on each new search-result set
   useEffect(() => {
     if (searchHighlights.length > 0) {
@@ -162,6 +167,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const currentEdges = edgesRef.current
     const currentNeighbors = neighborStarsRef.current
     const highlights = highlightSet.current
+    const neighbors = neighborSet.current
     const hasHighlights = highlights.size > 0
     const hasFocus = hasHighlights || selectedId !== null
     const exposure = exposureFor(cam.zoom)
@@ -238,7 +244,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
-      const dimAlpha = hasFocus && !isHighlighted && !isSelected ? DIM_ALPHA : 1
+      const isNeighbor = neighbors.has(star.id)
+      const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
 
       const baseSb = sizeBucketFor(star.viewCount)
@@ -364,7 +371,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
-      const alpha = hasFocus && !isHighlighted && !isSelected ? DIM_ALPHA : 1
+      const isNeighbor = neighbors.has(star.id)
+      const alpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       if (alpha <= 0.5) continue
 
       const r = spriteCoreRadius(sizeBucketFor(star.viewCount))
