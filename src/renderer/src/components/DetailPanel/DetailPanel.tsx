@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Star, FileContent } from '@shared/types'
-import { CONSTELLATION_PALETTE } from '@shared/types'
-import { fetchContent, openFile, rawUrl, fetchNeighborhood } from '../../api'
+import type { Star, FileContent, StarType } from '@shared/types'
+import { CONSTELLATION_PALETTE, STAR_TYPES } from '@shared/types'
+import { fetchContent, openFile, rawUrl, fetchNeighborhood, setStarType as apiSetStarType } from '../../api'
+
+const STAR_TYPE_LABELS: Record<StarType, string> = {
+  'red-giant': 'Red giant',
+  'blue-supergiant': 'Blue supergiant',
+  'white-dwarf': 'White dwarf',
+  'neutron-star': 'Neutron star',
+  'pulsar': 'Pulsar',
+  'binary': 'Binary',
+  'quasar': 'Quasar',
+  'black-hole': 'Black hole',
+  'nebula': 'Nebula',
+}
 
 interface NeighborSummary {
   id: string
@@ -17,6 +29,7 @@ interface Props {
   clusterMemberCount: number | null
   onClose: () => void
   onSelectNeighbor: (id: string) => void
+  onStarTypeChange: (id: string, type: StarType | null) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -46,10 +59,13 @@ export default function DetailPanel({
   clusterMemberCount,
   onClose,
   onSelectNeighbor,
+  onStarTypeChange,
 }: Props) {
   const [content, setContent] = useState<FileContent | null>(null)
   const [contentError, setContentError] = useState<string | null>(null)
   const [neighbors, setNeighbors] = useState<NeighborSummary[]>([])
+  const [typeOpen, setTypeOpen] = useState(false)
+  const [typeSaving, setTypeSaving] = useState(false)
 
   useEffect(() => {
     setContent(null)
@@ -109,6 +125,62 @@ export default function DetailPanel({
         <button onClick={() => openFile(star.id).catch(console.error)}>
           Open in default app ↗
         </button>
+      </div>
+
+      <div className="detail-panel-startype">
+        <span className="detail-panel-startype-label">Star type</span>
+        <button
+          className="detail-panel-startype-chip"
+          disabled={typeSaving}
+          onClick={() => setTypeOpen(o => !o)}
+        >
+          {star.starType ? STAR_TYPE_LABELS[star.starType] : 'Default (cluster hue)'}
+          <span className="detail-panel-startype-caret">▾</span>
+        </button>
+        {typeOpen && (
+          <ul className="detail-panel-startype-menu">
+            <li>
+              <button
+                onClick={async () => {
+                  setTypeOpen(false)
+                  setTypeSaving(true)
+                  try {
+                    await apiSetStarType(star.id, null)
+                    onStarTypeChange(star.id, null)
+                  } catch (err) {
+                    console.error(err)
+                  } finally {
+                    setTypeSaving(false)
+                  }
+                }}
+                aria-current={star.starType === null}
+              >
+                Default (cluster hue)
+              </button>
+            </li>
+            {STAR_TYPES.map(t => (
+              <li key={t}>
+                <button
+                  onClick={async () => {
+                    setTypeOpen(false)
+                    setTypeSaving(true)
+                    try {
+                      await apiSetStarType(star.id, t)
+                      onStarTypeChange(star.id, t)
+                    } catch (err) {
+                      console.error(err)
+                    } finally {
+                      setTypeSaving(false)
+                    }
+                  }}
+                  aria-current={star.starType === t}
+                >
+                  {STAR_TYPE_LABELS[t]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <section className="detail-panel-content">

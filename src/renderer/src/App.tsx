@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import type { Star, Cluster, MapStats, SearchResult } from '@shared/types'
+import type { Star, Cluster, MapStats, SearchResult, StarType } from '@shared/types'
 import { fetchAll, fetchStats } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
@@ -59,6 +59,10 @@ export default function App() {
     setSelectedId(id)
   }, [])
 
+  const handleStarTypeChange = useCallback((id: string, starType: StarType | null) => {
+    setStars(prev => prev.map(s => s.id === id ? { ...s, starType } : s))
+  }, [])
+
   // Esc closes the detail panel
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -102,6 +106,7 @@ export default function App() {
           clusterMemberCount={selectedCluster?.memberCount ?? null}
           onClose={() => setSelectedId(null)}
           onSelectNeighbor={(id) => setSelectedId(id)}
+          onStarTypeChange={handleStarTypeChange}
         />
       )}
 

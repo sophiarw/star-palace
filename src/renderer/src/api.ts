@@ -1,4 +1,4 @@
-import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent } from '@shared/types'
+import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType } from '@shared/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BASE = `http://127.0.0.1:${(import.meta as any).env?.VITE_DAEMON_PORT ?? 7373}`
@@ -64,6 +64,15 @@ export async function fetchContent(id: string): Promise<FileContent> {
 
 export function rawUrl(id: string): string {
   return `${BASE}/api/file/${id}/raw`
+}
+
+export async function setStarType(id: string, starType: StarType | null): Promise<void> {
+  const res = await fetch(`${BASE}/api/file/${id}/star-type`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ starType }),
+  })
+  if (!res.ok) throw new Error(`setStarType: ${res.status}`)
 }
 
 export function edgeFromNeighborhood(fileId: string, neighbors: { file: Star; weight: number }[]): Edge[] {

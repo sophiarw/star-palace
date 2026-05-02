@@ -5,9 +5,11 @@ import { fetchNeighborhood, edgeFromNeighborhood } from '../../api'
 import HoverCard from '../HoverCard/HoverCard'
 import {
   getStarSprite,
+  getTypedStarSprite,
   sizeBucketFor,
   tempBucketFor,
   spriteCoreRadius,
+  hashStr,
 } from './sprites'
 import { getBackdrop } from './background'
 
@@ -204,17 +206,75 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const alpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
       ctx.globalAlpha = alpha
 
-      const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
-      const colorIndex = cluster ? cluster.colorIndex : -1
       const sb = sizeBucketFor(star.viewCount)
-      const tb = tempBucketFor(star.id)
-      const sprite = getStarSprite(colorIndex, tb, sb)
+      let sprite: HTMLCanvasElement
+      if (star.starType) {
+        sprite = getTypedStarSprite(star.starType, sb)
+      } else {
+        const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
+        const colorIndex = cluster ? cluster.colorIndex : -1
+        const tb = tempBucketFor(star.id)
+        sprite = getStarSprite(colorIndex, tb, sb)
+      }
       const sw = sprite.width, sh = sprite.height
       const scale = star.id === hoveredId ? SPRITE_HOVER_SCALE : 1
       const drawW = sw * scale, drawH = sh * scale
       ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
     }
     ctx.restore()
+
+    // Animation overlay — pulsar rotating beam + quasar jet flicker. Cardinality is small.
+    const tNow = performance.now() / 1000
+    for (const star of currentStars) {
+      if (star.starType !== 'pulsar' && star.starType !== 'quasar') continue
+      const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
+      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+
+      const sb = sizeBucketFor(star.viewCount)
+      const r = spriteCoreRadius(sb)
+      const phaseOffset = (hashStr(star.id) % 1000) / 1000
+
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+
+      if (star.starType === 'pulsar') {
+        const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
+        const reach = r * 6
+        const dx = Math.cos(angle) * reach
+        const dy = Math.sin(angle) * reach
+        const grad = ctx.createLinearGradient(sx - dx, sy - dy, sx + dx, sy + dy)
+        grad.addColorStop(0, 'rgba(180,220,255,0)')
+        grad.addColorStop(0.45, 'rgba(220,235,255,0.55)')
+        grad.addColorStop(0.5, 'rgba(255,255,255,0.95)')
+        grad.addColorStop(0.55, 'rgba(220,235,255,0.55)')
+        grad.addColorStop(1, 'rgba(180,220,255,0)')
+        ctx.strokeStyle = grad
+        ctx.lineWidth = 1.4
+        ctx.beginPath()
+        ctx.moveTo(sx - dx, sy - dy)
+        ctx.lineTo(sx + dx, sy + dy)
+        ctx.stroke()
+      } else {
+        // quasar: two opposing jets shimmering on a vertical-ish axis with mild precession
+        const baseAngle = Math.PI / 2 + Math.sin((tNow * 0.3 + phaseOffset) * Math.PI * 2) * 0.12
+        const reach = r * 5
+        const flicker = 0.55 + 0.4 * Math.sin((tNow * 1.7 + phaseOffset) * Math.PI * 2)
+        const dx = Math.cos(baseAngle) * reach
+        const dy = Math.sin(baseAngle) * reach
+        const grad = ctx.createLinearGradient(sx - dx, sy - dy, sx + dx, sy + dy)
+        grad.addColorStop(0, `rgba(180,140,255,0)`)
+        grad.addColorStop(0.5, `rgba(255,210,255,${flicker})`)
+        grad.addColorStop(1, `rgba(180,140,255,0)`)
+        ctx.strokeStyle = grad
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(sx - dx, sy - dy)
+        ctx.lineTo(sx + dx, sy + dy)
+        ctx.stroke()
+      }
+
+      ctx.restore()
+    }
 
     // Decoration pass — gold rings (highlighted) + bright white core (selected). Small cardinality.
     if (hasHighlights || selectedId) {
