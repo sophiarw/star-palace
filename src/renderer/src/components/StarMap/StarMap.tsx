@@ -30,12 +30,14 @@ interface Props {
 }
 
 const HIGHLIGHT_COLOR = '#ffe066'
+const NEIGHBOR_RING_COLOR = 'rgba(140, 200, 255, 0.85)'
 const EDGE_COLOR = 'rgba(120, 180, 255, 0.45)'
 const DIM_ALPHA = 0.08
 const SPRITE_HOVER_SCALE = 1.35
 const SPRITE_HIGHLIGHT_SCALE = 1.6
 const SPRITE_HIGHLIGHT_PULSE = 0.35  // extra scale at pulse peak
 const SPRITE_SELECTED_SCALE = 5
+const SPRITE_NEIGHBOR_SCALE = 1.6
 const SEARCH_PULSE_MS = 200
 const CULL_MARGIN = 48
 const ZOOM_MAX = 100
@@ -263,6 +265,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       let scale = 1
       if (star.id === hoveredId) scale *= SPRITE_HOVER_SCALE
       if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
+      if (isNeighbor && !isSelected) scale *= SPRITE_NEIGHBOR_SCALE
       if (isSelected) scale *= SPRITE_SELECTED_SCALE
       const drawW = sw * scale, drawH = sh * scale
       ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
@@ -323,19 +326,22 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
 
-    // Decoration pass — gold rings (highlighted) + bright white core (selected). Small cardinality.
-    if (hasHighlights || selectedId) {
+    // Decoration pass — gold rings (highlighted) + bright white core (selected) + cyan rings on
+    // neighbors so they remain visible through the selected star's bright halo at high zoom.
+    if (hasFocus) {
       ctx.save()
       for (const star of currentStars) {
         const isHighlighted = highlights.has(star.id)
         const isSelected = star.id === selectedId
-        if (!isHighlighted && !isSelected) continue
+        const isNeighbor = neighbors.has(star.id)
+        if (!isHighlighted && !isSelected && !isNeighbor) continue
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
         if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
         const sb = zoomBoostedBucket(sizeBucketFor(star.viewCount), cam.zoom)
         let scaleR = 1
         if (isHighlighted) scaleR *= SPRITE_HIGHLIGHT_SCALE + pulseScale
+        if (isNeighbor && !isSelected) scaleR *= SPRITE_NEIGHBOR_SCALE
         if (isSelected) scaleR *= SPRITE_SELECTED_SCALE
         const r = spriteCoreRadius(sb) * scaleR
 
@@ -346,6 +352,16 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           ctx.beginPath()
           ctx.arc(sx, sy, r * 0.65, 0, Math.PI * 2)
           ctx.fill()
+        }
+
+        if (isNeighbor && !isSelected) {
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.strokeStyle = NEIGHBOR_RING_COLOR
+          ctx.lineWidth = 1.5
+          ctx.globalAlpha = 0.85
+          ctx.beginPath()
+          ctx.arc(sx, sy, r + 4, 0, Math.PI * 2)
+          ctx.stroke()
         }
 
         if (isHighlighted) {
