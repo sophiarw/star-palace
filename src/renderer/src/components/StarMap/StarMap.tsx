@@ -35,6 +35,7 @@ const DIM_ALPHA = 0.08
 const SPRITE_HOVER_SCALE = 1.35
 const SPRITE_HIGHLIGHT_SCALE = 1.6
 const SPRITE_HIGHLIGHT_PULSE = 0.35  // extra scale at pulse peak
+const SPRITE_SELECTED_SCALE = 5
 const SEARCH_PULSE_MS = 200
 const CULL_MARGIN = 48
 const ZOOM_MAX = 100
@@ -235,7 +236,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
       const isHighlighted = highlights.has(star.id)
-      const dimAlpha = hasHighlights && !isHighlighted ? DIM_ALPHA : 1
+      const isSelected = star.id === selectedId
+      const dimAlpha = hasHighlights && !isHighlighted && !isSelected ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
 
       const baseSb = sizeBucketFor(star.viewCount)
@@ -253,6 +255,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       let scale = 1
       if (star.id === hoveredId) scale *= SPRITE_HOVER_SCALE
       if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
+      if (isSelected) scale *= SPRITE_SELECTED_SCALE
       const drawW = sw * scale, drawH = sh * scale
       ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
     }
@@ -323,7 +326,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
 
         const sb = zoomBoostedBucket(sizeBucketFor(star.viewCount), cam.zoom)
-        const r = spriteCoreRadius(sb) * (isHighlighted ? SPRITE_HIGHLIGHT_SCALE + pulseScale : 1)
+        let scaleR = 1
+        if (isHighlighted) scaleR *= SPRITE_HIGHLIGHT_SCALE + pulseScale
+        if (isSelected) scaleR *= SPRITE_SELECTED_SCALE
+        const r = spriteCoreRadius(sb) * scaleR
 
         if (isSelected) {
           ctx.globalCompositeOperation = 'lighter'
