@@ -198,8 +198,17 @@ function renderTypedSprite(
   starId: string,
 ): HTMLCanvasElement {
   const baseR = spriteCoreRadius(sizeBucket) * TYPED_SCALE[type]
-  // Reserve halo room: nebula needs the most, jet types need ~3.5×
-  const haloFactor = type === 'nebula' ? 2.6 : type === 'quasar' ? 4.5 : type === 'pulsar' ? 3.8 : HALO_FACTOR
+  // Reserve halo room: nebula needs the most, jet types need ~3.5×.
+  // Black hole bumped from 3.5 → 4.5 because the new procedural drawer
+  // (asymmetric ring + Doppler-bright half + photon sphere) needs more
+  // pixel budget; at high zoom the cached sprite was too low-resolution
+  // for the detail packed into it (visible pixelation).
+  const haloFactor =
+    type === 'nebula' ? 2.6 :
+    type === 'quasar' ? 4.5 :
+    type === 'pulsar' ? 3.8 :
+    type === 'black-hole' ? 4.5 :
+    HALO_FACTOR
   const half = Math.ceil(baseR * haloFactor)
   const size = half * 2
   const canvas = document.createElement('canvas')
