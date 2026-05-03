@@ -23,6 +23,11 @@ export interface IndexedFile extends FileNode {
   pinAxisA: number | null
   pinAxisB: number | null
   pinnedAt: number | null
+  // F10 — OS-derived usage signals + denormalised composite. NULL until first
+  // walker pass writes them; importance_score is recomputed on every re-index.
+  osUseCount: number | null
+  osLastUsed: number | null
+  importanceScore: number | null
 }
 
 export interface FileIndexOptions {
@@ -140,6 +145,19 @@ export class FileIndex {
     }
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_is_pinned ON files(is_pinned);`)
 
+    // F10 — usage-driven classification fields. NULL on existing rows; first
+    // walker pass after upgrade backfills os_use_count/os_last_used (Spotlight
+    // / atime) and Insert pipeline writes importance_score.
+    if (!this.hasColumn('files', 'os_use_count')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN os_use_count INTEGER;`)
+    }
+    if (!this.hasColumn('files', 'os_last_used')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN os_last_used INTEGER;`)
+    }
+    if (!this.hasColumn('files', 'importance_score')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN importance_score REAL;`)
+    }
+
     // Backfill: ensure a "default" galaxy at the spiral origin, then assign any
     // legacy file rows (galaxy_id IS NULL) to it. Idempotent.
     this.ensureDefaultGalaxy()
@@ -178,12 +196,14 @@ export class FileIndex {
         id, path, platform, name, mime_type, category, size,
         created_at, modified_at, stale,
         embedding, content_hash, x, y, z,
-        cluster_id, galaxy_id, layout_version, first_seen, view_count, is_pinned, star_type
+        cluster_id, galaxy_id, layout_version, first_seen, view_count, is_pinned, star_type,
+        os_use_count, os_last_used, importance_score
       ) VALUES (
         @id, @path, @platform, @name, @mime_type, @category, @size,
         @created_at, @modified_at, 0,
         @embedding, @content_hash, @x, @y, @z,
-        @cluster_id, @galaxy_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type
+        @cluster_id, @galaxy_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type,
+        @os_use_count, @os_last_used, @importance_score
       )
       ON CONFLICT(id) DO UPDATE SET
         path = excluded.path,
@@ -199,7 +219,13 @@ export class FileIndex {
         y = COALESCE(excluded.y, files.y),
         cluster_id = COALESCE(excluded.cluster_id, files.cluster_id),
         galaxy_id = COALESCE(excluded.galaxy_id, files.galaxy_id),
-        layout_version = excluded.layout_version
+        layout_version = excluded.layout_version,
+        -- F10: usage signals + composite score are recomputed on every walker
+        -- pass, so we always overwrite them with the freshest values. NULLs in
+        -- excluded mean "still no signal" — overwriting with NULL is correct.
+        os_use_count = excluded.os_use_count,
+        os_last_used = excluded.os_last_used,
+        importance_score = excluded.importance_score
         -- star_type intentionally not updated; manual tagging persists across re-index
     `).run({
       id: file.id,
@@ -223,6 +249,9 @@ export class FileIndex {
       view_count: file.viewCount,
       is_pinned: file.isPinned ? 1 : 0,
       star_type: file.starType,
+      os_use_count: file.osUseCount,
+      os_last_used: file.osLastUsed,
+      importance_score: file.importanceScore,
     })
   }
 
@@ -520,6 +549,9 @@ interface DbRow {
   pin_axis_a: number | null
   pin_axis_b: number | null
   pinned_at: number | null
+  os_use_count: number | null
+  os_last_used: number | null
+  importance_score: number | null
 }
 
 interface GalaxyRow {
@@ -590,6 +622,9 @@ function rowToFile(row: DbRow): IndexedFile {
     pinAxisA: row.pin_axis_a,
     pinAxisB: row.pin_axis_b,
     pinnedAt: row.pinned_at,
+    osUseCount: row.os_use_count,
+    osLastUsed: row.os_last_used,
+    importanceScore: row.importance_score,
   }
 }
 
@@ -619,6 +654,9 @@ function rowToStar(row: DbRow): Star {
     pinAxisA: row.pin_axis_a,
     pinAxisB: row.pin_axis_b,
     pinnedAt: row.pinned_at,
+    osUseCount: row.os_use_count,
+    osLastUsed: row.os_last_used,
+    importanceScore: row.importance_score,
   }
 }
 

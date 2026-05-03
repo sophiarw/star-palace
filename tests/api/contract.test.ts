@@ -65,6 +65,9 @@ beforeAll(() => {
       pinAxisA: null,
       pinAxisB: null,
       pinnedAt: null,
+      osUseCount: null,
+      osLastUsed: null,
+      importanceScore: null,
     })
     hnsw.addPoint(emb, `seed${i}`)
   }

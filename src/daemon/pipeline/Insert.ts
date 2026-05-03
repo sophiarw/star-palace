@@ -119,6 +119,13 @@ export async function insertOne(
       pinAxisA: existing?.pinAxisA ?? null,
       pinAxisB: existing?.pinAxisB ?? null,
       pinnedAt: existing?.pinnedAt ?? null,
+      // F10 — usage signals + composite score. This commit only adds the
+      // schema/round-trip; commit 3 wires the walker to read Spotlight/atime
+      // and commit 4 computes importanceScore. Carry forward the existing
+      // values until then so a re-index doesn't wipe them.
+      osUseCount: existing?.osUseCount ?? null,
+      osLastUsed: existing?.osLastUsed ?? null,
+      importanceScore: existing?.importanceScore ?? null,
     })
 
     if (!embedResult) return
