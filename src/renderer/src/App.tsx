@@ -30,7 +30,17 @@ export default function App() {
   const [highlights, setHighlights] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  // Hover id is intentionally a ref, not React state: the cursor produces a
+  // change ~60 Hz during a pan and we don't want every star prop down to
+  // SearchBar / GalaxyPanel / DetailPanel to re-render that often. StarMap
+  // owns the in-canvas hover visualisation (HoverCard is rendered inside
+  // StarMap's component subtree); App only needs hover for vim's Enter
+  // (select hovered) binding, which reads via getHoveredId().
+  const hoveredIdRef = useRef<string | null>(null)
+  const handleHoveredChange = useCallback((id: string | null) => {
+    hoveredIdRef.current = id
+  }, [])
+  const getHoveredId = useCallback(() => hoveredIdRef.current, [])
   const [showCheatsheet, setShowCheatsheet] = useState(true)
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const [galaxies, setGalaxies] = useState<GalaxySummary[]>([])
@@ -268,8 +278,9 @@ export default function App() {
   }, [handleClearSearch, collections])
 
   const handleSelectHovered = useCallback(() => {
-    if (hoveredId) setSelectedId(hoveredId)
-  }, [hoveredId])
+    const id = hoveredIdRef.current
+    if (id !== null) setSelectedId(id)
+  }, [])
 
   const handleToggleCheatsheet = useCallback(() => {
     setShowCheatsheet(v => !v)
@@ -339,7 +350,7 @@ export default function App() {
     onEscape: handleEscape,
     onSelectHovered: handleSelectHovered,
     onSelectStar: handleSelectStar,
-    hoveredId,
+    getHoveredId,
     selectedId,
     selectedStar,
     searchHighlights: projectedHighlights,
@@ -369,7 +380,7 @@ export default function App() {
         selectedId={selectedId}
         onSelect={handleSelect}
         vimAction={vimAction}
-        onHoveredChange={setHoveredId}
+        onHoveredChange={handleHoveredChange}
         theme={themeCtx.theme}
         classMode={classCtx.mode}
         percentileBuckets={percentileBuckets}

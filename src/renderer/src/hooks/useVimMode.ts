@@ -18,7 +18,10 @@ interface UseVimModeOptions {
   onEscape: () => void
   onSelectHovered: () => void
   onSelectStar: (id: string) => void
-  hoveredId: string | null
+  // Hover state is read on-demand (only the Enter binding cares about it) so
+  // we don't have to re-bind the global keydown listener on every mousemove.
+  // Caller stashes the latest hovered id in a ref and exposes a stable getter.
+  getHoveredId: () => string | null
   selectedId: string | null
   selectedStar: Star | null
   searchHighlights: { id: string; x: number; y: number }[]
@@ -56,7 +59,7 @@ export function useVimMode({
   onEscape,
   onSelectHovered,
   onSelectStar,
-  hoveredId,
+  getHoveredId,
   selectedId,
   selectedStar,
   searchHighlights,
@@ -203,7 +206,7 @@ export function useVimMode({
           }
           case 'Enter':
             e.preventDefault()
-            if (hoveredId) {
+            if (getHoveredId() !== null) {
               onSelectHovered()
             }
             break
@@ -330,7 +333,7 @@ export function useVimMode({
     onEscape,
     onSelectHovered,
     onSelectStar,
-    hoveredId,
+    getHoveredId,
     selectedId,
     selectedStar,
     searchHighlights,
