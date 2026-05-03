@@ -283,8 +283,18 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
   }, [vimAction])
 
-  // Fit all stars into view on first load
+  // Fit all stars into view on first load.
+  //
+  // Defensive guard: even though the dep array is `[stars.length > 0]` (a
+  // boolean that should keep the effect inert once stars are present),
+  // theme switches were observed to recenter the camera. Until the root
+  // cause is pinpointed, gate this effect behind a `didFitOnce` ref so
+  // the fit happens at most one time per StarMap mount lifecycle. Vim's
+  // `gg` (fit-all) and `gh` (fit-cluster) remain available for explicit
+  // refits.
+  const didFitOnce = useRef(false)
   useEffect(() => {
+    if (didFitOnce.current) return
     if (stars.length === 0) return
     const canvas = canvasRef.current
     if (!canvas) return
@@ -305,6 +315,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const newCam = { cx, cy, zoom }
     setCam(newCam)
     camRef.current = newCam
+    didFitOnce.current = true
     onReady?.()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stars.length > 0])
