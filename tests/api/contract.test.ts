@@ -326,3 +326,98 @@ describe('POST /api/relayout preserves pins (F4 sign-flip path)', () => {
     expect(Math.abs(after.pinBeta!)).toBeCloseTo(Math.abs(beforeBeta))
   })
 })
+
+// F5 — virtual collections. Contract suite is opt-in (`npm run test:contract`)
+// because the daemon import triggers the hnswlib SIGSEGV on tear-down.
+describe('Collections (F5)', () => {
+  it('GET /api/collections returns the list shape', async () => {
+    const res = await request(app).get('/api/collections')
+    expect(res.status).toBe(200)
+    expect(Array.isArray(res.body.collections)).toBe(true)
+  })
+
+  it('POST /api/collections rejects missing name', async () => {
+    const res = await request(app).post('/api/collections').send({ kind: 'static' })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/collections rejects bad kind', async () => {
+    const res = await request(app).post('/api/collections').send({ name: 'x', kind: 'bogus' })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/collections rejects dynamic without query', async () => {
+    const res = await request(app).post('/api/collections').send({ name: 'dynNoQ', kind: 'dynamic' })
+    expect(res.status).toBe(400)
+  })
+
+  it('creates a static collection with members and lists it', async () => {
+    const create = await request(app).post('/api/collections').send({
+      name: 'TestCollA', kind: 'static', fileIds: ['seed0', 'seed1'],
+    })
+    expect(create.status).toBe(200)
+    expect(create.body.id).toBeDefined()
+    expect(create.body.kind).toBe('static')
+    expect(create.body.memberCount).toBe(2)
+
+    const list = await request(app).get('/api/collections')
+    const found = list.body.collections.find((c: { name: string }) => c.name === 'TestCollA')
+    expect(found).toBeDefined()
+  })
+
+  it('returns 409 on duplicate name', async () => {
+    await request(app).post('/api/collections').send({ name: 'DupCol', kind: 'static' })
+    const dup = await request(app).post('/api/collections').send({ name: 'DupCol', kind: 'static' })
+    expect(dup.status).toBe(409)
+  })
+
+  it('GET /api/collections/:id returns memberIds', async () => {
+    const create = await request(app).post('/api/collections').send({
+      name: 'TestCollB', kind: 'static', fileIds: ['seed0'],
+    })
+    const id = create.body.id
+    const got = await request(app).get(`/api/collections/${id}`)
+    expect(got.status).toBe(200)
+    expect(got.body.memberIds).toEqual(['seed0'])
+  })
+
+  it('POST /api/collections/:id/members adds and DELETE removes', async () => {
+    const create = await request(app).post('/api/collections').send({
+      name: 'TestCollC', kind: 'static',
+    })
+    const id = create.body.id
+    const add = await request(app).post(`/api/collections/${id}/members`).send({ fileIds: ['seed0', 'seed1'] })
+    expect(add.status).toBe(200)
+    expect(add.body.memberCount).toBe(2)
+
+    const remove = await request(app).delete(`/api/collections/${id}/members/seed0`)
+    expect(remove.status).toBe(200)
+    const got = await request(app).get(`/api/collections/${id}`)
+    expect(got.body.memberIds).toEqual(['seed1'])
+  })
+
+  it('POST /api/collections/:id/refresh rejects static collections with 400', async () => {
+    const create = await request(app).post('/api/collections').send({ name: 'StaticNoRefresh', kind: 'static' })
+    const r = await request(app).post(`/api/collections/${create.body.id}/refresh`).send()
+    expect(r.status).toBe(400)
+  })
+
+  it('POST /api/collections/:id/refresh on dynamic returns added/removed diff', async () => {
+    const create = await request(app).post('/api/collections').send({
+      name: 'DynRefresh', kind: 'dynamic', query: 'hello',
+    })
+    const r = await request(app).post(`/api/collections/${create.body.id}/refresh`).send()
+    expect(r.status).toBe(200)
+    expect(Array.isArray(r.body.added)).toBe(true)
+    expect(Array.isArray(r.body.removed)).toBe(true)
+  })
+
+  it('DELETE /api/collections/:id removes the collection', async () => {
+    const create = await request(app).post('/api/collections').send({ name: 'ToDelete', kind: 'static' })
+    const id = create.body.id
+    const del = await request(app).delete(`/api/collections/${id}`)
+    expect(del.status).toBe(200)
+    const after = await request(app).get(`/api/collections/${id}`)
+    expect(after.status).toBe(404)
+  })
+})

@@ -1,4 +1,7 @@
-import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType, GalaxySummary, ProjectionFile } from '@shared/types'
+import type {
+  ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType, GalaxySummary, ProjectionFile,
+  Collection, CollectionSummary, CollectionKind,
+} from '@shared/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BASE = `http://127.0.0.1:${(import.meta as any).env?.VITE_DAEMON_PORT ?? 7373}`
@@ -33,11 +36,16 @@ export async function fetchStats(): Promise<MapStats> {
   return res.json()
 }
 
-export async function search(query: string, limit = 30): Promise<SearchResult[]> {
+export async function search(query: string, limit = 30, collectionId?: number): Promise<SearchResult[]> {
+  // F5 — when collectionId is supplied, the daemon pre-filters KNN hits to
+  // members of that collection before ranking. Optional so the existing call
+  // sites (e.g. CollectionsPanel-less code paths) keep working unchanged.
+  const body: { query: string; limit: number; collectionId?: number } = { query, limit }
+  if (collectionId !== undefined) body.collectionId = collectionId
   const res = await fetch(`${BASE}/api/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, limit }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`search: ${res.status}`)
   const data = await res.json() as { results: SearchResult[] }
@@ -160,4 +168,88 @@ export async function indexPath(path: string, galaxyName?: string): Promise<Inde
     throw new Error(`indexPath: ${res.status} ${text}`)
   }
   return res.json()
+}
+
+// F5 — Collections
+
+export async function listCollections(): Promise<CollectionSummary[]> {
+  const res = await fetch(`${BASE}/api/collections`)
+  if (!res.ok) throw new Error(`listCollections: ${res.status}`)
+  const data = await res.json() as { collections: CollectionSummary[] }
+  return data.collections
+}
+
+export interface CreateCollectionInput {
+  name: string
+  kind: CollectionKind
+  query?: string
+  similarityFloor?: number
+  fileIds?: string[]
+  colorIndex?: number
+}
+
+// HttpError is thrown by the create path so callers (CollectionsPanel) can
+// distinguish the unique-name-conflict case (status 409) and surface a
+// specific "name in use" message instead of a generic failure.
+export class HttpError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+export async function createCollection(input: CreateCollectionInput): Promise<CollectionSummary> {
+  const res = await fetch(`${BASE}/api/collections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new HttpError(res.status, body.error ?? `createCollection: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function getCollection(id: number): Promise<Collection & { memberIds: string[]; memberCount: number }> {
+  const res = await fetch(`${BASE}/api/collections/${id}`)
+  if (!res.ok) throw new Error(`getCollection: ${res.status}`)
+  return res.json()
+}
+
+export async function addCollectionMembers(id: number, fileIds: string[]): Promise<void> {
+  const res = await fetch(`${BASE}/api/collections/${id}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileIds }),
+  })
+  if (!res.ok) throw new Error(`addCollectionMembers: ${res.status}`)
+}
+
+export async function removeCollectionMember(id: number, fileId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/collections/${id}/members/${encodeURIComponent(fileId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error(`removeCollectionMember: ${res.status}`)
+}
+
+export interface RefreshResult {
+  added: string[]
+  removed: string[]
+  memberCount: number
+}
+
+export async function refreshCollection(id: number): Promise<RefreshResult> {
+  const res = await fetch(`${BASE}/api/collections/${id}/refresh`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new HttpError(res.status, body.error ?? `refreshCollection: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function deleteCollection(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/api/collections/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`deleteCollection: ${res.status}`)
 }

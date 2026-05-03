@@ -108,6 +108,36 @@ export interface GalaxySummary extends Galaxy {
   memberCount: number
 }
 
+// F5 — Virtual collections. A Collection is a named, persistent group of files.
+// `static` collections store explicit member IDs in `collection_members`;
+// `dynamic` collections store a query string + similarity floor and re-evaluate
+// membership on demand. Both render as a constellation-style hull in the sky
+// with `colorIndex` driving the hue.
+export type CollectionKind = 'static' | 'dynamic'
+
+export interface Collection {
+  id: number
+  name: string
+  kind: CollectionKind
+  query: string | null            // non-null for dynamic
+  similarityFloor: number | null  // non-null for dynamic; default 0.6
+  colorIndex: number
+  createdAt: number
+  updatedAt: number
+  evaluatedAt: number | null      // last time membership was re-evaluated (dynamic only)
+}
+
+export interface CollectionSummary extends Collection {
+  memberCount: number
+}
+
+// Default similarity floor for dynamic collections — passes through any
+// neighbor whose cosine similarity is at least this. Tuned to admit a useful
+// neighborhood without dragging in obvious mismatches.
+export const COLLECTION_DEFAULT_SIMILARITY_FLOOR = 0.6
+// Local-storage key for the renderer's "active collection" persistence.
+export const COLLECTION_ACTIVE_LS_KEY = 'starpalace.activeCollection.v1'
+
 // MapStats: summary from /api/map/stats
 export interface MapStats {
   total: number

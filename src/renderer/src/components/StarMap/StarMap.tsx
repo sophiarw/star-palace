@@ -15,9 +15,18 @@ import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import { usageStarType, type PercentileBuckets } from './usageStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
+import { convexHull, type Pt } from './convexHull'
 import type { VimAction } from '../../hooks/useVimMode'
 import type { Theme } from '../../themes/types'
 import type { ClassificationMode } from '../../hooks/useClassificationMode'
+
+// F5 — active virtual collection. When set, members render at full
+// brightness with a constellation-style hull behind them; non-members
+// dim to DIM_ALPHA exactly like a search-active state.
+export interface ActiveCollectionVis {
+  color: string
+  memberIds: Set<string>
+}
 
 interface Props {
   stars: Star[]
@@ -40,6 +49,47 @@ interface Props {
   // release we fire this callback. Optional so existing call sites compile
   // before App.tsx wires it up.
   onPinFile?: (id: string, worldX: number, worldY: number) => void
+  // F5 — when non-null, members are highlighted (full alpha + scale) and a
+  // convex-hull outline is drawn behind them in the collection's color.
+  // Non-members are dimmed exactly like search-active state.
+  activeCollection?: ActiveCollectionVis | null
+}
+
+// F5 — hull rendering constants. Fill alpha is intentionally low so the
+// stars inside read clearly; the stroke does most of the visual work.
+const COLLECTION_HULL_FILL_ALPHA = 0.12
+const COLLECTION_HULL_STROKE_ALPHA = 0.35
+const COLLECTION_HULL_STROKE_WIDTH = 1.5
+// Pad the hull a touch outward so stars at the boundary aren't visually
+// clipped by the stroke. Computed in screen pixels at draw time.
+const COLLECTION_HULL_INFLATE_PX = 12
+
+// Helper: replace alpha on a "#rrggbb" hex with the supplied 0..1 alpha.
+// Falls back to the rgba() form when the input isn't 7-char hex (defensive
+// — palette entries are all hex but a future theme could pass anything).
+function withAlpha(hex: string, alpha: number): string {
+  if (hex.length === 7 && hex[0] === '#') {
+    const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255).toString(16).padStart(2, '0')
+    return `${hex}${a}`
+  }
+  return `rgba(0,0,0,${alpha})`
+}
+
+// Move each hull vertex outward from the polygon centroid by `pad` pixels.
+// Cheap centroid-based inflate; good enough for the loose visual padding the
+// collection outline needs.
+function inflateHull(hull: Pt[], padPx: number): Pt[] {
+  if (hull.length < 3 || padPx <= 0) return hull
+  let cx = 0, cy = 0
+  for (const [x, y] of hull) { cx += x; cy += y }
+  cx /= hull.length
+  cy /= hull.length
+  return hull.map(([x, y]): Pt => {
+    const dx = x - cx, dy = y - cy
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-3) return [x, y]
+    return [x + (dx / len) * padPx, y + (dy / len) * padPx]
+  })
 }
 
 // F10 — resolve the effective StarType for a star given the active mode +
@@ -184,7 +234,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -251,10 +301,23 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     clusterMap.current = new Map(clusters.map(c => [c.id, c]))
   }, [clusters])
 
+  // F5 — highlightSet holds search-result ids unioned with active-collection
+  // member ids so the dim/scale focus logic (DIM_ALPHA path below) treats
+  // collection-active state the same way as search-active state, matching the
+  // spec ("Renderer treats collection-active state the same way as search-
+  // active for the F1 dim/scale logic"). activeCollectionRef carries the
+  // colour + member set so the rAF draw loop can render the hull each frame
+  // without rebuilding closures.
   const highlightSet = useRef<Set<string>>(new Set())
+  const activeCollectionRef = useRef<ActiveCollectionVis | null>(activeCollection ?? null)
+  useEffect(() => { activeCollectionRef.current = activeCollection ?? null }, [activeCollection])
   useEffect(() => {
-    highlightSet.current = new Set(searchHighlights.map(r => r.id))
-  }, [searchHighlights])
+    const next = new Set(searchHighlights.map(r => r.id))
+    if (activeCollection) {
+      for (const id of activeCollection.memberIds) next.add(id)
+    }
+    highlightSet.current = next
+  }, [searchHighlights, activeCollection])
 
   const starIndex = useRef<Map<string, Star>>(new Map())
   useEffect(() => {
@@ -488,6 +551,52 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
     ctx.restore()
+
+    // F5 — active-collection hull. Sits behind the star pass so members
+    // remain crisp on top. Skips when there's no collection or its member
+    // set is empty; falls through to a centered circle when the visible
+    // membership collapses to a single point (matches the F5 spec for
+    // size-1 collections).
+    const activeColl = activeCollectionRef.current
+    if (activeColl && activeColl.memberIds.size > 0) {
+      const memberPts: Pt[] = []
+      for (const star of currentStars) {
+        if (!activeColl.memberIds.has(star.id)) continue
+        memberPts.push(worldToScreen(star.x, star.y, cam, w, h))
+      }
+      if (memberPts.length === 1) {
+        // Single-member: small circle around the point so the user still
+        // sees a visual anchor for the collection.
+        const [px, py] = memberPts[0]
+        const r = 24
+        ctx.save()
+        ctx.fillStyle = withAlpha(activeColl.color, COLLECTION_HULL_FILL_ALPHA)
+        ctx.strokeStyle = withAlpha(activeColl.color, COLLECTION_HULL_STROKE_ALPHA)
+        ctx.lineWidth = COLLECTION_HULL_STROKE_WIDTH
+        ctx.beginPath()
+        ctx.arc(px, py, r, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+        ctx.restore()
+      } else if (memberPts.length >= 2) {
+        const hull = inflateHull(convexHull(memberPts), COLLECTION_HULL_INFLATE_PX)
+        if (hull.length >= 2) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(hull[0][0], hull[0][1])
+          for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i][0], hull[i][1])
+          ctx.closePath()
+          ctx.fillStyle = withAlpha(activeColl.color, COLLECTION_HULL_FILL_ALPHA)
+          ctx.strokeStyle = withAlpha(activeColl.color, COLLECTION_HULL_STROKE_ALPHA)
+          ctx.lineWidth = COLLECTION_HULL_STROKE_WIDTH
+          // Two-point "hull" (collinear) draws as a stroked line — fill is a
+          // no-op but cheaper to leave the same call than branch.
+          ctx.fill()
+          ctx.stroke()
+          ctx.restore()
+        }
+      }
+    }
 
     // Edges (selected neighborhood only) — additive screen blend for filament feel
     if (currentEdges.length > 0) {

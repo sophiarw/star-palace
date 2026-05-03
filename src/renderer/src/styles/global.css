@@ -77,6 +77,30 @@ body {
   color: var(--text-muted);
 }
 
+/* F5 — collection-scope badge for `c:foo` / `#foo` prefixes. Sits over the
+   search input on the right side; green when the name resolves, red when it
+   doesn't. Pointer-events:none so clicking through it focuses the input. */
+.search-collection-badge {
+  position: absolute;
+  top: 11px;
+  right: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(80, 200, 120, 0.18);
+  border: 1px solid rgba(80, 200, 120, 0.45);
+  color: #b6f5cc;
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+  letter-spacing: 0.02em;
+}
+
+.search-collection-badge--miss {
+  background: rgba(220, 80, 80, 0.18);
+  border-color: rgba(220, 80, 80, 0.45);
+  color: #ffc4c4;
+}
+
 /* Hover card */
 
 .hover-card {
@@ -1080,4 +1104,344 @@ body {
   color: var(--text-muted);
   font-size: 10.5px;
   flex-shrink: 0;
+}
+
+/* Collections panel (F5) — bottom-left, above the stats-bar (which sits at
+   bottom: 16px and is ~28px tall). Same visual language as the galaxy panel
+   so the two corner sidebars feel like siblings; mirror layout reads as
+   "left = group by content / right = group by source". */
+
+.collections-panel {
+  position: fixed;
+  left: 16px;
+  bottom: 56px;  /* clear of stats-bar */
+  width: 280px;
+  z-index: 85;
+  background: rgba(2, 11, 24, 0.93);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(12px);
+  box-shadow: 8px -8px 32px rgba(0, 0, 0, 0.55);
+  max-height: 60vh;
+  overflow: hidden;
+}
+
+.collections-panel-collapsed {
+  position: fixed;
+  left: 16px;
+  bottom: 56px;
+  z-index: 85;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 6px 10px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.collections-panel-collapsed:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.collections-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.collections-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.collections-panel-collapse {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.collections-panel-collapse:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.collections-panel-save {
+  background: rgba(74, 158, 255, 0.15);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.collections-panel-save:hover {
+  background: rgba(74, 158, 255, 0.28);
+}
+
+.collections-panel-create {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.collections-panel-input {
+  width: 100%;
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 9px;
+  outline: none;
+}
+
+.collections-panel-input:focus { border-color: var(--accent); }
+
+.collections-panel-create-row {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.collections-panel-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.collections-panel-radio input[type="radio"]:disabled + * {
+  opacity: 0.4;
+}
+
+.collections-panel-create-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.collections-panel-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.collections-panel-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.collections-panel-btn--primary {
+  background: rgba(74, 158, 255, 0.15);
+  border-color: rgba(74, 158, 255, 0.3);
+  color: var(--accent);
+}
+
+.collections-panel-btn--primary:hover:not(:disabled) {
+  background: rgba(74, 158, 255, 0.28);
+}
+
+.collections-panel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.collections-panel-msg {
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+.collections-panel-msg--err {
+  color: #ff9944;
+  background: rgba(255, 153, 68, 0.08);
+  border: 1px solid rgba(255, 153, 68, 0.3);
+}
+
+.collections-panel-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  padding: 4px 2px;
+}
+
+.collections-panel-empty code {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  background: rgba(74, 158, 255, 0.12);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.collections-panel-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.collections-panel-row {
+  margin: 0;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.collections-panel-row-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.collections-panel-row-main:hover {
+  background: rgba(74, 158, 255, 0.08);
+}
+
+.collections-panel-row-main--active {
+  background: rgba(74, 158, 255, 0.18);
+  border-color: rgba(74, 158, 255, 0.5);
+}
+
+.collections-panel-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.collections-panel-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.collections-panel-glyph {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.collections-panel-count {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.collections-panel-row-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.collections-panel-icon-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.collections-panel-icon-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.collections-panel-icon-btn--danger:hover:not(:disabled) {
+  color: #ff9944;
+  border-color: rgba(255, 153, 68, 0.4);
+}
+
+.collections-panel-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: wait;
+}
+
+@keyframes collections-fade-out {
+  0%   { opacity: 1; }
+  90%  { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+
+.collections-panel-flash {
+  position: absolute;
+  right: 4px;
+  bottom: -2px;
+  font-size: 10px;
+  display: inline-flex;
+  gap: 4px;
+  pointer-events: none;
+  animation: collections-fade-out 5s ease-out forwards;
+}
+
+.collections-panel-flash--add {
+  color: #80cbc4;
+}
+
+.collections-panel-flash--remove {
+  color: #ff9944;
+}
+
+/* DetailPanel — F5 "Remove from collection" pill, only shown when an active
+   collection is set and the selected star is a member. */
+
+.detail-panel-collection-action {
+  margin-top: 8px;
+}
+
+.detail-panel-collection-action button {
+  background: rgba(255, 153, 68, 0.12);
+  border: 1px solid rgba(255, 153, 68, 0.4);
+  border-radius: 6px;
+  color: #ff9944;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.detail-panel-collection-action button:hover {
+  background: rgba(255, 153, 68, 0.22);
 }

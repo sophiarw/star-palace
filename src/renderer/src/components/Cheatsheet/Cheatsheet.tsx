@@ -20,6 +20,7 @@ const NAV_BINDINGS: Binding[] = [
   { key: 'O', desc: 'Reveal selected file in file explorer' },
   { key: 't', desc: 'Open star-type dropdown' },
   { key: 'T', desc: 'Cycle star type forward' },
+  { key: 'c', desc: 'Toggle collections sidebar' },
   { key: '⌘F / Ctrl+F', desc: 'Toggle search bar (keeps query + highlights)' },
   { key: 'Esc', desc: 'Exit search / clear selection' },
   { key: '?', desc: 'Toggle this cheatsheet' },

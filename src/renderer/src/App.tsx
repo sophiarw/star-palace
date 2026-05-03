@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { Star, Cluster, MapStats, SearchResult, StarType, GalaxySummary } from '@shared/types'
-import { fetchAll, fetchStats, fetchGalaxies } from './api'
+import { CONSTELLATION_PALETTE } from '@shared/types'
+import { fetchAll, fetchStats, fetchGalaxies, getCollection } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
 import StatsBar from './components/StatsBar/StatsBar'
@@ -14,6 +15,8 @@ import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
 import { useTheme } from './hooks/useTheme'
 import { useClassificationMode } from './hooks/useClassificationMode'
 import { computePercentileBuckets } from './components/StarMap/usageStarType'
+import CollectionsPanel from './components/CollectionsPanel/CollectionsPanel'
+import { useCollections } from './hooks/useCollections'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -31,6 +34,7 @@ export default function App() {
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const [galaxies, setGalaxies] = useState<GalaxySummary[]>([])
   const [showSearch, setShowSearch] = useState(false)
+  const [showCollectionsPanel, setShowCollectionsPanel] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const layoutVersionRef = useRef<number>(-1)
 
@@ -232,6 +236,10 @@ export default function App() {
     setTypeDropdownOpen(true)
   }, [])
 
+  const handleToggleCollections = useCallback(() => {
+    setShowCollectionsPanel(p => !p)
+  }, [])
+
   const handleGalaxyIndexed = useCallback(() => {
     loadGalaxies()
     loadMap()
@@ -241,12 +249,57 @@ export default function App() {
     setVimAction({ type: 'panTo', wx, wy, zoom: GALAXY_FLY_TO_ZOOM })
   }, [])
 
+  // F5 — Collections. Hook owns the list cache + active-collection state
+  // (persisted to localStorage). Member positions and the highlight set used
+  // by StarMap are derived per-render from the active collection's id.
+  const collections = useCollections()
+  const activeCollection = useMemo(() => {
+    if (collections.activeCollectionId === null) return null
+    return collections.collections.find(c => c.id === collections.activeCollectionId) ?? null
+  }, [collections.activeCollectionId, collections.collections])
+
+  // Member id set for the active collection — fetched lazily on demand. We
+  // keep it in App-level state so DetailPanel can show "Remove from
+  // collection" without re-fetching, and so StarMap (commit 5) can read the
+  // hull membership without piercing the daemon API every frame.
+  const [activeMemberIds, setActiveMemberIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (collections.activeCollectionId === null) {
+      setActiveMemberIds(new Set())
+      return
+    }
+    let cancelled = false
+    getCollection(collections.activeCollectionId)
+      .then(detail => { if (!cancelled) setActiveMemberIds(new Set(detail.memberIds)) })
+      .catch(() => { if (!cancelled) setActiveMemberIds(new Set()) })
+    return () => { cancelled = true }
+  // Depend on collections.collections so adds/removes update the highlight
+  // set; the list ref changes on every refresh after a mutation.
+  }, [collections.activeCollectionId, collections.collections])
+
+  const handleRemoveFromActiveCollection = useCallback((fileId: string) => {
+    if (collections.activeCollectionId === null) return
+    collections.removeMember(collections.activeCollectionId, fileId)
+      .catch(err => console.warn('removeMember failed:', err))
+  }, [collections])
+
+  // F5 — props bundle for StarMap. The hull color comes from the same
+  // CONSTELLATION_PALETTE used for clusters, indexed by the collection's
+  // colorIndex so collections visually match constellation hues. Returns
+  // null when no collection is active so StarMap skips both the hull and
+  // the dim/highlight focus path.
+  const starMapActiveCollection = useMemo(() => {
+    if (!activeCollection) return null
+    const color = CONSTELLATION_PALETTE[activeCollection.colorIndex % CONSTELLATION_PALETTE.length]
+    return { color, memberIds: activeMemberIds }
+  }, [activeCollection, activeMemberIds])
+
   const { mode } = useVimMode({
     onAction: dispatchVimAction,
     onToggleSearch: handleToggleSearch,
-    onSelectStar: handleSelectStar,
     onEscape: handleEscape,
     onSelectHovered: handleSelectHovered,
+    onSelectStar: handleSelectStar,
     hoveredId,
     selectedId,
     selectedStar,
@@ -254,6 +307,7 @@ export default function App() {
     onStarTypeChange: handleStarTypeChange,
     onToggleCheatsheet: handleToggleCheatsheet,
     onOpenTypeDropdown: handleOpenTypeDropdown,
+    onToggleCollections: handleToggleCollections,
   })
 
   const showEmpty = stars.length === 0
@@ -274,6 +328,7 @@ export default function App() {
         onPinFile={(id, wx, wy) => {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}
+        activeCollection={starMapActiveCollection}
       />
 
       {showSearch && (
@@ -285,6 +340,7 @@ export default function App() {
           onClear={handleClearSearch}
           onClose={handleCloseSearch}
           onSubmit={handleHideSearch}
+          collections={collections.collections}
         />
       )}
 
@@ -312,6 +368,19 @@ export default function App() {
         onFlyTo={handleGalaxyFlyTo}
       />
 
+      <CollectionsPanel
+        collections={collections.collections}
+        activeCollectionId={collections.activeCollectionId}
+        onSetActive={collections.setActiveCollectionId}
+        onCreate={collections.create}
+        onRefreshDynamic={collections.refreshDynamic}
+        onDelete={collections.delete}
+        searchResults={highlights}
+        searchQuery={searchQuery}
+        open={showCollectionsPanel}
+        onClose={() => setShowCollectionsPanel(false)}
+      />
+
       {selectedStar && (
         <DetailPanel
           star={selectedStar}
@@ -325,6 +394,9 @@ export default function App() {
           onUnpin={(id) => {
             pcDial.unpinFile(id).catch(err => console.warn('unpinFile failed:', err))
           }}
+          activeCollectionName={activeCollection?.name ?? null}
+          isMemberOfActive={activeMemberIds.has(selectedStar.id)}
+          onRemoveFromCollection={handleRemoveFromActiveCollection}
         />
       )}
 

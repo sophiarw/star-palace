@@ -37,6 +37,13 @@ interface Props {
   // F4 — fired when the user clicks "Unpin"; parent triggers a projection
   // refetch so the star slides back to its natural position.
   onUnpin?: (id: string) => void
+  // F5 — when an active collection is set and the current star is a member,
+  // surface a "Remove from collection" action. All three props travel
+  // together: name labels the action, isMember decides visibility, the
+  // callback runs the mutation through useCollections.
+  activeCollectionName?: string | null
+  isMemberOfActive?: boolean
+  onRemoveFromCollection?: (id: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -70,6 +77,9 @@ export default function DetailPanel({
   typeDropdownOpen,
   onTypeDropdownChange,
   onUnpin,
+  activeCollectionName,
+  isMemberOfActive,
+  onRemoveFromCollection,
 }: Props) {
   const [content, setContent] = useState<FileContent | null>(null)
   const [contentError, setContentError] = useState<string | null>(null)
@@ -252,6 +262,14 @@ export default function DetailPanel({
           <span className="detail-panel-pin-hint">Shift-drag to pin this star</span>
         )}
       </div>
+
+      {activeCollectionName && isMemberOfActive && onRemoveFromCollection && (
+        <div className="detail-panel-collection-action">
+          <button onClick={() => onRemoveFromCollection(star.id)}>
+            Remove from “{activeCollectionName}”
+          </button>
+        </div>
+      )}
 
       <section className="detail-panel-content">
         <ContentViewer star={star} content={content} error={contentError} />

@@ -21,7 +21,7 @@ Locked decisions:
 | F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. | **DONE** |
 | F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. | **DONE** |
 | F4 | Manual reposition + pin | M | New columns; embedding-delta math. | **DONE** |
-| F5 | Virtual collections | M-L | New tables + endpoints + render hull. | |
+| F5 | Virtual collections | M-L | New tables + endpoints + render hull. | **DONE** |
 | F6 | Vim mode | M | Pure UI; no backend. | **DONE** |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. | |
 | F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. F8a foundation (`proc.ts`) and per-id variation shipped via F11 across both themes. F8b/F8c/F8d remain. | F8a **DONE** |
@@ -1213,7 +1213,7 @@ Every commit gates on `npm run typecheck && npm run lint && npm run test`. Conve
 1. **F1 + F2** (one branch, one PR) — small, immediate user-visible gain. **DONE**
 2. **F3** — unlocks F4. Self-contained. **DONE**
 3. **F4** — depends on F3 for the multi-PC-aware embedding-delta math. **DONE**
-4. **F5** — depends on nothing else; can also slot in parallel to F3/F4.
+4. **F5** — depends on nothing else; can also slot in parallel to F3/F4. **DONE**
 5. **F6** — independent; nice once F1–F5 land so there's enough surface to bind keys to. **DONE**
 6. **F9** — galaxies; multi-root indexing. Independent. **DONE**
 7. **F11** — theme selector. Renderer-only; landed the F8a foundation (`proc.ts` + per-id variation) for both `jwst` and `vapor`. **DONE**
