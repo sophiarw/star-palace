@@ -197,7 +197,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     if (vimAction.type === 'fitAll') {
       if (!canvas || currentStars.length === 0) return
-      const w = canvas.width, h = canvas.height
+      const w = canvas.clientWidth, h = canvas.clientHeight
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
       for (const s of currentStars) {
         if (s.x < minX) minX = s.x
@@ -220,7 +220,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const clusterId = vimAction.clusterId
       const members = currentStars.filter(s => s.clusterId === clusterId)
       if (!canvas || members.length === 0) return
-      const w = canvas.width, h = canvas.height
+      const w = canvas.clientWidth, h = canvas.clientHeight
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
       for (const s of members) {
         if (s.x < minX) minX = s.x
@@ -252,7 +252,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     if (stars.length === 0) return
     const canvas = canvasRef.current
     if (!canvas) return
-    const w = canvas.width, h = canvas.height
+    const w = canvas.clientWidth, h = canvas.clientHeight
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const s of stars) {
       if (s.x < minX) minX = s.x
@@ -627,7 +627,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     const canvas = canvasRef.current
     if (!canvas) return
-    const w = canvas.width, h = canvas.height
+    const w = canvas.clientWidth, h = canvas.clientHeight
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const r of searchHighlights) {
@@ -674,7 +674,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const w = canvas.width, h = canvas.height
+    const w = canvas.clientWidth, h = canvas.clientHeight
 
     if (isDragging.current) {
       const dx = e.clientX - lastMouse.current.x
@@ -716,7 +716,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     if (Math.abs(e.clientX - lastMouse.current.x) > 3 || Math.abs(e.clientY - lastMouse.current.y) > 3) return
     const canvas = canvasRef.current
     if (!canvas) return
-    const w = canvas.width, h = canvas.height
+    const w = canvas.clientWidth, h = canvas.clientHeight
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
 
     let clicked: string | null = null
@@ -758,7 +758,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     e.preventDefault()
     const canvas = canvasRef.current
     if (!canvas) return
-    const w = canvas.width, h = canvas.height
+    const w = canvas.clientWidth, h = canvas.clientHeight
     const factor = e.deltaY < 0 ? 1.1 : 0.9
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
     const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camRef.current.zoom * factor))
