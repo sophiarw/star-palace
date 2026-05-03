@@ -28,6 +28,7 @@ Locked decisions:
 | F9 | Galaxies (multi-root indexing) | M | New table + galaxy_id column; spiral origin offsets; renderer panel. | **DONE** |
 | F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | |
 | F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks archived under `prototypes/f8a` + `prototypes/f8a-vapor`. | **DONE** |
+| F12 | Selection animation (pulse / breathe) | XS | Renderer-only; replaces SPRITE_SELECTED_BOOST_ALPHA static treatment with a time-varying pulse. | |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -693,6 +694,23 @@ Means switching themes does NOT evict the previous theme's sprites — they stay
 3. Refresh browser → theme persists.
 4. Switch back to `jwst` → instant; sprites previously rendered are still cached.
 5. Manual `star_type` overrides (F2/F4) and pin overlays (F4) render correctly under both themes.
+
+### F12 — Selection animation (pulse / breathe)
+
+When a star is selected, animate its scale or alpha so the selection state reads as alive, not static. Inspired by the existing per-frame pulsar beam rotation that the user explicitly likes.
+
+**Sketch:**
+- Animate sprite scale: `scale = SPRITE_SELECTED_SCALE * (1 + sin(tNow * 2π / 1500) * 0.06)` — gentle 5-7% oscillation, 1.5s period.
+- OR animate alpha boost: replace static `SPRITE_SELECTED_BOOST_ALPHA = 0.6` with `0.45 + sin(tNow * 2π / 1500) * 0.15`.
+- Pick one or both at implementation time.
+- Cheap; runs in the existing per-frame draw loop; no caching invalidation.
+
+**Files (when implemented)**:
+- `src/renderer/src/components/StarMap/StarMap.tsx` — selection scale + boost-alpha apply sites.
+
+**Out of scope**:
+- Multi-state animation (e.g. different pulse for hover vs select).
+- Per-type animation profiles.
 
 ### F8 — Procedural per-file graphics
 
