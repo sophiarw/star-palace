@@ -244,9 +244,9 @@ export default function App() {
   const { mode } = useVimMode({
     onAction: dispatchVimAction,
     onToggleSearch: handleToggleSearch,
-    onSelectStar: handleSelectStar,
     onEscape: handleEscape,
     onSelectHovered: handleSelectHovered,
+    onSelectStar: handleSelectStar,
     hoveredId,
     selectedId,
     selectedStar,
