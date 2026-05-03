@@ -236,6 +236,10 @@ export default function App() {
     setTypeDropdownOpen(true)
   }, [])
 
+  const handleToggleCollections = useCallback(() => {
+    setShowCollectionsPanel(p => !p)
+  }, [])
+
   const handleGalaxyIndexed = useCallback(() => {
     loadGalaxies()
     loadMap()
@@ -303,6 +307,7 @@ export default function App() {
     onStarTypeChange: handleStarTypeChange,
     onToggleCheatsheet: handleToggleCheatsheet,
     onOpenTypeDropdown: handleOpenTypeDropdown,
+    onToggleCollections: handleToggleCollections,
   })
 
   const showEmpty = stars.length === 0
@@ -373,7 +378,7 @@ export default function App() {
         searchResults={highlights}
         searchQuery={searchQuery}
         open={showCollectionsPanel}
-        onClose={() => setShowCollectionsPanel(p => !p)}
+        onClose={() => setShowCollectionsPanel(false)}
       />
 
       {selectedStar && (

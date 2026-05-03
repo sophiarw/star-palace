@@ -25,6 +25,10 @@ interface UseVimModeOptions {
   onStarTypeChange: (id: string, type: StarType | null) => void
   onToggleCheatsheet: () => void
   onOpenTypeDropdown: () => void
+  // F5 — toggle the Collections sidebar. The hook just forwards the keypress;
+  // App owns the visibility state so it can also be toggled via the panel's
+  // own close button.
+  onToggleCollections: () => void
 }
 
 // Velocity in screen pixels per second. StarMap divides by zoom so screen-
@@ -59,6 +63,7 @@ export function useVimMode({
   onStarTypeChange,
   onToggleCheatsheet,
   onOpenTypeDropdown,
+  onToggleCollections,
 }: UseVimModeOptions): { mode: VimMode; setMode: (m: VimMode) => void } {
   const [mode, setMode] = useState<VimMode>('normal')
   const modeRef = useRef<VimMode>('normal')
@@ -239,6 +244,12 @@ export function useVimMode({
             e.preventDefault()
             onToggleCheatsheet()
             break
+          case 'c':
+            // F5 — toggle the Collections sidebar. Lowercase only; uppercase C
+            // is reserved in case we want a "create new collection" shortcut.
+            e.preventDefault()
+            onToggleCollections()
+            break
           case 'i': {
             e.preventDefault()
             const focusInput = () => {
@@ -326,6 +337,7 @@ export function useVimMode({
     onStarTypeChange,
     onToggleCheatsheet,
     onOpenTypeDropdown,
+    onToggleCollections,
   ])
 
   return { mode, setMode: setModeSync }
