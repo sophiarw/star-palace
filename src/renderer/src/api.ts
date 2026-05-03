@@ -1,4 +1,4 @@
-import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType } from '@shared/types'
+import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType, GalaxySummary } from '@shared/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BASE = `http://127.0.0.1:${(import.meta as any).env?.VITE_DAEMON_PORT ?? 7373}`
@@ -94,4 +94,36 @@ export function edgeFromNeighborhood(fileId: string, neighbors: { file: Star; we
     engine: 'embedding' as const,
     computedAt: Date.now(),
   }))
+}
+
+// F9 — Galaxies
+
+export async function fetchGalaxies(): Promise<GalaxySummary[]> {
+  const res = await fetch(`${BASE}/api/galaxies`)
+  if (!res.ok) throw new Error(`fetchGalaxies: ${res.status}`)
+  const data = await res.json() as { galaxies: GalaxySummary[] }
+  return data.galaxies
+}
+
+export interface IndexResult {
+  scanned: number
+  indexed: number
+  skipped: number
+  errors: number
+  durationMs: number
+  galaxyId?: number
+  galaxyName?: string
+}
+
+export async function indexPath(path: string, galaxyName?: string): Promise<IndexResult> {
+  const res = await fetch(`${BASE}/api/index`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, galaxyName }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`indexPath: ${res.status} ${text}`)
+  }
+  return res.json()
 }

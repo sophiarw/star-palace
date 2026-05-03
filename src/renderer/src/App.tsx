@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import type { Star, Cluster, MapStats, SearchResult, StarType } from '@shared/types'
-import { fetchAll, fetchStats } from './api'
+import type { Star, Cluster, MapStats, SearchResult, StarType, GalaxySummary } from '@shared/types'
+import { fetchAll, fetchStats, fetchGalaxies } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
 import StatsBar from './components/StatsBar/StatsBar'
@@ -23,6 +23,7 @@ export default function App() {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [showCheatsheet, setShowCheatsheet] = useState(true)
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
+  const [galaxies, setGalaxies] = useState<GalaxySummary[]>([])
   const layoutVersionRef = useRef<number>(-1)
 
   // Ref to focus the search input from vim '/'
@@ -42,6 +43,13 @@ export default function App() {
     }
   }, [])
 
+  const loadGalaxies = useCallback(async () => {
+    try {
+      const list = await fetchGalaxies()
+      setGalaxies(list)
+    } catch { /* daemon may not be running */ }
+  }, [])
+
   const pollStats = useCallback(async () => {
     try {
       const s = await fetchStats()
@@ -57,9 +65,10 @@ export default function App() {
   useEffect(() => {
     loadMap()
     pollStats()
+    loadGalaxies()
     const interval = setInterval(pollStats, STATS_POLL_MS)
     return () => clearInterval(interval)
-  }, [loadMap, pollStats])
+  }, [loadMap, pollStats, loadGalaxies])
 
   const handleSearchResults = useCallback((results: SearchResult[]) => {
     setHighlights(results)
@@ -79,21 +88,49 @@ export default function App() {
 
   const pcDial = usePcDial()
 
+  // F9: each star's displayed position is its local PCA position (or daemon-
+  // provided fallback) + its galaxy's origin offset. Galaxies live at distinct
+  // origins on the spiral so multiple indexed roots show as separate clusters
+  // the user can pan between.
+  const galaxyOffsetById = useMemo(() => {
+    const m = new Map<number, [number, number]>()
+    for (const g of galaxies) m.set(g.id, [g.originX, g.originY])
+    return m
+  }, [galaxies])
+
+  // For SearchResult we need a fallback galaxy lookup (search payload doesn't
+  // carry galaxyId). starsById is keyed by id and is the source of truth.
+  const galaxyOffsetForStarId = useCallback((id: string): [number, number] => {
+    const star = stars.find(s => s.id === id)  // small set; linear scan OK
+    if (!star || star.galaxyId === null) return [0, 0]
+    return galaxyOffsetById.get(star.galaxyId) ?? [0, 0]
+  }, [stars, galaxyOffsetById])
+
   const projectedStars = useMemo(() => {
-    if (!pcDial.ready || pcDial.scaledById.size === 0) return stars
     return stars.map(s => {
-      const proj = pcDial.scaledById.get(s.id)
-      return proj ? { ...s, x: proj[0], y: proj[1] } : s
+      const local = pcDial.ready && pcDial.scaledById.size > 0
+        ? pcDial.scaledById.get(s.id) ?? null
+        : null
+      const baseX = local ? local[0] : s.x
+      const baseY = local ? local[1] : s.y
+      const offset = s.galaxyId !== null
+        ? galaxyOffsetById.get(s.galaxyId) ?? [0, 0]
+        : [0, 0]
+      return { ...s, x: baseX + offset[0], y: baseY + offset[1] }
     })
-  }, [stars, pcDial.ready, pcDial.scaledById])
+  }, [stars, pcDial.ready, pcDial.scaledById, galaxyOffsetById])
 
   const projectedHighlights = useMemo(() => {
-    if (!pcDial.ready || pcDial.scaledById.size === 0) return highlights
     return highlights.map(h => {
-      const proj = pcDial.scaledById.get(h.id)
-      return proj ? { ...h, x: proj[0], y: proj[1] } : h
+      const local = pcDial.ready && pcDial.scaledById.size > 0
+        ? pcDial.scaledById.get(h.id) ?? null
+        : null
+      const baseX = local ? local[0] : h.x
+      const baseY = local ? local[1] : h.y
+      const [ox, oy] = galaxyOffsetForStarId(h.id)
+      return { ...h, x: baseX + ox, y: baseY + oy }
     })
-  }, [highlights, pcDial.ready, pcDial.scaledById])
+  }, [highlights, pcDial.ready, pcDial.scaledById, galaxyOffsetForStarId])
 
   const starsById = useMemo(() => new Map(projectedStars.map(s => [s.id, s])), [projectedStars])
   const clustersById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters])
