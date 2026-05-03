@@ -28,9 +28,11 @@ export default function App() {
   const [showCheatsheet, setShowCheatsheet] = useState(true)
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const [galaxies, setGalaxies] = useState<GalaxySummary[]>([])
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const layoutVersionRef = useRef<number>(-1)
 
-  // Ref to focus the search input from vim '/'
+  // Ref to focus the search input from vim Cmd/Ctrl+F
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Pending vim action to send to StarMap (new object ref each dispatch so the same action fires repeatedly)
@@ -149,6 +151,18 @@ export default function App() {
     })
   }, [highlights, pcDial.ready, pcDial.scaledById, galaxyOffsetForStarId])
 
+  const projectedHighlightsRef = useRef<{ id: string; x: number; y: number }[]>([])
+  projectedHighlightsRef.current = projectedHighlights
+
+  // Auto-select top result whenever a new search returns hits, and pan to it.
+  useEffect(() => {
+    if (highlights.length === 0) return
+    const top = projectedHighlightsRef.current[0]
+    if (!top) return
+    setSelectedId(top.id)
+    setVimAction({ type: 'panTo', wx: top.x, wy: top.y })
+  }, [highlights])
+
   const starsById = useMemo(() => new Map(projectedStars.map(s => [s.id, s])), [projectedStars])
   const clustersById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters])
 
@@ -164,8 +178,18 @@ export default function App() {
   }, [])
 
   const handleToggleSearch = useCallback(() => {
-    searchInputRef.current?.focus()
+    setShowSearch(prev => !prev)
   }, [])
+
+  const handleHideSearch = useCallback(() => {
+    setShowSearch(false)
+  }, [])
+
+  const handleCloseSearch = useCallback(() => {
+    setShowSearch(false)
+    setSearchQuery('')
+    handleClearSearch()
+  }, [handleClearSearch])
 
   const handleSelectStar = useCallback((id: string) => {
     setSelectedId(id)
@@ -174,6 +198,8 @@ export default function App() {
   const handleEscape = useCallback(() => {
     setSelectedId(null)
     setHighlights([])
+    setShowSearch(false)
+    setSearchQuery('')
     handleClearSearch()
   }, [handleClearSearch])
 
@@ -207,7 +233,7 @@ export default function App() {
     hoveredId,
     selectedId,
     selectedStar,
-    searchHighlights: highlights,
+    searchHighlights: projectedHighlights,
     onStarTypeChange: handleStarTypeChange,
     onToggleCheatsheet: handleToggleCheatsheet,
     onOpenTypeDropdown: handleOpenTypeDropdown,
@@ -231,12 +257,17 @@ export default function App() {
         }}
       />
 
-      <SearchBar
-        inputRef={searchInputRef}
-        onResults={handleSearchResults}
-        onClear={handleClearSearch}
-        onFocus={() => { /* mode transitions handled in useVimMode */ }}
-      />
+      {showSearch && (
+        <SearchBar
+          inputRef={searchInputRef}
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          onResults={handleSearchResults}
+          onClear={handleClearSearch}
+          onClose={handleCloseSearch}
+          onSubmit={handleHideSearch}
+        />
+      )}
 
       <PCDial
         axisX={pcDial.axisX}

@@ -8,19 +8,19 @@ interface Binding {
 }
 
 const NAV_BINDINGS: Binding[] = [
-  { key: 'h / j / k / l', desc: 'Pan 50 world-units' },
-  { key: 'H / J / K / L', desc: 'Pan 200 world-units' },
+  { key: 'h / j / k / l', desc: 'Pan (hold for smooth)' },
+  { key: 'H / J / K / L', desc: 'Pan fast (4×)' },
   { key: '+ or =', desc: 'Zoom in ×1.2' },
   { key: '- or _', desc: 'Zoom out ÷1.2' },
   { key: 'gg', desc: 'Fit all stars in view' },
   { key: 'gh', desc: 'Fit selected cluster' },
-  { key: 'n / N', desc: 'Next / prev search result' },
-  { key: 'Enter', desc: 'Select hovered star' },
+  { key: 'n / N', desc: 'Next / prev search result (selects + pans)' },
+  { key: 'Enter', desc: 'Select hovered star (or hide search bar when typing)' },
   { key: 'o', desc: 'Open selected in default app' },
   { key: 't', desc: 'Open star-type dropdown' },
   { key: 'T', desc: 'Cycle star type forward' },
-  { key: '/', desc: 'Enter search mode' },
-  { key: 'Esc', desc: 'Back to normal / clear' },
+  { key: '⌘F / Ctrl+F', desc: 'Toggle search bar (keeps query + highlights)' },
+  { key: 'Esc', desc: 'Exit search / clear selection' },
   { key: '?', desc: 'Toggle this cheatsheet' },
 ]
 

@@ -1,24 +1,33 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { search } from '../../api'
 import type { SearchResult } from '@shared/types'
 
 interface Props {
+  value: string
+  onValueChange: (v: string) => void
   onResults: (results: SearchResult[]) => void
   onClear: () => void
-  onFocus?: () => void
+  onClose?: () => void
+  onSubmit?: () => void
   inputRef?: React.RefObject<HTMLInputElement>
 }
 
-export default function SearchBar({ onResults, onClear, onFocus, inputRef }: Props) {
-  const [value, setValue] = useState('')
+export default function SearchBar({ value, onValueChange, onResults, onClear, onClose, onSubmit, inputRef }: Props) {
   const [searching, setSearching] = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const internalRef = useRef<HTMLInputElement>(null)
   const resolvedRef = inputRef ?? internalRef
 
+  useEffect(() => {
+    const el = resolvedRef.current
+    if (!el) return
+    el.focus()
+    el.select()
+  }, [resolvedRef])
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
-    setValue(q)
+    onValueChange(q)
 
     if (debounce.current) clearTimeout(debounce.current)
 
@@ -38,14 +47,21 @@ export default function SearchBar({ onResults, onClear, onFocus, inputRef }: Pro
         setSearching(false)
       }
     }, 300)
-  }, [onResults, onClear])
+  }, [onResults, onClear, onValueChange])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      setValue('')
+      e.preventDefault()
+      onValueChange('')
       onClear()
+      onClose?.()
+      return
     }
-  }, [onClear])
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      onSubmit?.()
+    }
+  }, [onClear, onClose, onSubmit, onValueChange])
 
   return (
     <div className="search-bar">
@@ -56,13 +72,12 @@ export default function SearchBar({ onResults, onClear, onFocus, inputRef }: Pro
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onFocus={onFocus}
         placeholder={searching ? 'Searching…' : 'Search the sky…'}
         spellCheck={false}
         autoComplete="off"
       />
       {value && (
-        <div className="search-hint">ESC to clear · searching {value.length > 0 ? 'for "' + value + '"' : ''}</div>
+        <div className="search-hint">Enter: hide bar, n/N to cycle · Esc: clear</div>
       )}
     </div>
   )
