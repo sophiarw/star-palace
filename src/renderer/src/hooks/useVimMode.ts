@@ -54,10 +54,15 @@ export function useVimMode({
     setMode(m)
   }, [])
 
-  // Reset search index when highlights change
+  // Reset cycle index whenever the highlight set changes by content, not just
+  // by array reference. Keying on the joined IDs covers the case where a
+  // memoised consumer hands us the same ref with different IDs — without that,
+  // n/N would resume from a stale offset that no longer points at the same
+  // result.
+  const highlightsKey = searchHighlights.map(h => h.id).join('|')
   useEffect(() => {
     searchIndexRef.current = -1
-  }, [searchHighlights])
+  }, [highlightsKey])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
