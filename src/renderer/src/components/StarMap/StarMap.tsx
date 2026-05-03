@@ -733,7 +733,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const neighbors = neighborSet.current
     const hasHighlights = highlights.size > 0
     const hasFocus = hasHighlights || selectedId !== null
-    const exposure = exposureFor(cam.zoom)
+    // Themes that opt into flatLighting (e.g. Bio, Lost in space) skip the
+    // zoom-driven exposure dim entirely so per-sprite procedural detail
+    // reads at full opacity at every zoom level.
+    const exposure = activeTheme.flatLighting ? 1 : exposureFor(cam.zoom)
     const drawScale = zoomDrawScale(cam.zoom)
     const tNowMs = performance.now()
     const pulseT = Math.min(1, (tNowMs - searchPulseStart.current) / SEARCH_PULSE_MS)
@@ -790,21 +793,25 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     // Vignette to keep focus toward center. Phase 1.3 — gradient depends
     // only on canvas size; cache on a ref and rebuild only on resize.
+    // Themes with flatLighting (Bio, Lost in space) skip the vignette so
+    // their organic / scenic backgrounds don't fade into corner darkness.
     markStart()
-    let vignetteCache = vignetteCacheRef.current
-    if (!vignetteCache || vignetteCache.w !== w || vignetteCache.h !== h) {
-      const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
-      grad.addColorStop(0, 'rgba(0,0,0,0)')
-      // F-NEXT-B — outer alpha lowered 0.55 → 0.35. The deck-grade tighter
-      // sprite halos already keep visual focus in the centre; the heavier
-      // vignette was washing the field corners and competing with the new
-      // background-nebula layer (Stage C).
-      grad.addColorStop(1, 'rgba(0,4,12,0.35)')
-      vignetteCache = { w, h, grad }
-      vignetteCacheRef.current = vignetteCache
+    if (!activeTheme.flatLighting) {
+      let vignetteCache = vignetteCacheRef.current
+      if (!vignetteCache || vignetteCache.w !== w || vignetteCache.h !== h) {
+        const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
+        grad.addColorStop(0, 'rgba(0,0,0,0)')
+        // F-NEXT-B — outer alpha lowered 0.55 → 0.35. The deck-grade tighter
+        // sprite halos already keep visual focus in the centre; the heavier
+        // vignette was washing the field corners and competing with the new
+        // background-nebula layer (Stage C).
+        grad.addColorStop(1, 'rgba(0,4,12,0.35)')
+        vignetteCache = { w, h, grad }
+        vignetteCacheRef.current = vignetteCache
+      }
+      ctx.fillStyle = vignetteCache.grad
+      ctx.fillRect(0, 0, w, h)
     }
-    ctx.fillStyle = vignetteCache.grad
-    ctx.fillRect(0, 0, w, h)
     markEnd('03.vignette')
 
     // Constellation nebulae — multi-stop gradients with subtle elliptical squish per cluster

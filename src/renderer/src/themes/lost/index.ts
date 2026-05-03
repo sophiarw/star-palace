@@ -16,6 +16,7 @@ export const lostTheme: Theme = {
   defaultDrawer: lostDefaultDrawer,
   background: lostBackground,
   smoothing: 'high',
+  flatLighting: true,
   ui: {
     accentColor: '#7ec8ff',  // visor-cyan
     fontStack: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',

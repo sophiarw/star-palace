@@ -123,6 +123,13 @@ export interface Theme {
    * theme flips so the cap takes effect immediately.
    */
   dprCap?: number
+  /**
+   * Disable the global zoom-driven exposure dim AND the radial vignette.
+   * JWST/Vapor/Atari want the deep-space "fade to dark" feel; Bio + Lost
+   * are organic / scenic worlds where stars should always read at full
+   * opacity and corners shouldn't darken. Default `false`.
+   */
+  flatLighting?: boolean
   ui: ThemeUi
 }
 

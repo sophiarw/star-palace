@@ -16,6 +16,7 @@ export const bioTheme: Theme = {
   defaultDrawer: bioDefaultDrawer,
   background: bioBackground,
   smoothing: 'high',
+  flatLighting: true,
   ui: {
     accentColor: '#a8f0c8',  // mint
     fontStack: '"Instrument Serif", "Iowan Old Style", Georgia, serif',
