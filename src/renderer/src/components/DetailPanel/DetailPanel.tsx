@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Star, FileContent, StarType } from '@shared/types'
 import { CONSTELLATION_PALETTE, STAR_TYPES } from '@shared/types'
-import { fetchContent, openFile, rawUrl, fetchNeighborhood, setStarType as apiSetStarType } from '../../api'
+import { fetchContent, openFile, revealFile, rawUrl, fetchNeighborhood, setStarType as apiSetStarType } from '../../api'
 import { defaultStarType, defaultStarTypeReason } from '../StarMap/autoStarType'
 
 const STAR_TYPE_LABELS: Record<StarType, string> = {
@@ -76,6 +76,10 @@ export default function DetailPanel({
   const [neighbors, setNeighbors] = useState<NeighborSummary[]>([])
   const [typeOpenInternal, setTypeOpenInternal] = useState(false)
   const [typeSaving, setTypeSaving] = useState(false)
+  // F14 — separate in-flight flags so the Open and Reveal buttons disable
+  // independently while their daemon roundtrips are pending.
+  const [openInFlight, setOpenInFlight] = useState(false)
+  const [revealInFlight, setRevealInFlight] = useState(false)
 
   // Allow external control of the type dropdown (for vim 't' binding)
   const typeOpen = typeDropdownOpen !== undefined ? typeDropdownOpen : typeOpenInternal
@@ -139,8 +143,27 @@ export default function DetailPanel({
       </div>
 
       <div className="detail-panel-actions">
-        <button onClick={() => openFile(star.id).catch(console.error)}>
+        <button
+          disabled={openInFlight}
+          onClick={() => {
+            setOpenInFlight(true)
+            openFile(star.id)
+              .catch((err) => console.warn('openFile failed:', err))
+              .finally(() => setOpenInFlight(false))
+          }}
+        >
           Open in default app ↗
+        </button>
+        <button
+          disabled={revealInFlight}
+          onClick={() => {
+            setRevealInFlight(true)
+            revealFile(star.id)
+              .catch((err) => console.warn('revealFile failed:', err))
+              .finally(() => setRevealInFlight(false))
+          }}
+        >
+          Reveal in Finder ↗
         </button>
       </div>
 

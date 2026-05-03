@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Star, StarType } from '@shared/types'
 import { STAR_TYPES } from '@shared/types'
-import { openFile, setStarType } from '../api'
+import { openFile, revealFile, setStarType } from '../api'
 
 export type VimMode = 'normal' | 'search'
 
@@ -206,6 +206,15 @@ export function useVimMode({
             e.preventDefault()
             if (selectedId) {
               openFile(selectedId).catch((err) => console.warn('openFile failed:', err))
+            }
+            break
+          case 'O':
+            // F14 — capital O reveals the selected file in the OS file
+            // explorer (Finder / Explorer); arrives as a distinct e.key
+            // value from lowercase 'o' so the switch handles it directly.
+            e.preventDefault()
+            if (selectedId) {
+              revealFile(selectedId).catch((err) => console.warn('revealFile failed:', err))
             }
             break
           case 't':
