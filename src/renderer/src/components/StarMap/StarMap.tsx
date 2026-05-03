@@ -351,6 +351,54 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     tempBucketCacheRef.current = new Map()
     jitterCacheRef.current = new Map()
     dirtyRef.current = true
+
+    // Spread sprite-build cost over idle time after the first frame paints.
+    // Without this, the very first frame after a fresh load (or theme flip)
+    // pays for every visible star's procedural sprite build at once, which
+    // can chew tens to hundreds of milliseconds. With it, the first paint
+    // uses whatever sprites are cache-resident (the cheap tier serves until
+    // full builds complete via the LOD swap) and the heavier full-tier
+    // sprites trickle in over subsequent idle ticks.
+    if (typeof window === 'undefined') return
+    const ric: ((cb: () => void) => number | NodeJS.Timeout) = typeof window.requestIdleCallback === 'function'
+      ? (cb) => window.requestIdleCallback(() => cb())
+      : (cb) => window.setTimeout(cb, 16)
+    const cic: ((handle: number) => void) = typeof window.cancelIdleCallback === 'function'
+      ? (h) => window.cancelIdleCallback(h)
+      : (h) => window.clearTimeout(h)
+    let cancelled = false
+    let cursor = 0
+    const list = stars
+    const prebuildChunkSize = 40
+    const prebuildMode = classModeRef.current
+    const prebuildBuckets = bucketsRef.current
+    const prebuildTheme = themeRef.current
+    const handle = ric(function tick(): void {
+      if (cancelled) return
+      const end = Math.min(cursor + prebuildChunkSize, list.length)
+      for (let i = cursor; i < end; i++) {
+        const s = list[i]
+        const sb = prebuildMode === 'usage'
+          ? sizeBucketForImportance(s.importanceScore ?? 0)
+          : sizeBucketFor(s.viewCount)
+        const t = effectiveStarType(s, prebuildMode, prebuildBuckets)
+        if (t) {
+          getTypedStarSprite(prebuildTheme, t, sb, s.id, 'full')
+        } else {
+          const cluster = s.clusterId !== null ? clusterMap.current.get(s.clusterId) : null
+          const colorIndex = cluster ? cluster.colorIndex : -1
+          const tb = tempBucketFor(s.id)
+          const jit = defaultJitterFor(s.id)
+          getStarSprite(colorIndex, tb, sb, jit.spikeVariant, 'full')
+        }
+      }
+      cursor = end
+      if (cursor < list.length) ric(tick)
+    }) as number
+    return () => {
+      cancelled = true
+      cic(handle as number)
+    }
   }, [stars])
   useEffect(() => { clustersRef.current = clusters; dirtyRef.current = true }, [clusters])
   useEffect(() => { highlightsRef.current = searchHighlights; dirtyRef.current = true }, [searchHighlights])
