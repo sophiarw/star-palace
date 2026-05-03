@@ -65,6 +65,16 @@ export function spriteCoreRadius(sizeBucket: number): number {
 const cache = new Map<string, HTMLCanvasElement>()
 
 /**
+ * Sprite level-of-detail. `'full'` is the existing artwork path; `'cheap'`
+ * skips the per-frame-expensive bits — diffraction spikes for the default
+ * sprite, the entire procedural drawer for typed sprites — so far-out
+ * stars cost a single halo+core blit. The renderer picks the LOD from the
+ * graphics-quality setting + on-screen sprite size at draw time; sprites
+ * are cached separately per LOD so swapping never recomputes.
+ */
+export type Lod = 'cheap' | 'full'
+
+/**
  * F8b — `spikeVariant` adds a 4-spike alternative to the existing 6-spike
  * default for sizeBucket >= 2. The bucket count grows from 120 → 240 (still
  * tiny). Per-id rotation + alpha jitter are NOT baked here; they're applied
@@ -77,11 +87,12 @@ export function getStarSprite(
   tempBucket: number,
   sizeBucket: number,
   spikeVariant: SpikeVariant = 6,
+  lod: Lod = 'full',
 ): HTMLCanvasElement {
-  const key = `${colorIndex}|${tempBucket}|${sizeBucket}|${spikeVariant}`
+  const key = `${colorIndex}|${tempBucket}|${sizeBucket}|${spikeVariant}|${lod}`
   const cached = cache.get(key)
   if (cached) return cached
-  const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant)
+  const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant, lod)
   cache.set(key, sprite)
   return sprite
 }
@@ -91,6 +102,7 @@ function renderSprite(
   tempBucket: number,
   sizeBucket: number,
   spikeVariant: SpikeVariant,
+  lod: Lod,
 ): HTMLCanvasElement {
   const r = spriteCoreRadius(sizeBucket)
   const half = Math.ceil(r * HALO_FACTOR)
@@ -111,11 +123,18 @@ function renderSprite(
   // Soft halo (broad falloff). Mid-stops bumped 0.5→0.85 / 0.12→0.40 so
   // the disc body reads opaque at high zoom — previously stretched gradient
   // looked translucent because most of the sprite area was below 0.5 alpha.
+  // Cheap LOD uses a 2-stop halo (no mid-falloff), since at small on-screen
+  // sizes the broader gradient detail isn't visible anyway.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, half)
-  halo.addColorStop(0, rgbCss(core, 1))
-  halo.addColorStop(0.12, rgbCss(tinted, 0.85))
-  halo.addColorStop(0.45, rgbCss(tinted, 0.40))
-  halo.addColorStop(1, rgbCss(tinted, 0))
+  if (lod === 'cheap') {
+    halo.addColorStop(0, rgbCss(core, 1))
+    halo.addColorStop(1, rgbCss(tinted, 0))
+  } else {
+    halo.addColorStop(0, rgbCss(core, 1))
+    halo.addColorStop(0.12, rgbCss(tinted, 0.85))
+    halo.addColorStop(0.45, rgbCss(tinted, 0.40))
+    halo.addColorStop(1, rgbCss(tinted, 0))
+  }
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, size, size)
 
@@ -123,7 +142,10 @@ function renderSprite(
   // F8b — spikeVariant=6 keeps the original 3 strokes (6 arms) at angles
   // {0, π/3, 2π/3}; spikeVariant=4 draws 2 strokes (4 arms) at {0, π/2}.
   // Per-id rotation applied at draw time orients these spikes in StarMap.
-  if (sizeBucket >= 2) {
+  // Cheap LOD skips the spike pass entirely — the linear gradient + stroke
+  // is the heaviest part of the bucket sprite and is invisible at the
+  // sizes that route through cheap.
+  if (sizeBucket >= 2 && lod !== 'cheap') {
     ctx.save()
     ctx.globalCompositeOperation = 'screen'
     const reach = half * SPIKE_REACH
@@ -194,10 +216,28 @@ const typedCache = new LRUSpriteCache<string>(500)
  * Build the cache key for a typed sprite. Theme prefix means switching
  * themes does NOT evict the previous theme's entries — they age out by
  * churn, so flipping back and forth pays only the first switch's cost.
+ * `lod` suffix lets the cheap and full tiers coexist for the same star.
  */
-function typedSpriteKey(themeId: string, type: StarType, sizeBucket: number, starId: string): string {
+function typedSpriteKey(themeId: string, type: StarType, sizeBucket: number, starId: string, lod: Lod): string {
   const hashBucket = hashStr(starId) & 0xfff
-  return `${themeId}|type:${type}|s:${sizeBucket}|h:${hashBucket}`
+  return `${themeId}|type:${type}|s:${sizeBucket}|h:${hashBucket}|lod:${lod}`
+}
+
+// Per-type tint for the cheap renderer. Mirrors the broad "vibe" of each
+// theme drawer at sub-px-level fidelity — at the on-screen sizes that
+// route through cheap, all the user perceives is the colour and the halo
+// shape, so a one-RGB approximation is enough.
+const CHEAP_TINT: Record<StarType, RGB> = {
+  'red-giant': [255, 130, 70],
+  'blue-supergiant': [140, 180, 255],
+  'white-dwarf': [220, 230, 245],
+  'main-sequence': [240, 230, 200],
+  'neutron-star': [220, 230, 255],
+  'pulsar': [180, 230, 255],
+  'binary': [240, 200, 140],
+  'quasar': [200, 150, 240],
+  'black-hole': [80, 50, 80],
+  'nebula': [180, 120, 220],
 }
 
 export function getTypedStarSprite(
@@ -205,13 +245,58 @@ export function getTypedStarSprite(
   type: StarType,
   sizeBucket: number,
   starId: string,
+  lod: Lod = 'full',
 ): HTMLCanvasElement {
-  const key = typedSpriteKey(theme.id, type, sizeBucket, starId)
+  const key = typedSpriteKey(theme.id, type, sizeBucket, starId, lod)
   const cached = typedCache.get(key)
   if (cached) return cached
-  const sprite = renderTypedSprite(theme, type, sizeBucket, starId)
+  const sprite = lod === 'cheap'
+    ? renderCheapTypedSprite(type, sizeBucket)
+    : renderTypedSprite(theme, type, sizeBucket, starId)
   typedCache.set(key, sprite)
   return sprite
+}
+
+// Cheap typed sprite: tinted halo + core arc, no procedural drawer call.
+// Same canvas size as the full variant so the renderer's drawScale math
+// works without a per-LOD branch on the consume side. Black-hole gets a
+// dimmer center to keep its "sucks light" silhouette readable; everything
+// else is a generic warm/cool glow.
+function renderCheapTypedSprite(type: StarType, sizeBucket: number): HTMLCanvasElement {
+  const baseR = spriteCoreRadius(sizeBucket) * TYPED_SCALE[type]
+  const haloFactor =
+    type === 'nebula' ? 2.6 :
+    type === 'quasar' ? 4.5 :
+    type === 'pulsar' ? 3.8 :
+    type === 'black-hole' ? 4.5 :
+    HALO_FACTOR
+  const half = Math.ceil(baseR * haloFactor)
+  const size = half * 2
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const cx = half, cy = half
+  const tint = CHEAP_TINT[type]
+  const coreColor = type === 'black-hole' ? tint : blend(tint, [255, 255, 255], 0.6)
+
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, half)
+  halo.addColorStop(0, rgbCss(coreColor, type === 'black-hole' ? 0.4 : 0.95))
+  halo.addColorStop(1, rgbCss(tint, 0))
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, size, size)
+
+  if (type !== 'black-hole') {
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 1.2)
+    coreGrad.addColorStop(0, rgbCss(coreColor, 1))
+    coreGrad.addColorStop(1, rgbCss(tint, 0))
+    ctx.fillStyle = coreGrad
+    ctx.beginPath()
+    ctx.arc(cx, cy, baseR * 1.2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  return canvas
 }
 
 function renderTypedSprite(
