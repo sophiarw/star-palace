@@ -60,19 +60,50 @@ extensions like `.py`, `.csv`, `.yaml`, `.sql`, `.go`, `.rb`).
 | Toggle Collections sidebar | `c` |
 | Focus Galaxy panel path input | `i` |
 | Toggle perf overlay | `Shift+P` (FPS, p99, dropped frames — see [Performance](#performance)) |
+| Toggle Embedding Lab | `Shift+E` (run / preview / promote / revert embedding experiments) |
 | Esc | Cancel pin-drag / leave search / clear selection / clear active collection |
 
 ### Top bar (StatsBar)
 
 - **Color by** — `Type` uses the auto/manual star type; `Usage` buckets by the daemon's `importance_score`.
-- **Theme** — dropdown picker. Per-theme procedural drawers + chrome. Each theme owns its own DPR cap (e.g. Atari bakes at 1.0 for an 8-bit aesthetic).
+- **Theme** — dropdown picker. Five themes share the procedural engine; each owns its own resolution + smoothing + lighting:
+  - **JWST** — deep-space realism, Carina-palette nebulae, soft halos + vignette.
+  - **Vapor** — synthwave + Tron grid + CRT scanlines (theme `postPass`).
+  - **Atari low-res** — chunky 8-bit (theme sets `dprCap: 1.0`).
+  - **Lost in space** — astronauts, ships, wormholes (theme sets `flatLighting`).
+  - **Bioluminescent** — anemones, jellyfish, glowing flora (theme sets `flatLighting`).
 
 ### Panels
 
 - **PC dial** (top-left) — pick any two of the top 8 principal components for the X/Y axes. Layout is precomputed; flipping axes only re-projects, no re-train.
 - **Galaxy panel** (top-right) — index a folder as a galaxy; one row per indexed root with live progress, hide/show toggle, and "fly to" button.
 - **Collections sidebar** (left, toggle with `c`) — static (explicit member list) or dynamic (saved query) groups. Active collection draws a constellation-style hull on the map and dims non-members.
-- **DetailPanel** (right, opens on selection) — file content viewer (markdown / code / image), neighbor list, star-type override, pin/unpin, "remove from collection" when one is active.
+- **DetailPanel** (right, opens on selection) — file content viewer (markdown / code / image), neighbor list, star-type override, **tag chip list** (B1), pin/unpin, "remove from collection" when one is active.
+- **Embedding Lab** (`Shift+E`) — pick a subdir + an embedding strategy, run an experiment on the subset, preview the new layout, then **Promote** (adopt as default + re-embed rest of corpus in the background) or **Revert** (restore prior embeddings + positions from snapshot).
+
+## Tags (per file)
+
+Click any star to open the DetailPanel, then enter tags as chips below the star-type selector. Tags survive re-index (COALESCE-preserving upsert, like pins / star_type) and feed the `tags+metadata+content` embedding strategy when active. Persisted in `files.tags` (JSON-encoded `string[]`). Backend: `GET/POST /api/file/:id/tags`.
+
+## Embedding strategies
+
+The daemon's prompt to Ollama is configurable per-file via the `embedding_strategy` column. Five strategies live in `src/daemon/embedding/strategies.ts`:
+
+| Strategy | Prompt shape | Use case |
+|---|---|---|
+| `content-only` | Raw UTF-8 file content | Legacy default; long prose. |
+| `metadata-only` | filename + parent + ext + mime + size + mtime header | Tiny files where content alone is too short to embed usefully. |
+| `metadata+content` | Metadata header THEN truncated content | Recommended new default; metadata stays even when content gets truncated. |
+| `tags+metadata+content` | User tags first, then metadata + content | When you've curated tags and want them to dominate similarity. |
+| `sampled-stats+metadata` | Numeric summary (n, min, max, mean, std) + raw values + metadata for tiny numeric files; falls through to `metadata+content` otherwise | Sensor / measurement data (e.g. `data_subjectX_DayY.txt`). |
+
+Active default lives in `app_settings.default_strategy` (single-row k/v). Flip via the Embedding Lab "Promote" flow, or directly:
+
+```sh
+sqlite3 ~/.starpalace/index.db "UPDATE app_settings SET value='metadata+content' WHERE key='default_strategy'"
+```
+
+New rows always record their strategy in `files.embedding_strategy`. Re-index re-embeds when `(content_hash, strategy)` differs.
 
 ## Index your own files
 
@@ -121,6 +152,11 @@ Per-feature spec lives in `REQUIREMENTS.md` (search by `F<N>` ID). Quick index:
 | F15 | Reduced halo glow | Always-on |
 | F16 | Galaxy visibility toggle | Galaxy panel hide/show |
 | F17 | Live indexing progress (SSE) | Galaxy panel progress fill |
+| F-NEXT-A..D | Crisp graphics rework | DPR-aware sprites, halo grading, per-theme background paint, vapor CRT |
+| Themes | 5 themes, per-theme `dprCap`/`smoothing`/`flatLighting`/`postPass` | StatsBar Theme dropdown |
+| B1 | Tags + embedding strategies + schema | DetailPanel chip list; `app_settings.default_strategy` |
+| B2 | Experiment endpoints + subset PCA + snapshots | `POST /api/embedding/experiment` / `:promote` / `:revert` |
+| B3 | Embedding Lab UI | `Shift+E` panel — preview / promote / revert |
 
 ## Performance
 
@@ -133,16 +169,22 @@ on the clipboard and dumps to console.
 
 LOD policy (always on):
 
-- Far-star sprites swap to a cheap halo+core variant below 6 px on-screen.
+- **Same sprite at every zoom.** The cheap-LOD swap was retired so per-theme
+  aesthetics stay recognisable when zoomed out (the prior fallback hid the
+  procedural detail entirely). Sprites bake at the effective DPR (cache key
+  includes the DPR bucket) so the bitmap matches the device pixel grid.
 - Pulsar / quasar beam overlay skips below 4 px on-screen (sub-perceivable).
 - Backing-store DPR caps at the active theme's `dprCap` (or native if none).
   Atari sets `dprCap: 1.0` so the 8-bit aesthetic reads chunky by default;
   JWST / Vapor / Lost / Bio leave it uncapped for crisp high-DPI rendering.
+- The global `Low / Med / High / Ultra` quality dropdown was retired —
+  themes own resolution + smoothing + lighting via the Theme contract.
 
-Focused stars (selected / hovered / neighbor / search hit) always render
-at full quality, so the file you're acting on never degrades. CLAUDE.md has
-the implementation index (spatial grid, dirty-flag rAF, sprite LOD cache,
-position-delta refetch, idle prebuild, frame metrics).
+Focused stars (selected / hovered / neighbor / search hit) get a tinted
+ring (decoration pass) so the file you're acting on never gets visually
+lost. `repo-state.md` has the full implementation index (spatial grid,
+dirty-flag rAF, sprite cache, position-delta refetch, idle prebuild,
+frame metrics).
 
 ## Development
 
