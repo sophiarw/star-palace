@@ -11,6 +11,7 @@ import {
   spriteCoreRadius,
   hashStr,
   spriteCacheStats,
+  setSpriteCacheActiveTheme,
 } from './sprites'
 import { defaultJitterFor } from './proc'
 import { getBackdrop, getBackdropMultiplier } from './background'
@@ -314,7 +315,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // loop (cache key includes the theme id so cached sprites for the previous
   // theme stay until LRU eviction).
   const themeRef = useRef(theme)
-  useEffect(() => { themeRef.current = theme; dirtyRef.current = true }, [theme])
+  useEffect(() => {
+    themeRef.current = theme
+    setSpriteCacheActiveTheme(theme.id)
+    dirtyRef.current = true
+  }, [theme])
 
   // Graphics-quality ref. The draw callback reads it each frame to pick
   // the cheap-vs-full sprite tier per star and to gate the animation

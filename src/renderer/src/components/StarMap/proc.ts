@@ -257,9 +257,17 @@ export function applyCircularFade(
  * Bounded least-recently-used cache for canvas sprites. `get()` refreshes
  * the entry's recency. `set()` evicts oldest entries past `cap`.
  *
- * Per F8a plan: cap=500 across all typed sprites. Theme prefix on the key
- * means switching themes does not evict the previous theme's entries until
- * they age out by churn — flipping back and forth is essentially free.
+ * Two flavors are exported:
+ * - `LRUSpriteCache` — pure LRU, bounded by entry count. Used for the
+ *   default cluster-hue cache where bounded cardinality (~2.7k) means
+ *   eviction never fires in practice (kept here for safety).
+ * - `ThemeAwareSpriteCache` — same LRU semantics plus a per-entry
+ *   `themeId` and an `activeTheme` setter. On eviction it scans up to
+ *   `EVICT_SCAN_BUDGET` entries from the LRU tail, preferring non-active-
+ *   theme victims. Theme flip then lands as O(1) cache hits — the prior
+ *   theme's sprites survive in cache instead of being evicted by churn.
+ *   Also enforces a soft byte ceiling (sum of `width * height * 4`) so a
+ *   pathological prebuild can't blow heap.
  */
 export class LRUSpriteCache<K> {
   private readonly map = new Map<K, HTMLCanvasElement>()
@@ -285,6 +293,90 @@ export class LRUSpriteCache<K> {
   }
   clear(): void {
     this.map.clear()
+  }
+  /** Visible-for-tests: ordered key iterator (oldest first). */
+  keys(): IterableIterator<K> {
+    return this.map.keys()
+  }
+}
+
+interface ThemedEntry {
+  sprite: HTMLCanvasElement
+  themeId: string
+  bytes: number
+}
+
+const EVICT_SCAN_BUDGET = 8
+
+export class ThemeAwareSpriteCache<K> {
+  private readonly map = new Map<K, ThemedEntry>()
+  private activeTheme = ''
+  private totalBytes = 0
+  constructor(public cap: number, public byteCap: number) {}
+
+  setActiveTheme(themeId: string): void {
+    this.activeTheme = themeId
+  }
+
+  get(k: K): HTMLCanvasElement | null {
+    const e = this.map.get(k)
+    if (!e) return null
+    // refresh recency
+    this.map.delete(k)
+    this.map.set(k, e)
+    return e.sprite
+  }
+
+  set(k: K, sprite: HTMLCanvasElement, themeId: string): void {
+    const existing = this.map.get(k)
+    if (existing) {
+      this.totalBytes -= existing.bytes
+      this.map.delete(k)
+    }
+    const bytes = (sprite.width * sprite.height) * 4  // RGBA
+    this.map.set(k, { sprite, themeId, bytes })
+    this.totalBytes += bytes
+    this.evictIfNeeded()
+  }
+
+  private evictIfNeeded(): void {
+    while (this.map.size > this.cap || this.totalBytes > this.byteCap) {
+      const victim = this.pickVictim()
+      if (victim === undefined) break
+      const e = this.map.get(victim)
+      if (e) this.totalBytes -= e.bytes
+      this.map.delete(victim)
+    }
+  }
+
+  // Bounded scan from LRU tail — prefer the oldest non-active-theme entry
+  // so theme flips don't evict the recovered theme's sprites. Falls back
+  // to plain LRU if the budget exhausts without finding a stale-theme
+  // victim (e.g. session has only ever used one theme).
+  private pickVictim(): K | undefined {
+    const it = this.map.keys()
+    let first: K | undefined
+    let scanned = 0
+    while (scanned < EVICT_SCAN_BUDGET) {
+      const next = it.next()
+      if (next.done) break
+      if (first === undefined) first = next.value
+      const entry = this.map.get(next.value)
+      if (entry && entry.themeId !== this.activeTheme) return next.value
+      scanned++
+    }
+    return first
+  }
+
+  size(): number {
+    return this.map.size
+  }
+  bytes(): number {
+    return this.totalBytes
+  }
+  clear(): void {
+    this.map.clear()
+    this.totalBytes = 0
   }
   /** Visible-for-tests: ordered key iterator (oldest first). */
   keys(): IterableIterator<K> {

@@ -1,6 +1,6 @@
 import { CONSTELLATION_PALETTE } from '@shared/types'
 import type { StarType } from '@shared/types'
-import { hashStr, LRUSpriteCache, seedFromId, type SpikeVariant } from './proc'
+import { hashStr, ThemeAwareSpriteCache, seedFromId, type SpikeVariant } from './proc'
 import type { Theme } from '../../themes/types'
 
 // hashStr is re-exported here to keep existing call sites compiling. The
@@ -109,6 +109,13 @@ export function spriteCacheStats(): {
   }
 }
 
+// Phase 1.6 — default cache cardinality is bounded by
+// CONSTELLATION_PALETTE.length × TEMP_BUCKET_COUNT × SIZE_BUCKET_COUNT ×
+// 2 spike variants × 2 LODs ≈ low thousands. Eviction never fires in
+// practice; assert in DEV if it grows past a sensible ceiling so a future
+// bucket-count change surfaces as a test failure rather than silent leak.
+const DEFAULT_CACHE_DEV_CEILING = 4096
+
 export function getStarSprite(
   colorIndex: number,
   tempBucket: number,
@@ -122,6 +129,10 @@ export function getStarSprite(
   _defaultMisses++
   const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant, lod)
   cache.set(key, sprite)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((import.meta as any).env?.DEV && cache.size > DEFAULT_CACHE_DEV_CEILING) {
+    console.warn(`[sprites] default cache size (${cache.size}) > ${DEFAULT_CACHE_DEV_CEILING}; bucket count may have drifted.`)
+  }
   return sprite
 }
 
@@ -238,7 +249,21 @@ const TYPED_SCALE: Record<StarType, number> = {
   'nebula': 2.4,
 }
 
-const typedCache = new LRUSpriteCache<string>(500)
+// Phase 1.5 — cap raised 500 → 4000 with a 96 MB byte ceiling and
+// theme-aware eviction (see Report 4 §B.2 + ThemeAwareSpriteCache in
+// proc.ts). At a 7822-star corpus the prior cap=500 thrashed at 758k
+// misses per pan; this sizing keeps the working set resident across
+// pan/zoom and makes second theme flip ~free.
+const TYPED_CACHE_CAP = 4000
+const TYPED_CACHE_BYTE_CAP = 96 * 1024 * 1024
+const typedCache = new ThemeAwareSpriteCache<string>(TYPED_CACHE_CAP, TYPED_CACHE_BYTE_CAP)
+
+// Notify the cache when the active theme changes so its eviction loop
+// prefers victims from the now-inactive theme. StarMap calls this on
+// theme prop change.
+export function setSpriteCacheActiveTheme(themeId: string): void {
+  typedCache.setActiveTheme(themeId)
+}
 
 /**
  * Build the cache key for a typed sprite. Theme prefix means switching
@@ -282,7 +307,7 @@ export function getTypedStarSprite(
   const sprite = lod === 'cheap'
     ? renderCheapTypedSprite(type, sizeBucket)
     : renderTypedSprite(theme, type, sizeBucket, starId)
-  typedCache.set(key, sprite)
+  typedCache.set(key, sprite, theme.id)
   return sprite
 }
 
