@@ -4,7 +4,7 @@ import { homedir } from 'os'
 import { join, basename } from 'path'
 import { mkdirSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
-import { openInDefaultApp } from './util/openInDefaultApp'
+import { openInDefaultApp, revealInFileExplorer } from './util/openInDefaultApp'
 import { FileIndex } from './db/FileIndex'
 import { HnswIndex } from './ann/HnswIndex'
 import { OllamaClient } from './embedding/OllamaClient'
@@ -253,6 +253,21 @@ app.post('/api/file/:id/open', async (req, res) => {
   if (!file) return res.status(404).json({ error: 'not found' })
   try {
     await openInDefaultApp(file.path)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// --- Reveal file in OS file explorer (F14) ---
+// macOS: highlights file in Finder (`open -R`).
+// Windows: opens the parent folder with the file selected (`explorer /select,`).
+// Linux: opens the parent directory (xdg-open has no native "select file" flag).
+app.post('/api/file/:id/reveal', async (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  try {
+    await revealInFileExplorer(file.path)
     res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: String(err) })
