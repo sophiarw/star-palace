@@ -167,13 +167,19 @@ export default function App() {
     return m
   }, [galaxies])
 
+  // O(1) id lookup over the raw star list. Used by `galaxyOffsetForStarId`
+  // and `projectedHighlights` below in place of the previous `stars.find`
+  // linear scans, which were O(N) per call and ran on every search-hit
+  // projection.
+  const rawStarsById = useMemo(() => new Map(stars.map(s => [s.id, s])), [stars])
+
   // For SearchResult we need a fallback galaxy lookup (search payload doesn't
-  // carry galaxyId). starsById is keyed by id and is the source of truth.
+  // carry galaxyId). The raw-stars Map is the source of truth.
   const galaxyOffsetForStarId = useCallback((id: string): [number, number] => {
-    const star = stars.find(s => s.id === id)  // small set; linear scan OK
+    const star = rawStarsById.get(id)
     if (!star || star.galaxyId === null) return [0, 0]
     return galaxyOffsetById.get(star.galaxyId) ?? [0, 0]
-  }, [stars, galaxyOffsetById])
+  }, [rawStarsById, galaxyOffsetById])
 
   // F16 — `visibleStars` already excludes hidden galaxies, so projection
   // here only sees what the renderer should draw.
@@ -196,7 +202,7 @@ export default function App() {
   // we filter client-side so hidden hits don't show up in highlight cycling.
   const projectedHighlights = useMemo(() => {
     return highlights.flatMap(h => {
-      const star = stars.find(s => s.id === h.id)
+      const star = rawStarsById.get(h.id)
       if (star && !isStarVisible(star.galaxyId)) return []
       const local = pcDial.ready && pcDial.scaledById.size > 0
         ? pcDial.scaledById.get(h.id) ?? null
@@ -206,7 +212,7 @@ export default function App() {
       const [ox, oy] = galaxyOffsetForStarId(h.id)
       return [{ ...h, x: baseX + ox, y: baseY + oy }]
     })
-  }, [highlights, stars, isStarVisible, pcDial.ready, pcDial.scaledById, galaxyOffsetForStarId])
+  }, [highlights, rawStarsById, isStarVisible, pcDial.ready, pcDial.scaledById, galaxyOffsetForStarId])
 
   const projectedHighlightsRef = useRef<{ id: string; x: number; y: number }[]>([])
   projectedHighlightsRef.current = projectedHighlights
