@@ -3,6 +3,7 @@ import type { MapStats } from '@shared/types'
 import type { VimMode } from '../../hooks/useVimMode'
 import type { ThemeSummary } from '../../themes/types'
 import type { ClassificationMode } from '../../hooks/useClassificationMode'
+import type { GraphicsQuality } from '../../hooks/useGraphicsQuality'
 
 interface Props {
   stats: MapStats | null
@@ -23,6 +24,11 @@ interface Props {
   // still compile.
   classMode?: ClassificationMode
   onClassModeChange?: (m: ClassificationMode) => void
+  // Graphics-quality picker (low / medium / high / ultra). Renderer reads
+  // it to gate sprite-LOD swap, animation skips, and DPR caps. Optional so
+  // existing call sites compile during the rollout.
+  quality?: GraphicsQuality
+  onQualityChange?: (q: GraphicsQuality) => void
 }
 
 const VIM_MODE_LABELS: Record<VimMode, string> = {
@@ -37,7 +43,16 @@ const CLASS_MODE_LABELS: Record<ClassificationMode, string> = {
 
 const CLASS_MODE_ORDER: ClassificationMode[] = ['type', 'usage']
 
-export default function StatsBar({ stats, starCount, hiddenStarCount, vimMode, themes, currentThemeId, onThemeChange, classMode, onClassModeChange }: Props) {
+const QUALITY_ORDER: GraphicsQuality[] = ['low', 'medium', 'high', 'ultra']
+
+const QUALITY_LABELS: Record<GraphicsQuality, string> = {
+  low: 'Low',
+  medium: 'Med',
+  high: 'High',
+  ultra: 'Ultra',
+}
+
+export default function StatsBar({ stats, starCount, hiddenStarCount, vimMode, themes, currentThemeId, onThemeChange, classMode, onClassModeChange, quality, onQualityChange }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -83,6 +98,27 @@ export default function StatsBar({ stats, starCount, hiddenStarCount, vimMode, t
         <span className={`stats-bar-mode stats-bar-mode--${vimMode}`}>
           {VIM_MODE_LABELS[vimMode]}
         </span>
+      )}
+      {quality && onQualityChange && (
+        // Same pill-row treatment as the classification toggle. `low` cuts
+        // procedural detail far out; `ultra` keeps everything at full
+        // quality at every zoom for big-machine setups.
+        <div className="stats-bar-classmode" role="group" aria-label="Graphics quality">
+          <span className="stats-bar-classmode-prefix">Quality</span>
+          <div className="stats-bar-classmode-pills">
+            {QUALITY_ORDER.map((q) => (
+              <button
+                key={q}
+                type="button"
+                className={`classification-toggle-pill${q === quality ? ' classification-toggle-pill--active' : ''}`}
+                onClick={() => onQualityChange(q)}
+                aria-pressed={q === quality}
+              >
+                {QUALITY_LABELS[q]}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {classMode && onClassModeChange && (
         // F10 — segmented control. Sits next to the theme picker. Two pills

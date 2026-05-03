@@ -14,6 +14,7 @@ import { usePcDial } from './hooks/usePcDial'
 import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
 import { useTheme } from './hooks/useTheme'
 import { useClassificationMode } from './hooks/useClassificationMode'
+import { useGraphicsQuality } from './hooks/useGraphicsQuality'
 import { computePercentileBuckets } from './components/StarMap/usageStarType'
 import CollectionsPanel from './components/CollectionsPanel/CollectionsPanel'
 import { useCollections } from './hooks/useCollections'
@@ -138,6 +139,7 @@ export default function App() {
   const pcDial = usePcDial()
   const themeCtx = useTheme()
   const classCtx = useClassificationMode()
+  const gfxCtx = useGraphicsQuality()
 
   // F16 — per-galaxy visibility filter (renderer-only). Drives projected
   // stars, search highlights, and the percentile-bucket input below.
@@ -441,6 +443,8 @@ export default function App() {
         onThemeChange={themeCtx.setTheme}
         classMode={classCtx.mode}
         onClassModeChange={classCtx.setMode}
+        quality={gfxCtx.quality}
+        onQualityChange={gfxCtx.setQuality}
       />
 
       <GalaxyPanel
