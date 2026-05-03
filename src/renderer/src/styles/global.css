@@ -77,6 +77,30 @@ body {
   color: var(--text-muted);
 }
 
+/* F5 — collection-scope badge for `c:foo` / `#foo` prefixes. Sits over the
+   search input on the right side; green when the name resolves, red when it
+   doesn't. Pointer-events:none so clicking through it focuses the input. */
+.search-collection-badge {
+  position: absolute;
+  top: 11px;
+  right: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(80, 200, 120, 0.18);
+  border: 1px solid rgba(80, 200, 120, 0.45);
+  color: #b6f5cc;
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+  letter-spacing: 0.02em;
+}
+
+.search-collection-badge--miss {
+  background: rgba(220, 80, 80, 0.18);
+  border-color: rgba(220, 80, 80, 0.45);
+  color: #ffc4c4;
+}
+
 /* Hover card */
 
 .hover-card {

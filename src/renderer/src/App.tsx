@@ -335,6 +335,7 @@ export default function App() {
           onClear={handleClearSearch}
           onClose={handleCloseSearch}
           onSubmit={handleHideSearch}
+          collections={collections.collections}
         />
       )}
 

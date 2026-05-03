@@ -36,11 +36,16 @@ export async function fetchStats(): Promise<MapStats> {
   return res.json()
 }
 
-export async function search(query: string, limit = 30): Promise<SearchResult[]> {
+export async function search(query: string, limit = 30, collectionId?: number): Promise<SearchResult[]> {
+  // F5 — when collectionId is supplied, the daemon pre-filters KNN hits to
+  // members of that collection before ranking. Optional so the existing call
+  // sites (e.g. CollectionsPanel-less code paths) keep working unchanged.
+  const body: { query: string; limit: number; collectionId?: number } = { query, limit }
+  if (collectionId !== undefined) body.collectionId = collectionId
   const res = await fetch(`${BASE}/api/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, limit }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`search: ${res.status}`)
   const data = await res.json() as { results: SearchResult[] }
