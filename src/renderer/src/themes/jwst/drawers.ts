@@ -14,8 +14,8 @@ import {
   applyCircularFade,
   rngPick,
   rngRange,
-  type RGB,
 } from '../../components/StarMap/proc'
+import { paintNebulaCloud } from '../../components/StarMap/backgroundNebula'
 
 /* --------------------------------------------------------------------------
  * 1. RED GIANT — convection mottling + solar prominences + limb darkening
@@ -701,183 +701,17 @@ const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
 }
 
 /* --------------------------------------------------------------------------
- * 9. NEBULA — Carina-inspired stacked-blob cloud (deck port, F-NEXT-B follow-up)
+ * 9. NEBULA — Carina-inspired stacked-blob cloud
  *
- * Replaces the FBM density field with the deck's `paintNebulaCloud` from
- * docs/gui-update/star-renderers.js: 5 layered passes (large diffuse base,
- * mid-octave accents, high-octave detail, bezier filaments, dust-lane
- * subtraction, Hα emission knots) painted inside a circular clip so no
- * rectangular sprite-tile edge is visible at zoom. Carina palette: deep
- * teal/blue base + warm tan + gold + dusty magenta + teal highlights, with
- * blue-white + warm hot knots.
+ * Painter body lives in `../../components/StarMap/backgroundNebula.ts` so
+ * the same six-pass cloud engine is shared between the typed nebula sprite
+ * (here) and the JWST background-nebula wash (Stage C). Pass `feather:
+ * true` so the sprite tile gets the destination-out radial mask that
+ * softens the hard clip boundary at deep zoom.
  *
  * rng() call order is intentional and stable; reordering reseeds every
  * downstream feature and shifts the visual identity of every nebula sprite.
  * -------------------------------------------------------------------------- */
-
-interface NebulaCloudOpts {
-  bands: RGB[]
-  hot: RGB[]
-  dustAlpha: number
-  filaments: number
-  shape: { ax: number; ay: number; rot: number }
-  intensity?: number
-  skipKnots?: boolean
-}
-
-function paintNebulaCloud(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  R: number,
-  rng: () => number,
-  opts: NebulaCloudOpts,
-): void {
-  const { bands, hot, dustAlpha, filaments, shape } = opts
-  const intensity = opts.intensity ?? 1
-  const ax = shape.ax
-  const ay = shape.ay
-  const rot = shape.rot
-  const cosR = Math.cos(rot), sinR = Math.sin(rot)
-
-  function place(): { x: number; y: number } {
-    // Sample within an ellipse, biased toward the centre.
-    const t = Math.pow(rng(), 1.6)
-    const a = rng() * Math.PI * 2
-    const lx = Math.cos(a) * t * R * ax
-    const ly = Math.sin(a) * t * R * ay
-    return { x: cx + lx * cosR - ly * sinR, y: cy + lx * sinR + ly * cosR }
-  }
-
-  ctx.save()
-  // Hard circular clip prevents blob overflow into the rectangular sprite
-  // tile (blobs near the boundary can extend beyond R + R*0.9). The
-  // destination-out feather pass at the end softens this clip so the
-  // boundary itself isn't visible at deep zoom.
-  ctx.beginPath(); ctx.arc(cx, cy, R * 1.05, 0, Math.PI * 2); ctx.clip()
-
-  // Pass 1: large dim diffuse base in band[0] (the cool base colour).
-  ctx.globalCompositeOperation = 'lighter'
-  const baseLayers = 14
-  for (let i = 0; i < baseLayers; i++) {
-    const p = place()
-    const sz = rngRange(rng, R * 0.4, R * 0.9)
-    const c = bands[0]
-    const a = rngRange(rng, 0.05, 0.14) * intensity
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
-    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`)
-    g.addColorStop(0.6, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.35})`)
-    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
-    ctx.fillStyle = g
-    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
-  }
-
-  // Pass 2: medium accent blobs (warm + magenta, etc — any non-base band).
-  const accentLayers = 22
-  const accentBands = bands.length > 1 ? bands.slice(1) : bands
-  for (let i = 0; i < accentLayers; i++) {
-    const p = place()
-    const sz = rngRange(rng, R * 0.18, R * 0.45)
-    const c = rngPick(rng, accentBands)
-    const a = rngRange(rng, 0.10, 0.28) * intensity
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
-    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`)
-    g.addColorStop(0.55, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.4})`)
-    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
-    ctx.fillStyle = g
-    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
-  }
-
-  // Pass 3: tiny bright detail blobs (highest octave).
-  const detailLayers = 60
-  for (let i = 0; i < detailLayers; i++) {
-    const p = place()
-    const sz = rngRange(rng, R * 0.04, R * 0.16)
-    const c = rngPick(rng, bands)
-    const a = rngRange(rng, 0.18, 0.45) * intensity
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
-    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`)
-    g.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.3})`)
-    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
-    ctx.fillStyle = g
-    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
-  }
-
-  // Pass 4: filament strokes — curved 3-segment Beziers as wispy ridges.
-  for (let i = 0; i < filaments; i++) {
-    const p0 = place()
-    const len = rngRange(rng, R * 0.3, R * 0.7)
-    const dir = rng() * Math.PI * 2
-    const ex = p0.x + Math.cos(dir) * len
-    const ey = p0.y + Math.sin(dir) * len
-    const cp1x = p0.x + Math.cos(dir) * len * 0.33 + rngRange(rng, -R * 0.18, R * 0.18)
-    const cp1y = p0.y + Math.sin(dir) * len * 0.33 + rngRange(rng, -R * 0.18, R * 0.18)
-    const cp2x = p0.x + Math.cos(dir) * len * 0.66 + rngRange(rng, -R * 0.18, R * 0.18)
-    const cp2y = p0.y + Math.sin(dir) * len * 0.66 + rngRange(rng, -R * 0.18, R * 0.18)
-    const c = rngPick(rng, bands)
-    const a = rngRange(rng, 0.06, 0.13)
-    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`
-    ctx.lineWidth = rngRange(rng, R * 0.05, R * 0.12)
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(p0.x, p0.y)
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, ex, ey)
-    ctx.stroke()
-  }
-
-  // Pass 5: dark dust lanes (subtractive).
-  if (dustAlpha > 0) {
-    ctx.globalCompositeOperation = 'destination-out'
-    const dustCount = 18
-    for (let i = 0; i < dustCount; i++) {
-      const p = place()
-      const sz = rngRange(rng, R * 0.10, R * 0.32)
-      const a = rngRange(rng, dustAlpha * 0.4, dustAlpha)
-      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
-      g.addColorStop(0, `rgba(0,0,0,${a})`)
-      g.addColorStop(0.6, `rgba(0,0,0,${a * 0.3})`)
-      g.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = g
-      ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
-    }
-  }
-
-  // Pass 6: bright Hα emission knots.
-  if (!opts.skipKnots) {
-    ctx.globalCompositeOperation = 'lighter'
-    const knots = 10
-    for (let i = 0; i < knots; i++) {
-      const p = place()
-      const sz = rngRange(rng, R * 0.010, R * 0.028)
-      const c = rngPick(rng, hot)
-      const bg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 4)
-      bg.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},0.30)`)
-      bg.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
-      ctx.fillStyle = bg
-      ctx.beginPath(); ctx.arc(p.x, p.y, sz * 4, 0, Math.PI * 2); ctx.fill()
-      const hc = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
-      hc.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},0.7)`)
-      hc.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
-      ctx.fillStyle = hc
-      ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
-    }
-  }
-
-  // Final pass: feathered radial alpha mask. Smoothly erases blob density
-  // toward the clip boundary so the boundary itself isn't visible at deep
-  // zoom — without this, the hard ctx.arc clip showed as a hard ring once
-  // the renderer scaled the sprite by ~4×. The mask starts erasing at
-  // R*0.55 and reaches full erasure at the clip boundary R*1.05.
-  ctx.globalCompositeOperation = 'destination-out'
-  const feather = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, R * 1.05)
-  feather.addColorStop(0.00, 'rgba(0,0,0,0)')
-  feather.addColorStop(0.50, 'rgba(0,0,0,0.45)')
-  feather.addColorStop(1.00, 'rgba(0,0,0,1)')
-  ctx.fillStyle = feather
-  ctx.fillRect(cx - R * 1.1, cy - R * 1.1, R * 2.2, R * 2.2)
-
-  ctx.restore()
-}
 
 const drawNebula: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   paintNebulaCloud(ctx, cx, cy, r * 2.4, rng, {
@@ -896,6 +730,7 @@ const drawNebula: ThemedDrawer = (ctx, cx, cy, r, rng) => {
     filaments: 9,
     shape: { ax: 1.0, ay: 0.78, rot: rng() * Math.PI },
     intensity: 1.3,
+    feather: true,
   })
 }
 
