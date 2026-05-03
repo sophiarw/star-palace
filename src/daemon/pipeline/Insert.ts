@@ -8,6 +8,7 @@ import type { FileNode, WalkStats } from '../../shared/types'
 import { K_NEAREST, ISOLATION_THRESHOLD } from '../../shared/types'
 import { walkDirectory } from '../index/walker'
 import type { WalkOptions } from '../index/walker'
+import type { UsageMetadata } from '../index/usageMetadata'
 
 export interface InsertPipelineOptions {
   db: FileIndex
@@ -36,10 +37,10 @@ export async function indexPath(
   }
   const walker = await walkDirectory(rootPath, walkOpts)
 
-  for await (const { node, content } of walker) {
+  for await (const { node, content, usage } of walker) {
     stats.scanned++
     try {
-      await insertOne(node, content, { db, hnsw, embedEngine, relayouter, galaxyId })
+      await insertOne(node, content, { db, hnsw, embedEngine, relayouter, galaxyId, usage })
       stats.indexed++
     } catch (err) {
       stats.errors++
@@ -57,9 +58,14 @@ export async function indexPath(
 export async function insertOne(
   node: FileNode,
   content: Buffer,
-  opts: Pick<InsertPipelineOptions, 'db' | 'hnsw' | 'embedEngine' | 'relayouter' | 'galaxyId'>
+  opts: Pick<InsertPipelineOptions, 'db' | 'hnsw' | 'embedEngine' | 'relayouter' | 'galaxyId'> & {
+    // F10 — usage signals from the walker. Optional so direct insertOne()
+    // callers (tests, single-file API endpoints) can omit them; commit 4
+    // computes importance_score from this payload.
+    usage?: UsageMetadata
+  }
 ): Promise<void> {
-  const { db, hnsw, embedEngine, relayouter, galaxyId } = opts
+  const { db, hnsw, embedEngine, relayouter, galaxyId, usage } = opts
   const now = Date.now()
 
   const existing = db.get(node.id)
@@ -119,12 +125,14 @@ export async function insertOne(
       pinAxisA: existing?.pinAxisA ?? null,
       pinAxisB: existing?.pinAxisB ?? null,
       pinnedAt: existing?.pinnedAt ?? null,
-      // F10 — usage signals + composite score. This commit only adds the
-      // schema/round-trip; commit 3 wires the walker to read Spotlight/atime
-      // and commit 4 computes importanceScore. Carry forward the existing
-      // values until then so a re-index doesn't wipe them.
-      osUseCount: existing?.osUseCount ?? null,
-      osLastUsed: existing?.osLastUsed ?? null,
+      // F10 — usage signals from the walker (Spotlight on macOS, atime
+      // elsewhere). When the caller didn't provide any (e.g. test paths
+      // that build a node by hand), carry forward whatever the existing
+      // row had so a re-index doesn't wipe a previously-recorded signal.
+      osUseCount: usage?.osUseCount ?? existing?.osUseCount ?? null,
+      osLastUsed: usage?.osLastUsed ?? existing?.osLastUsed ?? null,
+      // importance_score is computed in commit 4. For now it stays whatever
+      // the existing row had (NULL on first insert).
       importanceScore: existing?.importanceScore ?? null,
     })
 
