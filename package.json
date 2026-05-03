@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:contract": "VITEST_INCLUDE_CONTRACT=1 vitest run tests/api/contract.test.ts",
     "build:web": "vite build --config vite.web.config.ts",
     "index": "tsx scripts/index-cli.ts",
     "seed:demo": "bash scripts/fetch-corpus.sh && tsx scripts/seed-mvp.ts"
