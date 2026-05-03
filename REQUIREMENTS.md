@@ -27,6 +27,7 @@ Locked decisions:
 | F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. F8a prototype landed on `worktree-agent-af8ce890cf5c7d92b`. | |
 | F9 | Galaxies (multi-root indexing) | M | New table + galaxy_id column; spiral origin offsets; renderer panel. | **DONE** |
 | F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | |
+| F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks (`worktree-agent-af8ce890cf5c7d92b`, `worktree-agent-acb91a52b583dc370`) prove both designs. | |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -598,6 +599,100 @@ All NULL on existing rows; first walker pass after upgrade backfills.
 2. Toggle "Color by" → "Usage". Frequently-opened `.pdf` becomes `red-giant` or `blue-supergiant`; others become `white-dwarf`.
 3. Toggle back → "Type". All `.pdfs` become `quasar` (existing F2 behaviour).
 4. Manually set one `.pdf` to `nebula`. Both modes show `nebula` for that file.
+
+### F11 — Theme selector
+
+Same sky, totally different look. The user picks a visual theme; every typed-star sprite, the canvas backdrop, and the UI accent shift in one swap. Two initial themes ship; more can land later as drop-in modules.
+
+#### Two themes at launch
+
+Both prototyped end-to-end as standalone HTML decks (see worktree references in the F11 row):
+
+- **`jwst`** (default) — deep-space realism. Dark slate `#0a0d1a` backdrop. Multi-stop radial gradients, `screen` / `lighter` additive blends, soft alpha falloff. Naturalistic palette per type (red giant orange, blue supergiant cyan, etc.). Gold accent `#ffe066` on UI. Matches existing production aesthetic + the F8a v2 deck (`worktree-agent-af8ce890cf5c7d92b`).
+- **`vapor`** (alternate) — synthwave / chromatic-aberration. Sunset gradient backdrop (purple → magenta → orange) with Tron-grid overlay + CRT scanlines. Hot magenta `#ff2afc`, electric cyan `#00f5ff`, lime `#39ff14`, hyper-yellow `#fff200`. Posterized glow (3-4 sharp colour bands instead of smooth gradients). Hot pink accent `#ff007a` on UI. Uppercase letter-spaced titles. Glitch-slice displacement on ~10% of sprites. Matches the F8a vapor deck (`worktree-agent-acb91a52b583dc370`).
+
+Both themes implement the same set of typed drawers + cross-cutting circular fade mask + F8a procedural variation features (per-instance hash-driven asymmetry).
+
+#### Theme registry
+
+```ts
+interface Theme {
+  id: string                                  // 'jwst' | 'vapor' | ...
+  name: string                                // human label for the picker
+  description: string
+  drawers: Record<StarType, ThemedDrawer>     // 9 typed drawers + main-sequence (F10)
+  defaultDrawer: ThemedDrawer                 // for cluster-hue / no-type stars
+  background: {
+    canvasFill: string | CanvasGradient
+    overlay?: (ctx, w, h) => void             // grid lines, scanlines, etc.
+  }
+  ui: {
+    accentColor: string                       // gold, hot-pink, etc.
+    fontStack: string                         // chrome font
+    titleTransform?: 'uppercase' | 'none'
+    titleLetterSpacing?: string
+  }
+}
+
+type ThemedDrawer = (
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number, r: number,
+  rng: () => number,                          // F8a seeded PRNG
+) => void
+```
+
+Themes live as ES modules in `src/renderer/src/themes/`:
+- `src/renderer/src/themes/jwst/index.ts` (drawers + background + ui)
+- `src/renderer/src/themes/vapor/index.ts`
+- `src/renderer/src/themes/registry.ts` exports a `Map<ThemeId, Theme>` and a `defaultThemeId`.
+
+Adding a new theme = add a new directory + register it. No daemon changes, no schema migration.
+
+#### Picker UI
+
+- New `useTheme()` hook in `src/renderer/src/hooks/`: returns `{ theme: Theme, setTheme(id): void, available: ThemeSummary[] }`. Persists to `localStorage` key `starpalace.theme.v1`. Default `'jwst'`.
+- Theme picker UI: dropdown in the StatsBar (bottom-left) labelled "Theme: [JWST ▾]". Dropdown lists all registered themes by name + 1-line description.
+- Switching themes: instant (no transition animation in v1). Sprite cache is keyed per-theme so the swap is `O(visible-stars)` re-renders.
+
+#### Sprite cache key
+
+LRU cache key from F8a (`type:T|s:S|h:HASH12`) gains a theme prefix:
+
+```
+themeId:T_id|type:T|s:S|h:HASH12
+```
+
+Means switching themes does NOT evict the previous theme's sprites — they stay in LRU until aged out by churn. User flipping back and forth pays only the first switch's render cost.
+
+#### Background + UI chrome
+
+- `themedBackground` component reads `theme.background.canvasFill` and applies it to the StarMap canvas's clear-pass + any `overlay` callback (grid, scanlines).
+- `themedAccent` exposed via CSS variable `--starpalace-accent: <color>`. UI components that currently hard-code gold (HoverCard ring, search highlight, pinned lock badge) read the variable.
+- Title font + letter-spacing applied to slide / panel titles via the same CSS-variable approach.
+
+#### Edge cases
+
+- Theme registered with a missing drawer for some `StarType` → fall back to that theme's `defaultDrawer`. Log once.
+- `localStorage` set to an unknown theme id → fall back to `defaultThemeId`, clear the bad value.
+- F8a procedural infrastructure (`seedFromId`, `LRUSpriteCache`) is shared across themes — only the drawers differ.
+- Galaxies (F9): theme is global, not per-galaxy. Same sky, one aesthetic.
+- Usage classification (F10): theme is orthogonal. Mode toggle stays in the corner; theme picker is its own control. Both persist independently.
+
+#### Out of scope (v1 of F11)
+
+- Per-galaxy or per-cluster theme override.
+- User-authored custom themes (drop-in JSON config).
+- Theme transition animations on switch.
+- Server-side theme rendering (themes stay client-only).
+- More than 2 themes shipped at v1 (extensibility is structural; new themes are follow-up work).
+
+#### Acceptance
+
+1. Open the app on `jwst` (default). Sky reads as deep-space realism.
+2. Open the StatsBar theme dropdown → pick `vapor`. Canvas backdrop, every sprite, accent colors flip in one swap.
+3. Refresh browser → theme persists.
+4. Switch back to `jwst` → instant; sprites previously rendered are still cached.
+5. Manual `star_type` overrides (F2/F4) and pin overlays (F4) render correctly under both themes.
 
 ### F8 — Procedural per-file graphics
 
