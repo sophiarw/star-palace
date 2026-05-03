@@ -481,6 +481,24 @@ app.post('/api/file/:id/star-type', (req, res) => {
   res.json({ ok: true, starType })
 })
 
+app.get('/api/file/:id/tags', (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  res.json({ tags: file.tags ?? [] })
+})
+
+app.post('/api/file/:id/tags', (req, res) => {
+  const body = req.body as { tags?: unknown }
+  if (!Array.isArray(body.tags) || body.tags.some(t => typeof t !== 'string')) {
+    return res.status(400).json({ error: 'invalid tags (expected string[])' })
+  }
+  const tags = (body.tags as string[]).map(t => t.trim()).filter(t => t.length > 0)
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  db.setTags(req.params.id, tags.length === 0 ? null : tags)
+  res.json({ ok: true, tags })
+})
+
 // --- Pin a star at PC-space coordinates (F4) ---
 // Body: { x, y, axisA, axisB }
 //   x, y       — TARGET coordinates in *PC space* on the chosen axis pair.
