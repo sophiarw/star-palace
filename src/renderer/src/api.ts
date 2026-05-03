@@ -67,6 +67,13 @@ export async function openFile(id: string): Promise<void> {
   if (!res.ok) throw new Error(`openFile: ${res.status}`)
 }
 
+// F14 — Reveal the file in the OS file explorer (Finder / Explorer / file
+// manager). Daemon picks the right shell-out per platform.
+export async function revealFile(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/file/${id}/reveal`, { method: 'POST' })
+  if (!res.ok) throw new Error(`revealFile: ${res.status}`)
+}
+
 export async function fetchContent(id: string): Promise<FileContent> {
   const res = await fetch(`${BASE}/api/file/${id}/content`)
   if (!res.ok) throw new Error(`fetchContent: ${res.status}`)
