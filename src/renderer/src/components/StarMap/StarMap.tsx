@@ -769,18 +769,23 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies),
     // scaled + panned with parallax so it reads as deeper space behind the stars.
+    // Skipped for themes that opt out via `background.replacesBackdrop`
+    // (vapor's gradient + Tron grid IS the backdrop; rendering the JWST
+    // deep-field on top would clobber it).
     markStart()
-    const backdrop = getBackdrop(w, h)
-    const m = getBackdropMultiplier()
-    const bgScale = Math.max(BACKDROP_MIN_SCALE, Math.pow(cam.zoom, BACKDROP_ZOOM_PARALLAX))
-    const bgTx = -cam.cx * BACKDROP_PAN_PARALLAX * cam.zoom
-    const bgTy = -cam.cy * BACKDROP_PAN_PARALLAX * cam.zoom
-    ctx.save()
-    ctx.translate(w / 2, h / 2)
-    ctx.scale(bgScale, bgScale)
-    ctx.translate(bgTx, bgTy)
-    ctx.drawImage(backdrop, -(w * m) / 2, -(h * m) / 2)
-    ctx.restore()
+    if (!activeTheme.background.replacesBackdrop) {
+      const backdrop = getBackdrop(w, h)
+      const m = getBackdropMultiplier()
+      const bgScale = Math.max(BACKDROP_MIN_SCALE, Math.pow(cam.zoom, BACKDROP_ZOOM_PARALLAX))
+      const bgTx = -cam.cx * BACKDROP_PAN_PARALLAX * cam.zoom
+      const bgTy = -cam.cy * BACKDROP_PAN_PARALLAX * cam.zoom
+      ctx.save()
+      ctx.translate(w / 2, h / 2)
+      ctx.scale(bgScale, bgScale)
+      ctx.translate(bgTx, bgTy)
+      ctx.drawImage(backdrop, -(w * m) / 2, -(h * m) / 2)
+      ctx.restore()
+    }
     markEnd('02.backdrop')
 
     // Vignette to keep focus toward center. Phase 1.3 — gradient depends

@@ -1,73 +1,21 @@
 /**
- * Vapor background — synthwave sunset gradient + Tron-grid horizon overlay.
- * Rebuilt per draw because the canvas size changes with the viewport;
- * cheap (a handful of fills + ~30 stroked lines). CRT scanlines live in
- * the theme `postPass` (see `vaporCrt.drawScanlines`) so they sit above
- * the HUD layer like a real CRT screen rather than under the chevrons.
+ * Vapor background — synthwave sunset gradient + Tron-grid horizon (Stage C
+ * `paint`, owns the deep background, cached offscreen so vapor pays one
+ * `drawImage` per frame instead of re-stroking the grid every frame).
+ *
+ * CRT scanlines live in the theme `postPass` (see `vaporCrt.drawScanlines`
+ * from Stage D) so they sit above the HUD chevrons / labels like a real
+ * CRT screen rather than under them.
+ *
+ * `replacesBackdrop` tells StarMap to skip the JWST deep-field prerendered
+ * backdrop for this theme — `paint` owns the full canvas.
  */
 
 import type { ThemeBackground } from '../types'
+import { paintVaporBg } from '../../components/StarMap/backgroundNebula'
 
-const SUNSET_STOPS: ReadonlyArray<[number, string]> = [
-  [0.00, '#1a0033'],
-  [0.35, '#2a0050'],
-  [0.55, '#5a0080'],
-  [0.78, '#ff2a8a'],
-  [0.92, '#ff7e1a'],
-  [1.00, '#1a0033'],
-]
-
-function paintGrid(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  // Tron-grid horizon — horizontal lines fading inward toward the horizon
-  ctx.save()
-  ctx.strokeStyle = 'rgba(0, 245, 255, 0.32)'
-  ctx.lineWidth = 1
-  for (let y = h * 0.6; y < h; y += 14) {
-    const t = (y - h * 0.6) / (h * 0.4)
-    ctx.globalAlpha = 0.15 + t * 0.5
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(w, y)
-    ctx.stroke()
-  }
-  // Vanishing-point vertical lines
-  const vpx = w / 2
-  const vpy = h * 0.6
-  for (let i = -10; i <= 10; i++) {
-    const x = vpx + i * (w / 20)
-    ctx.globalAlpha = 0.25
-    ctx.strokeStyle = 'rgba(255, 42, 252, 0.45)'
-    ctx.beginPath()
-    ctx.moveTo(vpx, vpy)
-    ctx.lineTo(x, h)
-    ctx.stroke()
-  }
-  ctx.restore()
-}
-
-/**
- * `canvasFill` is sampled by StarMap as a solid CSS colour for the opaque
- * clear pass. The full sunset gradient + grid are painted in the per-frame
- * `overlay`. The clear-pass colour is the gradient mid-tone so any sliver
- * that escapes the overlay still reads as vapor purple. CRT scanlines now
- * live in the theme `postPass` so they sit above the HUD chevrons / labels.
- */
 export const vaporBackground: ThemeBackground = {
   canvasFill: '#2a0050',
-  overlay(ctx, w, h) {
-    // Sunset gradient (full repaint of the canvas — the StarMap clear pass
-    // already runs before this; re-stamping here is intentional so the sky
-    // sits over the vapor backdrop rather than the JWST deep-field cache).
-    const bg = ctx.createLinearGradient(0, 0, 0, h)
-    for (const [t, col] of SUNSET_STOPS) bg.addColorStop(t, col)
-    ctx.save()
-    ctx.globalCompositeOperation = 'destination-over'
-    ctx.fillStyle = bg
-    ctx.fillRect(0, 0, w, h)
-    ctx.restore()
-
-    // Tron-grid horizon overlay sits ON TOP of the existing scene so it
-    // reads as a CRT screen effect, not a backdrop. Source-over by default.
-    paintGrid(ctx, w, h)
-  },
+  paint: paintVaporBg,
+  replacesBackdrop: true,
 }

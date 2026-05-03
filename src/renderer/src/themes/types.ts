@@ -60,6 +60,14 @@ export interface ThemeBackground {
     seedKey: string,
   ) => void
   /**
+   * When true, signals that `paint` covers the full canvas with an opaque
+   * image of its own — the StarMap draw loop should skip the prerendered
+   * deep-field backdrop (`getBackdrop`) for this theme since it would
+   * just clobber `paint`. Vapor sets this; JWST keeps the prerendered
+   * backdrop for its parallax pan/zoom effect on top of the wash.
+   */
+  replacesBackdrop?: boolean
+  /**
    * Optional per-frame overlay drawn after the sky and before HUD. Use for
    * scanlines, Tron grids, vignettes, etc. Receives canvas-pixel size.
    */
