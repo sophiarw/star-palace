@@ -111,6 +111,14 @@ export async function insertOne(
       viewCount: existing?.viewCount ?? 0,
       isPinned: existing?.isPinned ?? false,
       starType: existing?.starType ?? null,
+      // F4 — pin coefficients are managed via dedicated set/clearPin paths;
+      // upsert never overwrites them (the SQL ON CONFLICT clause skips these
+      // columns entirely), but we have to satisfy the IndexedFile shape.
+      pinAlpha: existing?.pinAlpha ?? null,
+      pinBeta: existing?.pinBeta ?? null,
+      pinAxisA: existing?.pinAxisA ?? null,
+      pinAxisB: existing?.pinAxisB ?? null,
+      pinnedAt: existing?.pinnedAt ?? null,
     })
 
     if (!embedResult) return

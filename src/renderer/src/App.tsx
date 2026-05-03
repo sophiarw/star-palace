@@ -206,6 +206,9 @@ export default function App() {
         onSelect={handleSelect}
         vimAction={vimAction}
         onHoveredChange={setHoveredId}
+        onPinFile={(id, wx, wy) => {
+          pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
+        }}
       />
 
       <SearchBar
@@ -240,6 +243,9 @@ export default function App() {
           onStarTypeChange={handleStarTypeChange}
           typeDropdownOpen={typeDropdownOpen}
           onTypeDropdownChange={setTypeDropdownOpen}
+          onUnpin={(id) => {
+            pcDial.unpinFile(id).catch(err => console.warn('unpinFile failed:', err))
+          }}
         />
       )}
 

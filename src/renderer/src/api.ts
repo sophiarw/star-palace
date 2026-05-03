@@ -1,4 +1,4 @@
-import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType, GalaxySummary } from '@shared/types'
+import type { ViewportResult, MapStats, SearchResult, Star, Edge, FileContent, StarType, GalaxySummary, ProjectionFile } from '@shared/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BASE = `http://127.0.0.1:${(import.meta as any).env?.VITE_DAEMON_PORT ?? 7373}`
@@ -18,7 +18,7 @@ export async function fetchViewport(x1: number, y1: number, x2: number, y2: numb
 
 export interface ProjectionPayload {
   componentCount: number
-  files: { id: string; pcs: number[] }[]
+  files: ProjectionFile[]
 }
 
 export async function fetchProjection(): Promise<ProjectionPayload> {
@@ -84,6 +84,33 @@ export async function setStarType(id: string, starType: StarType | null): Promis
     body: JSON.stringify({ starType }),
   })
   if (!res.ok) throw new Error(`setStarType: ${res.status}`)
+}
+
+// F4 — body x/y are TARGET coordinates in PC space on (axisA, axisB).
+// Caller (renderer/usePcDial.pinFile) inverts its own min/max scaling
+// before posting so the daemon stays scale-agnostic.
+export async function pinStar(
+  id: string,
+  x: number,
+  y: number,
+  axisA: number,
+  axisB: number,
+): Promise<{ alpha: number; beta: number; axisA: number; axisB: number }> {
+  const res = await fetch(`${BASE}/api/file/${id}/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x, y, axisA, axisB }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(`pinStar: ${res.status} ${(body as { error?: string }).error ?? ''}`)
+  }
+  return res.json()
+}
+
+export async function unpinStar(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/file/${id}/unpin`, { method: 'POST' })
+  if (!res.ok) throw new Error(`unpinStar: ${res.status}`)
 }
 
 export function edgeFromNeighborhood(fileId: string, neighbors: { file: Star; weight: number }[]): Edge[] {

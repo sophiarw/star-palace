@@ -39,6 +39,12 @@ export interface Star extends FileNode {
   viewCount: number
   isPinned: boolean
   starType: StarType | null  // manual override; null = default cluster-hue rendering
+  // F4 — pin coefficients (embedding-delta). All NULL when not pinned.
+  pinAlpha: number | null
+  pinBeta: number | null
+  pinAxisA: number | null  // PC index 0..7 active at pin time (X)
+  pinAxisB: number | null  // PC index 0..7 active at pin time (Y)
+  pinnedAt: number | null
 }
 
 export const STAR_TYPES = [
@@ -116,6 +122,20 @@ export interface SearchResult {
   score: number
   name: string
   path: string
+}
+
+// F3/F4 — payload of `/api/map/projection`. One entry per file with an
+// embedding; `pcs` is its projection onto every PC the trained model
+// retains. Pin coefs ride along so the renderer can apply them client-side
+// without a second round-trip when the user toggles the PC dial.
+export interface ProjectionFile {
+  id: string
+  pcs: number[]
+  isPinned: boolean
+  pinAlpha: number | null
+  pinBeta: number | null
+  pinAxisA: number | null
+  pinAxisB: number | null
 }
 
 // File content payload for in-app viewer

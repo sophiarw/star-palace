@@ -1,17 +1,19 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
 
+// tests/api/contract.test.ts SIGSEGVs at vitest worker teardown on this
+// dev environment (hnswlib-node + node 22 native-cleanup race). The suites
+// still PASS individually; the crash happens after vitest prints results
+// and trips the pre-commit hook's `set -e`. Excluded from the default run;
+// invoke `npm run test:contract` to opt back in for HTTP-contract checks.
+const baseExclude = ['**/node_modules/**', '**/dist/**']
+const includeContract = process.env.VITEST_INCLUDE_CONTRACT === '1'
+
 export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    // tests/api/contract.test.ts SIGSEGVs reliably under vitest (native module
-    // load order with supertest + better-sqlite3 in worker pool). The crash is
-    // pre-existing and documented in REQUIREMENTS.md § Cross-cutting concerns
-    // — quarantine the file so the rest of the suite can gate every commit.
-    // Run it manually via `npx vitest run tests/api/contract.test.ts` when
-    // working on the daemon HTTP layer.
-    exclude: ['node_modules/**', 'tests/api/contract.test.ts'],
+    exclude: includeContract ? baseExclude : [...baseExclude, 'tests/api/contract.test.ts'],
   },
   resolve: {
     alias: {

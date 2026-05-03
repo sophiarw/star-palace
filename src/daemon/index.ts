@@ -11,6 +11,7 @@ import { OllamaClient } from './embedding/OllamaClient'
 import { EmbeddingEngine } from './embedding/EmbeddingEngine'
 import { Relayouter } from './layout/Relayouter'
 import { PC_COUNT } from './layout/Pca'
+import { projectOnAxis } from './math/pinMath'
 import { LAYOUT_THRESHOLD } from '../shared/types'
 import { indexPath } from './pipeline/Insert'
 import type { MapStats, ViewportResult, SearchResult, FileContent, StarType } from '../shared/types'
@@ -173,6 +174,68 @@ app.post('/api/file/:id/star-type', (req, res) => {
   if (!file) return res.status(404).json({ error: 'not found' })
   db.setStarType(req.params.id, starType)
   res.json({ ok: true, starType })
+})
+
+// --- Pin a star at PC-space coordinates (F4) ---
+// Body: { x, y, axisA, axisB }
+//   x, y       — TARGET coordinates in *PC space* on the chosen axis pair.
+//                Renderer is the only thing that knows its current min/max
+//                normalisation, so it inverts the scaling locally and posts
+//                the raw PC coords.
+//   axisA, axisB — PC indices (0..componentCount-1) active at pin time.
+//
+// Daemon stores α = x − natural_pc[axisA], β = y − natural_pc[axisB].
+// PC eigenvectors are orthonormal so the offset only manifests on those two
+// axes; on any other PC pair the natural projection wins (see
+// applyPinOffset in pinMath.ts).
+app.post('/api/file/:id/pin', (req, res) => {
+  const body = req.body as { x?: unknown; y?: unknown; axisA?: unknown; axisB?: unknown }
+  if (typeof body.x !== 'number' || !Number.isFinite(body.x)) {
+    return res.status(400).json({ error: 'x must be a finite number' })
+  }
+  if (typeof body.y !== 'number' || !Number.isFinite(body.y)) {
+    return res.status(400).json({ error: 'y must be a finite number' })
+  }
+  if (!Number.isInteger(body.axisA) || !Number.isInteger(body.axisB)) {
+    return res.status(400).json({ error: 'axisA, axisB must be integers' })
+  }
+  if (!relayouter.isReady) {
+    return res.status(409).json({ error: 'no PCA model trained yet' })
+  }
+  const componentCount = relayouter.componentCount
+  if ((body.axisA as number) < 0 || (body.axisA as number) >= componentCount) {
+    return res.status(400).json({ error: `axisA out of range [0, ${componentCount})` })
+  }
+  if ((body.axisB as number) < 0 || (body.axisB as number) >= componentCount) {
+    return res.status(400).json({ error: `axisB out of range [0, ${componentCount})` })
+  }
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+
+  const model = relayouter.getModel()!
+  const axisA = body.axisA as number
+  const axisB = body.axisB as number
+
+  // natural projection on the saved axes; null embedding (binary/media)
+  // collapses to (0, 0) so α = target.
+  let naturalA = 0
+  let naturalB = 0
+  if (file.embedding) {
+    naturalA = projectOnAxis(file.embedding, model.components[axisA], model.mean)
+    naturalB = projectOnAxis(file.embedding, model.components[axisB], model.mean)
+  }
+  const alpha = (body.x as number) - naturalA
+  const beta = (body.y as number) - naturalB
+  db.setPin(req.params.id, alpha, beta, axisA, axisB, Date.now())
+  res.json({ ok: true, alpha, beta, axisA, axisB })
+})
+
+// --- Unpin a star (F4) — clears all 5 pin columns + is_pinned ---
+app.post('/api/file/:id/unpin', (req, res) => {
+  const file = db.get(req.params.id)
+  if (!file) return res.status(404).json({ error: 'not found' })
+  db.clearPin(req.params.id)
+  res.json({ ok: true })
 })
 
 // --- Open file in OS default app ---

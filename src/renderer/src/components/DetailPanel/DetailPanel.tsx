@@ -33,6 +33,9 @@ interface Props {
   onStarTypeChange: (id: string, type: StarType | null) => void
   typeDropdownOpen?: boolean
   onTypeDropdownChange?: (open: boolean) => void
+  // F4 — fired when the user clicks "Unpin"; parent triggers a projection
+  // refetch so the star slides back to its natural position.
+  onUnpin?: (id: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -65,6 +68,7 @@ export default function DetailPanel({
   onStarTypeChange,
   typeDropdownOpen,
   onTypeDropdownChange,
+  onUnpin,
 }: Props) {
   const [content, setContent] = useState<FileContent | null>(null)
   const [contentError, setContentError] = useState<string | null>(null)
@@ -204,6 +208,24 @@ export default function DetailPanel({
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      <div className="detail-panel-pin">
+        {star.isPinned && star.pinAxisA !== null && star.pinAxisB !== null ? (
+          <>
+            <span className="detail-panel-pin-status">
+              {`\u{1F512} Pinned at PC${star.pinAxisA + 1} × PC${star.pinAxisB + 1}`}
+            </span>
+            <button
+              className="detail-panel-pin-unpin"
+              onClick={() => onUnpin?.(star.id)}
+            >
+              Unpin
+            </button>
+          </>
+        ) : (
+          <span className="detail-panel-pin-hint">Shift-drag to pin this star</span>
         )}
       </div>
 

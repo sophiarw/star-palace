@@ -328,6 +328,39 @@ body {
   font-weight: 600;
 }
 
+/* F4 — pin status row in DetailPanel: lock + axes + Unpin button when pinned,
+   subtle hint text otherwise. */
+.detail-panel-pin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.detail-panel-pin-status {
+  color: #ffe066;
+  font-size: 12px;
+}
+
+.detail-panel-pin-unpin {
+  background: rgba(255, 224, 102, 0.12);
+  border: 1px solid rgba(255, 224, 102, 0.4);
+  border-radius: 6px;
+  color: #ffe066;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.detail-panel-pin-unpin:hover {
+  background: rgba(255, 224, 102, 0.22);
+}
+
+.detail-panel-pin-hint {
+  font-style: italic;
+}
+
 .detail-panel-content {
   border: 1px solid var(--border);
   border-radius: 8px;
