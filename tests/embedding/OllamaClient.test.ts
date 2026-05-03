@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { OllamaClient, cosine, normalizeEmbedding, truncateText } from '../../src/daemon/embedding/OllamaClient'
+import { OllamaClient, normalizeEmbedding, truncateText } from '../../src/daemon/embedding/OllamaClient'
 import { EmbeddingEngine } from '../../src/daemon/embedding/EmbeddingEngine'
 import { EMBED_DIM, MAX_TEXT_BYTES } from '../../src/shared/types'
 
@@ -54,27 +54,6 @@ describe('OllamaClient (mocked fetch)', () => {
     const results = await client.embedBatch(['a', 'b', 'c'])
     expect(results).toHaveLength(3)
     for (const r of results) expect(r).toBeInstanceOf(Float32Array)
-  })
-})
-
-describe('cosine similarity', () => {
-  it('identical vectors = 1.0', () => {
-    const v = makeEmbedding()
-    expect(cosine(v, v)).toBeCloseTo(1.0)
-  })
-
-  it('orthogonal vectors = 0', () => {
-    const a = new Float32Array(4).fill(0)
-    const b = new Float32Array(4).fill(0)
-    a[0] = 1
-    b[1] = 1
-    expect(cosine(a, b)).toBeCloseTo(0)
-  })
-
-  it('zero vector = 0', () => {
-    const a = new Float32Array(4).fill(0)
-    const b = makeEmbedding(4)
-    expect(cosine(a, b)).toBe(0)
   })
 })
 

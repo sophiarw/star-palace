@@ -70,17 +70,6 @@ export function truncateText(text: string): string {
   return buf.toString('utf8', 0, end)
 }
 
-export function cosine(a: Float32Array, b: Float32Array): number {
-  let dot = 0, normA = 0, normB = 0
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
-  }
-  if (normA === 0 || normB === 0) return 0
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB))
-}
-
 export function normalizeEmbedding(v: Float32Array): Float32Array {
   let norm = 0
   for (let i = 0; i < v.length; i++) norm += v[i] * v[i]
@@ -88,13 +77,6 @@ export function normalizeEmbedding(v: Float32Array): Float32Array {
   if (norm === 0) return v
   const out = new Float32Array(v.length)
   for (let i = 0; i < v.length; i++) out[i] = v[i] / norm
-  return out
-}
-
-export function zeroPadOrTruncate(v: Float32Array, dim: number): Float32Array {
-  if (v.length === dim) return v
-  const out = new Float32Array(dim)
-  out.set(v.slice(0, dim))
   return out
 }
 
