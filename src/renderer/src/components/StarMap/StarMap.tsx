@@ -12,6 +12,8 @@ import {
   hashStr,
   spriteCacheStats,
   setSpriteCacheActiveTheme,
+  setSpriteCacheDpr,
+  spriteLogicalSize,
 } from './sprites'
 import { defaultJitterFor } from './proc'
 import { getBackdrop, getBackdropMultiplier } from './background'
@@ -645,6 +647,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const native = window.devicePixelRatio || 1
       const dpr = Math.min(native, dprCap(qualityRef.current))
       dprRef.current = dpr
+      setSpriteCacheDpr(dpr)
       const w = window.innerWidth
       const h = window.innerHeight
       canvas.width = Math.round(w * dpr)
@@ -675,6 +678,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const native = window.devicePixelRatio || 1
     const dpr = Math.min(native, dprCap(qualityRef.current))
     dprRef.current = dpr
+    setSpriteCacheDpr(dpr)
     const w = window.innerWidth
     const h = window.innerHeight
     canvas.width = Math.round(w * dpr)
@@ -995,7 +999,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         jitter = getJitter(star.id)
         sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant, lod)
       }
-      const sw = sprite.width, sh = sprite.height
+      const { w: sw, h: sh } = spriteLogicalSize(sprite)
       let scale = drawScale
       if (isHovered) scale *= SPRITE_HOVER_SCALE
       if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
@@ -1324,7 +1328,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           jitter = getJitter(star.id)
           sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant)
         }
-        const sw = sprite.width, sh = sprite.height
+        const { w: sw, h: sh } = spriteLogicalSize(sprite)
         const previewScale = drawScale * SPRITE_SELECTED_SCALE
         const drawW = sw * previewScale, drawH = sh * previewScale
         ctx.globalCompositeOperation = 'lighter'

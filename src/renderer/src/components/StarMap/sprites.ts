@@ -64,6 +64,30 @@ export function spriteCoreRadius(sizeBucket: number): number {
 
 const cache = new Map<string, HTMLCanvasElement>()
 
+// Sprites bake at the same effective DPR the main canvas uses, so the
+// rasterised bitmap matches the device pixel grid the renderer eventually
+// blits onto. Without this, every `drawImage` upscales by `dpr` and the
+// browser's bilinear filter softens the result. Bucketed to nearest 0.5 so
+// trivial DPR drift (e.g. window dragged across two displays) doesn't
+// thrash the cache.
+let currentSpriteDpr = 1
+function bucketDpr(dpr: number): number {
+  return Math.max(1, Math.round(dpr * 2) / 2)
+}
+export function setSpriteCacheDpr(dpr: number): void {
+  currentSpriteDpr = bucketDpr(dpr)
+}
+
+// Logical (CSS-pixel) dimensions of a baked sprite. The backing canvas
+// width/height are in *device* pixels (size × spriteDpr); consumers that
+// want to draw at logical size must divide by the dpr stamped on the canvas.
+export function spriteLogicalSize(sprite: HTMLCanvasElement): { w: number; h: number } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dpr = (sprite as any).__spriteDpr as number | undefined
+  const d = dpr && dpr > 0 ? dpr : 1
+  return { w: sprite.width / d, h: sprite.height / d }
+}
+
 /**
  * Sprite level-of-detail. `'full'` is the existing artwork path; `'cheap'`
  * skips the per-frame-expensive bits — diffraction spikes for the default
@@ -123,11 +147,12 @@ export function getStarSprite(
   spikeVariant: SpikeVariant = 6,
   lod: Lod = 'full',
 ): HTMLCanvasElement {
-  const key = `${colorIndex}|${tempBucket}|${sizeBucket}|${spikeVariant}|${lod}`
+  const dpr = currentSpriteDpr
+  const key = `${colorIndex}|${tempBucket}|${sizeBucket}|${spikeVariant}|${lod}|d:${dpr}`
   const cached = cache.get(key)
   if (cached) { _defaultHits++; return cached }
   _defaultMisses++
-  const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant, lod)
+  const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant, lod, dpr)
   cache.set(key, sprite)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((import.meta as any).env?.DEV && cache.size > DEFAULT_CACHE_DEV_CEILING) {
@@ -142,14 +167,18 @@ function renderSprite(
   sizeBucket: number,
   spikeVariant: SpikeVariant,
   lod: Lod,
+  dpr: number,
 ): HTMLCanvasElement {
   const r = spriteCoreRadius(sizeBucket)
   const half = Math.ceil(r * HALO_FACTOR)
   const size = half * 2
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+  canvas.width = Math.round(size * dpr)
+  canvas.height = Math.round(size * dpr)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(canvas as any).__spriteDpr = dpr
   const ctx = canvas.getContext('2d')!
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   const cx = half, cy = half
 
   const baseHex = colorIndex < 0
@@ -254,8 +283,14 @@ const TYPED_SCALE: Record<StarType, number> = {
 // proc.ts). At a 7822-star corpus the prior cap=500 thrashed at 758k
 // misses per pan; this sizing keeps the working set resident across
 // pan/zoom and makes second theme flip ~free.
-const TYPED_CACHE_CAP = 4000
-const TYPED_CACHE_BYTE_CAP = 96 * 1024 * 1024
+//
+// F-NEXT-A — sprites now bake at effective DPR; a DPR=2 sprite uses 4× the
+// bytes of the previous DPR=1 bake. Halve entry cap to 2000 and raise byte
+// cap to 144 MB so the working set still fits at retina without unbounded
+// memory growth. The byte cap dominates at high DPR; entry cap dominates at
+// DPR=1 (e.g. external 1× monitor).
+const TYPED_CACHE_CAP = 2000
+const TYPED_CACHE_BYTE_CAP = 144 * 1024 * 1024
 const typedCache = new ThemeAwareSpriteCache<string>(TYPED_CACHE_CAP, TYPED_CACHE_BYTE_CAP)
 
 // Notify the cache when the active theme changes so its eviction loop
@@ -271,9 +306,9 @@ export function setSpriteCacheActiveTheme(themeId: string): void {
  * churn, so flipping back and forth pays only the first switch's cost.
  * `lod` suffix lets the cheap and full tiers coexist for the same star.
  */
-function typedSpriteKey(themeId: string, type: StarType, sizeBucket: number, starId: string, lod: Lod): string {
+function typedSpriteKey(themeId: string, type: StarType, sizeBucket: number, starId: string, lod: Lod, dpr: number): string {
   const hashBucket = hashStr(starId) & 0xfff
-  return `${themeId}|type:${type}|s:${sizeBucket}|h:${hashBucket}|lod:${lod}`
+  return `${themeId}|type:${type}|s:${sizeBucket}|h:${hashBucket}|lod:${lod}|d:${dpr}`
 }
 
 // Per-type tint for the cheap renderer. Mirrors the broad "vibe" of each
@@ -300,13 +335,14 @@ export function getTypedStarSprite(
   starId: string,
   lod: Lod = 'full',
 ): HTMLCanvasElement {
-  const key = typedSpriteKey(theme.id, type, sizeBucket, starId, lod)
+  const dpr = currentSpriteDpr
+  const key = typedSpriteKey(theme.id, type, sizeBucket, starId, lod, dpr)
   const cached = typedCache.get(key)
   if (cached) { _typedHits++; return cached }
   _typedMisses++
   const sprite = lod === 'cheap'
-    ? renderCheapTypedSprite(type, sizeBucket)
-    : renderTypedSprite(theme, type, sizeBucket, starId)
+    ? renderCheapTypedSprite(type, sizeBucket, dpr)
+    : renderTypedSprite(theme, type, sizeBucket, starId, dpr)
   typedCache.set(key, sprite, theme.id)
   return sprite
 }
@@ -316,7 +352,7 @@ export function getTypedStarSprite(
 // works without a per-LOD branch on the consume side. Black-hole gets a
 // dimmer center to keep its "sucks light" silhouette readable; everything
 // else is a generic warm/cool glow.
-function renderCheapTypedSprite(type: StarType, sizeBucket: number): HTMLCanvasElement {
+function renderCheapTypedSprite(type: StarType, sizeBucket: number, dpr: number): HTMLCanvasElement {
   const baseR = spriteCoreRadius(sizeBucket) * TYPED_SCALE[type]
   const haloFactor =
     type === 'nebula' ? 2.6 :
@@ -327,9 +363,12 @@ function renderCheapTypedSprite(type: StarType, sizeBucket: number): HTMLCanvasE
   const half = Math.ceil(baseR * haloFactor)
   const size = half * 2
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+  canvas.width = Math.round(size * dpr)
+  canvas.height = Math.round(size * dpr)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(canvas as any).__spriteDpr = dpr
   const ctx = canvas.getContext('2d')!
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   const cx = half, cy = half
   const tint = CHEAP_TINT[type]
   const coreColor = type === 'black-hole' ? tint : blend(tint, [255, 255, 255], 0.6)
@@ -358,6 +397,7 @@ function renderTypedSprite(
   type: StarType,
   sizeBucket: number,
   starId: string,
+  dpr: number,
 ): HTMLCanvasElement {
   const baseR = spriteCoreRadius(sizeBucket) * TYPED_SCALE[type]
   // Reserve halo room: nebula needs the most, jet types need ~3.5×.
@@ -374,9 +414,12 @@ function renderTypedSprite(
   const half = Math.ceil(baseR * haloFactor)
   const size = half * 2
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+  canvas.width = Math.round(size * dpr)
+  canvas.height = Math.round(size * dpr)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(canvas as any).__spriteDpr = dpr
   const ctx = canvas.getContext('2d')!
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   const cx = half, cy = half
 
   const drawer = theme.drawers[type] ?? theme.defaultDrawer
