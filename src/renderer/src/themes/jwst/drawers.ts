@@ -12,11 +12,6 @@
 import type { ThemedDrawer } from '../types'
 import {
   applyCircularFade,
-  buildRamp,
-  fbm2D,
-  hashStr,
-  mix,
-  pickN,
   rngPick,
   rngRange,
   type RGB,
@@ -706,126 +701,184 @@ const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
 }
 
 /* --------------------------------------------------------------------------
- * 9. NEBULA — FBM density field + colour ramp + hot-spot pinpoints (v5)
+ * 9. NEBULA — Carina-inspired stacked-blob cloud (deck port, F-NEXT-B follow-up)
  *
- * F15 note: nebula does not have a separate outer "halo" gradient — the FBM
- * density field IS the procedural detail. Reducing its alphas would gut the
- * very artwork F15 aims to expose. Skipped intentionally.
+ * Replaces the FBM density field with the deck's `paintNebulaCloud` from
+ * docs/gui-update/star-renderers.js: 5 layered passes (large diffuse base,
+ * mid-octave accents, high-octave detail, bezier filaments, dust-lane
+ * subtraction, Hα emission knots) painted inside a circular clip so no
+ * rectangular sprite-tile edge is visible at zoom. Carina palette: deep
+ * teal/blue base + warm tan + gold + dusty magenta + teal highlights, with
+ * blue-white + warm hot knots.
+ *
+ * rng() call order is intentional and stable; reordering reseeds every
+ * downstream feature and shifts the visual identity of every nebula sprite.
  * -------------------------------------------------------------------------- */
 
-const drawNebula: ThemedDrawer = (ctx, cx, cy, _r, rng) => {
-  const palettePool: RGB[] = [
-    [140, 80, 220],   // purple
-    [60, 110, 230],   // blue
-    [220, 100, 160],  // pink
-    [230, 80, 220],   // magenta
-    [80, 220, 230],   // cyan
-    [120, 230, 110],  // electric green
-    [240, 220, 80],   // gold yellow
-    [240, 130, 50],   // deep orange
-    [60, 200, 180],   // teal
-  ]
-  const promote = rng() < 0.4
-  const colors = pickN(palettePool, promote ? 4 : 3, rng)
-  // Pad rng() consumption so downstream offsets/freq stay stable across 3-vs-4
-  if (!promote) rng()
+interface NebulaCloudOpts {
+  bands: RGB[]
+  hot: RGB[]
+  dustAlpha: number
+  filaments: number
+  shape: { ax: number; ay: number; rot: number }
+  intensity?: number
+  skipKnots?: boolean
+}
 
-  const ox = rngRange(rng, -100, 100)
-  const oy = rngRange(rng, -100, 100)
-  const theta = rng() * Math.PI * 2
-  const cosT = Math.cos(theta), sinT = Math.sin(theta)
-  const freq = rngRange(rng, 2.0, 3.5)
-  const seed = hashStr(`${ox}:${oy}:${theta}`) | 0
+function paintNebulaCloud(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  R: number,
+  rng: () => number,
+  opts: NebulaCloudOpts,
+): void {
+  const { bands, hot, dustAlpha, filaments, shape } = opts
+  const intensity = opts.intensity ?? 1
+  const ax = shape.ax
+  const ay = shape.ay
+  const rot = shape.rot
+  const cosR = Math.cos(rot), sinR = Math.sin(rot)
 
-  const c0 = colors[0]
-  const c1 = colors[1]
-  const c2 = colors[2]
-  const cMid: RGB = colors.length >= 4 ? mix(c1, colors[3], 0.5) : c1
-  const ramp = buildRamp([
-    { d: 0.00, rgba: [0, 0, 0, 0] },
-    { d: 0.20, rgba: [c0[0], c0[1], c0[2], 0.25 * 255] },
-    { d: 0.40, rgba: [cMid[0], cMid[1], cMid[2], 0.55 * 255] },
-    { d: 0.60, rgba: [...mix(c2, [255, 220, 220], 0.5) as RGB, 0.85 * 255] as [number, number, number, number] },
-    { d: 0.80, rgba: [255, 240, 230, 0.98 * 255] },
-    { d: 1.00, rgba: [255, 255, 255, 1.0 * 255] },
-  ])
-
-  const W = ctx.canvas.width, H = ctx.canvas.height
-  const half = Math.min(W, H) / 2
-  // FBM is a low-frequency density field — bilinear upsample of a small
-  // ImageData buffer is visually indistinguishable from a full-res render.
-  // Cap NW/NH at NOISE_MAX so the largest nebula sprites (up to ~91² pixels
-  // at the biggest size bucket) don't pay 8 k× 5-octave FBM samples per
-  // first build. 48-floor preserves the existing minimum quality.
-  const NOISE_MAX = 56
-  const NW = Math.min(NOISE_MAX, Math.max(48, Math.floor(W / 2)))
-  const NH = Math.min(NOISE_MAX, Math.max(48, Math.floor(H / 2)))
-  const noiseCanvas = document.createElement('canvas')
-  noiseCanvas.width = NW
-  noiseCanvas.height = NH
-  const nctx = noiseCanvas.getContext('2d')!
-  const img = nctx.createImageData(NW, NH)
-  const data = img.data
-
-  const ncx = NW / 2, ncy = NH / 2
-  const nr = Math.min(NW, NH) / 2
-
-  for (let py = 0; py < NH; py++) {
-    for (let px = 0; px < NW; px++) {
-      const dx = (px - ncx) / nr
-      const dy = (py - ncy) / nr
-      const sx = (dx * cosT - dy * sinT) + ox
-      const sy = (dx * sinT + dy * cosT) + oy
-      let density = fbm2D(sx * freq, sy * freq, 5, 2.0, 0.5, seed)
-      const dist2 = dx * dx + dy * dy
-      const fall = Math.max(0, 1 - dist2)
-      density *= fall * fall * Math.sqrt(fall)
-      const c = ramp(Math.min(1, Math.max(0, density)))
-      const idx = (py * NW + px) * 4
-      data[idx]     = c[0]
-      data[idx + 1] = c[1]
-      data[idx + 2] = c[2]
-      data[idx + 3] = c[3]
-    }
+  function place(): { x: number; y: number } {
+    // Sample within an ellipse, biased toward the centre.
+    const t = Math.pow(rng(), 1.6)
+    const a = rng() * Math.PI * 2
+    const lx = Math.cos(a) * t * R * ax
+    const ly = Math.sin(a) * t * R * ay
+    return { x: cx + lx * cosR - ly * sinR, y: cy + lx * sinR + ly * cosR }
   }
-  nctx.putImageData(img, 0, 0)
 
   ctx.save()
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(noiseCanvas, 0, 0, W, H)
-  ctx.restore()
+  // Soft circular clip so the cloud has no rectangular sprite-tile edge.
+  ctx.beginPath(); ctx.arc(cx, cy, R * 1.05, 0, Math.PI * 2); ctx.clip()
 
-  const hotCount = 3 + Math.floor(rng() * 4) // 3..6
-  ctx.save()
+  // Pass 1: large dim diffuse base in band[0] (the cool base colour).
   ctx.globalCompositeOperation = 'lighter'
-  for (let i = 0; i < hotCount; i++) {
-    let px = cx, py = cy
-    let tries = 0
-    while (tries < 8) {
-      const ang = rng() * Math.PI * 2
-      const radial = Math.sqrt(rng()) * 0.85
-      px = cx + Math.cos(ang) * radial * half
-      py = cy + Math.sin(ang) * radial * half
-      const dx = (px - cx) / half
-      const dy = (py - cy) / half
-      const sx = (dx * cosT - dy * sinT) + ox
-      const sy = (dx * sinT + dy * cosT) + oy
-      const density = fbm2D(sx * freq, sy * freq, 5, 2.0, 0.5, seed)
-      tries++
-      if (density >= 0.55) break
-    }
-    const pr = rngRange(rng, 1.5, 3.5)
-    const grad = ctx.createRadialGradient(px, py, 0, px, py, pr * 2)
-    grad.addColorStop(0,   'rgba(255,250,240,1)')
-    grad.addColorStop(0.4, 'rgba(255,235,220,0.7)')
-    grad.addColorStop(1,   'rgba(255,200,180,0)')
-    ctx.fillStyle = grad
-    ctx.beginPath(); ctx.arc(px, py, pr * 2, 0, Math.PI * 2); ctx.fill()
+  const baseLayers = 14
+  for (let i = 0; i < baseLayers; i++) {
+    const p = place()
+    const sz = rngRange(rng, R * 0.4, R * 0.9)
+    const c = bands[0]
+    const a = rngRange(rng, 0.05, 0.14) * intensity
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
+    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`)
+    g.addColorStop(0.6, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.35})`)
+    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
   }
-  ctx.restore()
 
-  applyCircularFade(ctx, cx, cy, half, 0.55)
+  // Pass 2: medium accent blobs (warm + magenta, etc — any non-base band).
+  const accentLayers = 22
+  const accentBands = bands.length > 1 ? bands.slice(1) : bands
+  for (let i = 0; i < accentLayers; i++) {
+    const p = place()
+    const sz = rngRange(rng, R * 0.18, R * 0.45)
+    const c = rngPick(rng, accentBands)
+    const a = rngRange(rng, 0.10, 0.28) * intensity
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
+    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`)
+    g.addColorStop(0.55, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.4})`)
+    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // Pass 3: tiny bright detail blobs (highest octave).
+  const detailLayers = 60
+  for (let i = 0; i < detailLayers; i++) {
+    const p = place()
+    const sz = rngRange(rng, R * 0.04, R * 0.16)
+    const c = rngPick(rng, bands)
+    const a = rngRange(rng, 0.18, 0.45) * intensity
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
+    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`)
+    g.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.3})`)
+    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // Pass 4: filament strokes — curved 3-segment Beziers as wispy ridges.
+  for (let i = 0; i < filaments; i++) {
+    const p0 = place()
+    const len = rngRange(rng, R * 0.3, R * 0.7)
+    const dir = rng() * Math.PI * 2
+    const ex = p0.x + Math.cos(dir) * len
+    const ey = p0.y + Math.sin(dir) * len
+    const cp1x = p0.x + Math.cos(dir) * len * 0.33 + rngRange(rng, -R * 0.18, R * 0.18)
+    const cp1y = p0.y + Math.sin(dir) * len * 0.33 + rngRange(rng, -R * 0.18, R * 0.18)
+    const cp2x = p0.x + Math.cos(dir) * len * 0.66 + rngRange(rng, -R * 0.18, R * 0.18)
+    const cp2y = p0.y + Math.sin(dir) * len * 0.66 + rngRange(rng, -R * 0.18, R * 0.18)
+    const c = rngPick(rng, bands)
+    const a = rngRange(rng, 0.06, 0.13)
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`
+    ctx.lineWidth = rngRange(rng, R * 0.05, R * 0.12)
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(p0.x, p0.y)
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, ex, ey)
+    ctx.stroke()
+  }
+
+  // Pass 5: dark dust lanes (subtractive).
+  if (dustAlpha > 0) {
+    ctx.globalCompositeOperation = 'destination-out'
+    const dustCount = 18
+    for (let i = 0; i < dustCount; i++) {
+      const p = place()
+      const sz = rngRange(rng, R * 0.10, R * 0.32)
+      const a = rngRange(rng, dustAlpha * 0.4, dustAlpha)
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
+      g.addColorStop(0, `rgba(0,0,0,${a})`)
+      g.addColorStop(0.6, `rgba(0,0,0,${a * 0.3})`)
+      g.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = g
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  // Pass 6: bright Hα emission knots.
+  if (!opts.skipKnots) {
+    ctx.globalCompositeOperation = 'lighter'
+    const knots = 10
+    for (let i = 0; i < knots; i++) {
+      const p = place()
+      const sz = rngRange(rng, R * 0.010, R * 0.028)
+      const c = rngPick(rng, hot)
+      const bg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 4)
+      bg.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},0.30)`)
+      bg.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
+      ctx.fillStyle = bg
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz * 4, 0, Math.PI * 2); ctx.fill()
+      const hc = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz)
+      hc.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},0.7)`)
+      hc.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
+      ctx.fillStyle = hc
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  ctx.restore()
+}
+
+const drawNebula: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  paintNebulaCloud(ctx, cx, cy, r * 2.4, rng, {
+    // Carina-inspired: deep teal base + warm tan + gold + dusty magenta +
+    // teal highlights. Hot knots: warm peach + blue-white + warm pink.
+    bands: [
+      [55, 90, 120],     // deep teal/blue (cool base)
+      [180, 130, 90],    // warm tan
+      [230, 170, 110],   // gold
+      [200, 100, 130],   // dusty magenta
+      [120, 200, 200],   // teal highlight
+    ],
+    hot: [[255, 220, 180], [220, 240, 255], [255, 180, 140]],
+    dustAlpha: 0.55,
+    filaments: 9,
+    shape: { ax: 1.0, ay: 0.78, rot: rng() * Math.PI },
+  })
 }
 
 /* --------------------------------------------------------------------------
