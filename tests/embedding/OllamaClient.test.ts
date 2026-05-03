@@ -120,4 +120,34 @@ describe('EmbeddingEngine', () => {
     expect(h1).toBe(h2)
     expect(h1).toHaveLength(40)  // sha1 hex
   })
+
+  it('embed returns a unit-norm vector', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const raw = makeEmbedding(EMBED_DIM, 1.7)
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ embedding: Array.from(raw) }),
+    } as Response)
+
+    const client = new OllamaClient()
+    const engine = new EmbeddingEngine(client)
+    const { embedding } = await engine.embed('hello')
+    let norm = 0
+    for (const v of embedding) norm += v * v
+    expect(Math.sqrt(norm)).toBeCloseTo(1.0, 5)
+    vi.unstubAllGlobals()
+  })
+
+  it('embed throws when Ollama returns wrong embedding dim', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ embedding: new Array(EMBED_DIM - 1).fill(0.1) }),
+    } as Response)
+
+    const client = new OllamaClient()
+    const engine = new EmbeddingEngine(client)
+    await expect(engine.embed('hello')).rejects.toThrow(/expected embedding dim/i)
+    vi.unstubAllGlobals()
+  })
 })

@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { OllamaClient } from './OllamaClient'
+import { OllamaClient, normalizeEmbedding, validateEmbedding } from './OllamaClient'
 import type { FileNode } from '../../shared/types'
 
 export interface EmbeddingResult {
@@ -14,9 +14,14 @@ export class EmbeddingEngine {
     this.client = client
   }
 
+  // Embeddings are normalised to unit length so HnswIndex's `ip` (inner-product)
+  // distance equals 1 - cosine_similarity. Without this, similarity scores
+  // computed downstream as `1 - distance` would drift outside [0, 1].
   async embed(text: string): Promise<EmbeddingResult> {
     const contentHash = createHash('sha1').update(text).digest('hex')
-    const embedding = await this.client.embed(text)
+    const raw = await this.client.embed(text)
+    validateEmbedding(raw)
+    const embedding = normalizeEmbedding(raw)
     return { embedding, contentHash }
   }
 
