@@ -590,6 +590,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
 
+    // F11 — theme overlay (scanlines, Tron grid, etc.). Sits ON TOP of the
+    // sky and underneath the HUD layer (chevrons, lock glyphs, labels) so
+    // chrome stays legible on noisy themes like vapor.
+    if (activeTheme.background.overlay) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1
+      activeTheme.background.overlay(ctx, w, h)
+      ctx.restore()
+    }
+
     // Off-screen neighbor markers — draw a chevron at the canvas edge for each
     // neighbor whose center is outside the viewport, pointing toward it.
     if (selectedId && currentNeighbors.length > 0) {
