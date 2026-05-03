@@ -11,6 +11,7 @@ import {
   spriteCoreRadius,
   hashStr,
 } from './sprites'
+import { defaultJitterFor } from './proc'
 import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import { usageStarType, type PercentileBuckets } from './usageStarType'
@@ -623,7 +624,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // Main star pass — sprite-cached, additive blend so overlapping halos bloom together.
     // Side-channel: record per-star sprite metadata for the decoration pass so it doesn't
     // recompute the sprite + scale twice per frame.
-    interface DrawnSprite { sprite: HTMLCanvasElement; sx: number; sy: number; drawW: number; drawH: number }
+    // F8b — `rotation` is non-null for default-path (cluster-hue) stars so the
+    // decoration pass replays the same rotation on its brightness-boost re-draw;
+    // null for typed stars (their drawer already bakes per-id orientation).
+    interface DrawnSprite {
+      sprite: HTMLCanvasElement
+      sx: number
+      sy: number
+      drawW: number
+      drawH: number
+      rotation: number | null
+    }
     const drawnByFocusId = new Map<string, DrawnSprite>()
 
     ctx.save()
@@ -653,6 +664,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
       let sprite: HTMLCanvasElement
+      // F8b — only the default-path (cluster-hue) branch picks up the per-id
+      // jitter triple. Typed stars get their per-id variation baked into the
+      // sprite by the F8a drawer pass (rotation, halo squish, etc.) and
+      // would double-jitter if we layered another rotate on top. `jitter`
+      // null → no save/rotate/alpha-multiply at draw time.
+      let jitter: ReturnType<typeof defaultJitterFor> | null = null
       const effectiveType = effectiveStarType(star, activeMode, activeBuckets)
       if (effectiveType) {
         sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
@@ -660,7 +677,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
         const tb = tempBucketFor(star.id)
-        sprite = getStarSprite(colorIndex, tb, sb)
+        jitter = defaultJitterFor(star.id)
+        sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant)
       }
       const sw = sprite.width, sh = sprite.height
       let scale = drawScale
@@ -669,9 +687,26 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (isNeighbor && !isSelected) scale *= SPRITE_NEIGHBOR_SCALE
       if (isSelected) scale *= SPRITE_SELECTED_SCALE * selectionPulse(tNowMs)
       const drawW = sw * scale, drawH = sh * scale
-      ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+      if (jitter) {
+        // Default-path: per-id rotation + alpha jitter applied at draw time.
+        // The bucket sprite is shared across same-(colorIndex, tempBucket,
+        // sizeBucket, spikeVariant) stars; rotation + alpha jitter give two
+        // such files distinct presentation per the F8b NO-cache plan.
+        const baseAlpha = ctx.globalAlpha
+        ctx.save()
+        ctx.translate(sx, sy)
+        ctx.rotate(jitter.rotation)
+        ctx.globalAlpha = baseAlpha * jitter.alphaJitter
+        ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH)
+        ctx.restore()
+      } else {
+        ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+      }
       if (isSelected || isHighlighted || isNeighbor) {
-        drawnByFocusId.set(star.id, { sprite, sx, sy, drawW, drawH })
+        drawnByFocusId.set(star.id, {
+          sprite, sx, sy, drawW, drawH,
+          rotation: jitter ? jitter.rotation : null,
+        })
       }
     }
     ctx.restore()
@@ -745,7 +780,27 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (!isHighlighted && !isSelected && !isNeighbor) continue
         const drawn = drawnByFocusId.get(star.id)
         if (!drawn) continue  // off-screen + not selected/neighbor — main pass culled
-        const { sprite, sx, sy, drawW, drawH } = drawn
+        const { sprite, sx, sy, drawW, drawH, rotation } = drawn
+
+        // F8b — for default-path stars the main pass rotated the sprite, so
+        // the brightness-boost re-draws below must replay the same rotation
+        // or the boost halo lands at the wrong orientation. Helper centralises
+        // the save/translate/rotate/restore wrap (or a passthrough for typed
+        // sprites whose drawer already baked orientation in).
+        const drawSpriteOriented = (alpha: number, op: GlobalCompositeOperation): void => {
+          ctx.globalCompositeOperation = op
+          if (rotation !== null) {
+            ctx.save()
+            ctx.globalAlpha = alpha
+            ctx.translate(sx, sy)
+            ctx.rotate(rotation)
+            ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH)
+            ctx.restore()
+          } else {
+            ctx.globalAlpha = alpha
+            ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+          }
+        }
 
         const sb = activeMode === 'usage'
           ? sizeBucketForImportance(star.importanceScore ?? 0)
@@ -761,9 +816,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           // so halo brightness oscillates with sprite size for a unified breathing effect.
           // Boost ignores the global exposure curve (same reason as the main-pass
           // bypass above): selection should feel solid regardless of zoom.
-          ctx.globalCompositeOperation = 'lighter'
-          ctx.globalAlpha = selectionBoostAlpha(tNowMs)
-          ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+          drawSpriteOriented(selectionBoostAlpha(tNowMs), 'lighter')
 
           ctx.globalCompositeOperation = 'source-over'
           ctx.strokeStyle = SELECTED_RING_COLOR
@@ -779,9 +832,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           // star, lower alpha so the selected one still wins. Keeps neighbors as bright
           // as the selected at every zoom level — without them, the selected star's
           // halo dominates at high exposure and neighbors fade into the background.
-          ctx.globalCompositeOperation = 'lighter'
-          ctx.globalAlpha = SPRITE_NEIGHBOR_BOOST_ALPHA * exposure
-          ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+          drawSpriteOriented(SPRITE_NEIGHBOR_BOOST_ALPHA * exposure, 'lighter')
 
           ctx.globalCompositeOperation = 'source-over'
           ctx.strokeStyle = NEIGHBOR_RING_COLOR
@@ -886,20 +937,32 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           : sizeBucketFor(star.viewCount)
         const effectiveType = effectiveStarType(star, activeMode, activeBuckets)
         let sprite: HTMLCanvasElement
+        // F8b — match the main pass: default-path stars get the per-id
+        // jitter triple so the preview reads as the same star (same spike
+        // variant + rotation + alpha) the user grabbed off the canvas.
+        let jitter: ReturnType<typeof defaultJitterFor> | null = null
         if (effectiveType) {
           sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
         } else {
           const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
           const colorIndex = cluster ? cluster.colorIndex : -1
           const tb = tempBucketFor(star.id)
-          sprite = getStarSprite(colorIndex, tb, sb)
+          jitter = defaultJitterFor(star.id)
+          sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant)
         }
         const sw = sprite.width, sh = sprite.height
         const previewScale = drawScale * SPRITE_SELECTED_SCALE
         const drawW = sw * previewScale, drawH = sh * previewScale
         ctx.globalCompositeOperation = 'lighter'
-        ctx.globalAlpha = 0.7 * exposure
-        ctx.drawImage(sprite, tx - drawW / 2, ty - drawH / 2, drawW, drawH)
+        if (jitter) {
+          ctx.globalAlpha = 0.7 * exposure * jitter.alphaJitter
+          ctx.translate(tx, ty)
+          ctx.rotate(jitter.rotation)
+          ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH)
+        } else {
+          ctx.globalAlpha = 0.7 * exposure
+          ctx.drawImage(sprite, tx - drawW / 2, ty - drawH / 2, drawW, drawH)
+        }
         ctx.restore()
       }
     }
@@ -916,7 +979,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const isNeighbor = neighbors.has(star.id)
       const focusAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       const zoomAlpha = isHovered ? 1 : Math.max(0, Math.min(1, (cam.zoom - 0.8) * 2))
-      const alpha = focusAlpha * zoomAlpha
+      const isEmphasized = isHovered || isHighlighted || isSelected || isNeighbor
+      const emphasisAlpha = isEmphasized ? 1 : 0.5
+      const alpha = focusAlpha * zoomAlpha * emphasisAlpha
       if (alpha < 0.05) continue
 
       const sbLabel = activeMode === 'usage'

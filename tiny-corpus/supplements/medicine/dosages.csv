@@ -1,7 +1,0 @@
-drug,indication,dose_mg,frequency_hours,route
-amoxicillin,otitis media,500,8,oral
-metformin,type 2 diabetes,500,12,oral
-lisinopril,hypertension,10,24,oral
-atorvastatin,hyperlipidemia,40,24,oral
-ibuprofen,pain inflammation,400,6,oral
-omeprazole,GERD,20,24,oral

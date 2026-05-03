@@ -45,6 +45,11 @@ export default function App() {
   // Pending vim action to send to StarMap (new object ref each dispatch so the same action fires repeatedly)
   const [vimAction, setVimAction] = useState<VimAction | null>(null)
 
+  // F5 — Collections. Hook owns the list cache + active-collection state
+  // (persisted to localStorage). Member positions and the highlight set used
+  // by StarMap are derived per-render from the active collection's id.
+  const collections = useCollections()
+
   const loadMap = useCallback(async () => {
     try {
       const data = await fetchAll()
@@ -253,7 +258,8 @@ export default function App() {
     setShowSearch(false)
     setSearchQuery('')
     handleClearSearch()
-  }, [handleClearSearch])
+    collections.setActiveCollectionId(null)
+  }, [handleClearSearch, collections])
 
   const handleSelectHovered = useCallback(() => {
     if (hoveredId) setSelectedId(hoveredId)
@@ -280,10 +286,6 @@ export default function App() {
     setVimAction({ type: 'panTo', wx, wy, zoom: GALAXY_FLY_TO_ZOOM })
   }, [])
 
-  // F5 — Collections. Hook owns the list cache + active-collection state
-  // (persisted to localStorage). Member positions and the highlight set used
-  // by StarMap are derived per-render from the active collection's id.
-  const collections = useCollections()
   const activeCollection = useMemo(() => {
     if (collections.activeCollectionId === null) return null
     return collections.collections.find(c => c.id === collections.activeCollectionId) ?? null
@@ -421,6 +423,7 @@ export default function App() {
         searchResults={highlights}
         searchQuery={searchQuery}
         open={showCollectionsPanel}
+        onOpen={() => setShowCollectionsPanel(true)}
         onClose={() => setShowCollectionsPanel(false)}
       />
 

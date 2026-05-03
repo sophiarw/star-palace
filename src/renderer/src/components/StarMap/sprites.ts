@@ -1,6 +1,6 @@
 import { CONSTELLATION_PALETTE } from '@shared/types'
 import type { StarType } from '@shared/types'
-import { hashStr, LRUSpriteCache, seedFromId } from './proc'
+import { hashStr, LRUSpriteCache, seedFromId, type SpikeVariant } from './proc'
 import type { Theme } from '../../themes/types'
 
 // hashStr is re-exported here to keep existing call sites compiling. The
@@ -64,20 +64,34 @@ export function spriteCoreRadius(sizeBucket: number): number {
 
 const cache = new Map<string, HTMLCanvasElement>()
 
+/**
+ * F8b — `spikeVariant` adds a 4-spike alternative to the existing 6-spike
+ * default for sizeBucket >= 2. The bucket count grows from 120 → 240 (still
+ * tiny). Per-id rotation + alpha jitter are NOT baked here; they're applied
+ * at draw time in StarMap so we keep the no-cache plan for those axes.
+ * `SpikeVariant` lives in `proc.ts` (canonical home for procedural types).
+ */
+
 export function getStarSprite(
   colorIndex: number,
   tempBucket: number,
   sizeBucket: number,
+  spikeVariant: SpikeVariant = 6,
 ): HTMLCanvasElement {
-  const key = `${colorIndex}|${tempBucket}|${sizeBucket}`
+  const key = `${colorIndex}|${tempBucket}|${sizeBucket}|${spikeVariant}`
   const cached = cache.get(key)
   if (cached) return cached
-  const sprite = renderSprite(colorIndex, tempBucket, sizeBucket)
+  const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant)
   cache.set(key, sprite)
   return sprite
 }
 
-function renderSprite(colorIndex: number, tempBucket: number, sizeBucket: number): HTMLCanvasElement {
+function renderSprite(
+  colorIndex: number,
+  tempBucket: number,
+  sizeBucket: number,
+  spikeVariant: SpikeVariant,
+): HTMLCanvasElement {
   const r = spriteCoreRadius(sizeBucket)
   const half = Math.ceil(r * HALO_FACTOR)
   const size = half * 2
@@ -105,13 +119,19 @@ function renderSprite(colorIndex: number, tempBucket: number, sizeBucket: number
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, size, size)
 
-  // Diffraction spikes baked in for sizeBucket >= 2
+  // Diffraction spikes baked in for sizeBucket >= 2.
+  // F8b — spikeVariant=6 keeps the original 3 strokes (6 arms) at angles
+  // {0, π/3, 2π/3}; spikeVariant=4 draws 2 strokes (4 arms) at {0, π/2}.
+  // Per-id rotation applied at draw time orients these spikes in StarMap.
   if (sizeBucket >= 2) {
     ctx.save()
     ctx.globalCompositeOperation = 'screen'
     const reach = half * SPIKE_REACH
     const lineWidth = sizeBucket >= 4 ? 1.4 : sizeBucket >= 3 ? 1.1 : 0.9
-    for (const ang of [0, Math.PI / 3, (Math.PI * 2) / 3]) {
+    const spikeAngles = spikeVariant === 4
+      ? [0, Math.PI / 2]
+      : [0, Math.PI / 3, (Math.PI * 2) / 3]
+    for (const ang of spikeAngles) {
       const dx = Math.cos(ang) * reach
       const dy = Math.sin(ang) * reach
       const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy)

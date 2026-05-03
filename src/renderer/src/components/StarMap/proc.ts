@@ -56,6 +56,44 @@ export function seedFromId(id: string): () => number {
 export const rngRange = (rng: () => number, lo: number, hi: number): number =>
   lo + rng() * (hi - lo)
 
+/* -------------------------------------------------------------------------- */
+/* F8b — per-id micro-jitter for default cluster-hue stars                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Spike-arm count for the default cluster-hue sprite. F8b adds a 4-spike
+ * alternative to the 6-spike default; per-id pick lives in `defaultJitterFor`.
+ */
+export type SpikeVariant = 4 | 6
+
+/** Per-id runtime jitter triple. See `defaultJitterFor`. */
+export interface DefaultJitter {
+  spikeVariant: SpikeVariant
+  rotation: number
+  alphaJitter: number
+}
+
+/**
+ * F8b — derive a deterministic (spikeVariant, rotation, alphaJitter) triple
+ * for one star from a fresh `seedFromId(starId)` PRNG. Pulls THREE values in a
+ * STABLE order:
+ *   1. spikeVariant — first value picks 4-spike (<0.5) or 6-spike (>=0.5).
+ *      Consumed even though it's also fed back into the bucket-sprite key, so
+ *      downstream values always start from the same RNG state.
+ *   2. rotation — `[0, 2π)` applied at draw time via `ctx.rotate`.
+ *   3. alphaJitter — `[0.9, 1.1)` multiplied into `ctx.globalAlpha`.
+ *
+ * Determinism is sacred: same id → same triple forever. Reordering the rng()
+ * calls here would reseed every sprite, so keep the order stable across edits.
+ */
+export function defaultJitterFor(starId: string): DefaultJitter {
+  const rng = seedFromId(starId)
+  const spikeVariant: SpikeVariant = rng() < 0.5 ? 4 : 6
+  const rotation = rng() * 2 * Math.PI
+  const alphaJitter = 0.9 + rng() * 0.2
+  return { spikeVariant, rotation, alphaJitter }
+}
+
 /** Convenience: uniform pick from a non-empty array. */
 export const rngPick = <T>(rng: () => number, arr: readonly T[]): T =>
   arr[Math.floor(rng() * arr.length)]

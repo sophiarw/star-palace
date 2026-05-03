@@ -16,6 +16,7 @@ interface Props {
   // Latest search query string (so dynamic-collection creation can capture it).
   searchQuery: string
   open: boolean
+  onOpen: () => void
   onClose: () => void
 }
 
@@ -28,7 +29,7 @@ const FLASH_DURATION_MS = 5_000
 
 export default function CollectionsPanel({
   collections, activeCollectionId, onSetActive, onCreate, onRefreshDynamic, onDelete,
-  searchResults, searchQuery, open, onClose,
+  searchResults, searchQuery, open, onOpen, onClose,
 }: Props) {
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
@@ -117,7 +118,7 @@ export default function CollectionsPanel({
       <button
         className="collections-panel-collapsed"
         type="button"
-        onClick={() => onClose()}  // open is owned by parent; reuse onClose handler
+        onClick={onOpen}
         title="Show collections"
       >
         Collections ({collections.length})
