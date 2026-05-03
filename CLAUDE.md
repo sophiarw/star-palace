@@ -1,76 +1,18 @@
 # Star Palace — CLAUDE.md
 
-## Architecture
+This file is the agent entry point. It contains the reading map and the rules that govern day-to-day work. Everything else is in one of three sibling docs.
 
-Two processes connected over HTTP:
+## Reading map
 
-- **Daemon** (`src/daemon/index.ts`) — Express on `127.0.0.1:7373`. Owns SQLite, HNSW index, PCA model. No React.
-- **Renderer** (`src/renderer/`) — Vite + React web app on `:5173`. Canvas2D. Talks to daemon via `fetch`. Never imports Node APIs.
+| Doc | Audience | Read when |
+|---|---|---|
+| **`README.md`** | humans (and agents who need to run the app) | Quickstart, keybindings, env vars, dev gates. |
+| **`repo-state.md`** | agents needing wide context | Comprehensive snapshot: every endpoint, every column, every perf gate, all branches, all stashes, full feature index with file pointers. **Load this before any non-trivial change.** |
+| **`REQUIREMENTS.md`** | designers and agents implementing a feature | Feature spec (F1–F19) with rationale, status, schema design, design philosophy. Source of truth for *why*. |
 
-Start both: `npm run dev:daemon` and `npm run dev:web` in separate terminals.
+If you can't find the answer in those three, the code is the source of truth — start at `src/daemon/index.ts` (HTTP routes) or `src/renderer/src/App.tsx` (UI shell).
 
-## External prerequisites
-
-```
-ollama serve              # must be running
-ollama pull nomic-embed-text
-```
-
-Daemon warns on `/api/health` if Ollama unreachable. Embeddings call `POST localhost:11434/api/embeddings`.
-
-## Data layout
-
-```
-~/.starpalace/
-  index.db          # SQLite (WAL mode) — files, edges, clusters, layout_meta
-  hnsw.bin          # hnswlib-node persisted index
-  hnsw.bin.map.json # fileId <-> hnswlib label mapping
-```
-
-Override with `STARPALACE_DB=/path/to/db` and `STARPALACE_DIR=/path/to/dir`.
-
-## Schema invariants
-
-- `files.embedding` is a 768-float32 BLOB (3072 bytes). NULL until embedded. Vectors are L2-normalised in `EmbeddingEngine.embed` so the HNSW `ip` space yields cosine similarity directly.
-- `files.x`, `files.y` are NULL until `layout_meta.version >= 1`. Renderer skips NULL-position files.
-- `files.layout_version = 0` means file was indexed but not yet projected. Gets updated to 1+ during Relayouter.train().
-- `files.is_pinned` (0/1) and `files.star_type` (nullable text from `STAR_TYPES`) survive re-index — `upsert` does not overwrite them.
-- `edges` has at most K=20 outgoing rows per `src_id`. Pruned in Insert pipeline.
-- `clusters.color_index` is modulo-indexed into `CONSTELLATION_PALETTE`.
-
-## Insert flow
-
-`insertOne()` in `src/daemon/pipeline/Insert.ts`:
-
-1. Hash content → skip if `files.content_hash` matches (no re-embed).
-2. Embed via Ollama (vector validated + normalised).
-3. ANN top-K=20 against the existing index (new point added afterwards so a transaction rollback never leaves an HNSW orphan).
-4. **Single DB transaction**: upsert `files` row, write outgoing `edges`, displace K-th edge of neighbors if applicable, cluster vote, project position.
-5. After commit, `hnsw.addPoint()` registers the new embedding.
-
-Layout trains automatically once 200 embeddings exist (first call to `relayouter.maybeTrainFirst()`).
-
-## PCA projection
-
-`src/daemon/layout/Pca.ts` wraps `ml-pca`:
-
-- `StarPca.train(embeddings)` — SVD, keep top `PC_COUNT` eigenvector columns (PC directions). `PC_COUNT = 8` powers the F3 PC dial: the renderer picks any two of the top 8 components for X/Y without retraining.
-- `pca.project(embedding)` — subtract mean, dot with each active PC.
-- Positions are scaled to `[-500, 500]` world units by `scalePositions()`.
-- Serialised to `layout_meta.projection_model` as JSON. Daemon startup runs an F3 migration: if a persisted model has fewer than `PC_COUNT` components it retrains once.
-
-UMAP swap: implement `Umap` with same `train/project/serialize` interface in `Pca.ts`, update `Relayouter.train()` to call it.
-
-## HNSW index
-
-`src/daemon/ann/HnswIndex.ts` wraps `hnswlib-node`:
-
-- Space: `ip` (inner product). For normalised vectors: distance = 1 - cosine_similarity.
-- `addPoint(embedding, fileId)` — embedding must be normalised. `EmbeddingEngine.embed` normalises before returning, so all callers in this codebase already satisfy the contract.
-- `searchKNN(embedding, k)` returns `{ id, distance }` sorted ascending by distance (= descending by similarity).
-- `hnsw.save()` / `hnsw.load()` persist bin + JSON map to disk. Called after `/api/index` completes.
-
-## Git discipline
+## Commit gates
 
 Before any commit:
 
@@ -78,60 +20,28 @@ Before any commit:
 npm run typecheck && npm run lint && npm run test
 ```
 
-All must pass. No `// @ts-ignore`, no `eslint-disable` (except in vitest.config.ts and the vite config files which are excluded).
+All three must pass. No `// @ts-ignore`. No `eslint-disable` (except in `vitest.config.ts` and the Vite config files). Conventional commits: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
 
-Conventional commits: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
+A tracked pre-commit hook at `scripts/git-hooks/pre-commit` enforces the three gates above. `scripts/install-git-hooks.sh` copies it into `.git/hooks/` and is invoked by the `prepare` script in `package.json`, so a fresh `npm install` arms the hook. Re-run the install script manually after fresh-cloning into a worktree where `.git/hooks/` is empty.
 
-A tracked pre-commit hook at `scripts/git-hooks/pre-commit` enforces
-the three gates above. `scripts/install-git-hooks.sh` copies it into
-`.git/hooks/` and is invoked by the `prepare` script in `package.json`,
-so a fresh `npm install` arms the hook. Re-run the install script
-manually after fresh-cloning into a worktree where `.git/hooks/` is
-empty.
+## Architecture in one paragraph
 
-## Renderer hot-paths
+Two processes connected over HTTP. **Daemon** (`src/daemon/index.ts`) is Express on `127.0.0.1:7373`; owns SQLite, HNSW, PCA, Ollama. No React. **Renderer** (`src/renderer/`) is Vite + React + Canvas2D on `:5173`; talks to daemon via `fetch`; never imports Node APIs. External prerequisite: a local Ollama server with `nomic-embed-text` pulled. Data lives in `~/.starpalace/` (override via `STARPALACE_DIR`, `STARPALACE_DB`).
 
-- `src/renderer/src/components/StarMap/StarMap.tsx` — canvas draw loop. Backing-store sized to `window.innerWidth × effectiveDpr`; `effectiveDpr` is `min(window.devicePixelRatio, theme.dprCap ?? Infinity)` (see [Renderer perf gates](#renderer-perf-gates)). Mouse handlers read `canvas.clientWidth` (CSS pixels).
-- `src/renderer/src/components/StarMap/coords.ts` — pure `worldToScreen`/`screenToWorld` (separated from StarMap so the math is unit-testable in node).
-- `src/renderer/src/components/StarMap/spatialGrid.ts` — pure 100-world-unit cell grid; the draw loop iterates only cells overlapping the viewport instead of every star.
-- `src/renderer/src/hooks/useVimMode.ts` — keybindings. Full table lives in `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx` and the README. Hovered-id is consumed via a `getHoveredId()` getter (the hovered id lives in a ref in `App.tsx` to avoid 60 Hz full-app re-renders during pan).
+Full HTTP surface, schema, pipelines, and perf gates: `repo-state.md`.
 
-## Renderer perf gates
+## Hard invariants
 
-Index of the mechanisms that keep the canvas at 60 fps under user load. Each is wired into `StarMap.tsx`'s rAF loop unless noted.
+These are the rules whose violation will silently corrupt state. If a change touches the relevant area, double-check.
 
-- **Spatial grid** — `spatialGrid.ts`. Built once per `stars` mutation; iterating cells in viewport bounds drops main + label passes from O(N) to O(visible_cells).
-- **Dirty-flag rAF gate** — `dirtyRef` + `lastCamSnapRef` in `StarMap.tsx`. Skips `draw()` when nothing changed and no continuous animation is running. Continuous = selection pulse, search pulse < 200 ms, any pulsar/quasar in scene, vim pan velocity, pin drag.
-- **Sprite LOD cache** — `sprites.ts`. `getStarSprite(...,  lod)` and `getTypedStarSprite(..., lod)` accept `'cheap' | 'full'`; cache key carries the lod suffix so both tiers coexist. Cheap default = halo+core only (skip diffraction spikes); cheap typed = per-type tinted halo+core, no procedural drawer.
-- **LOD swap** — `lodFor(spritePx, focused)` in the main pass swaps to `'cheap'` below 6 px on-screen. Focused stars (selected / hovered / neighbor / highlighted) are pinned to `'full'`.
-- **Backing-store DPR cap** — `resize()` in `StarMap.tsx` clamps `dpr = min(devicePixelRatio, theme.dprCap ?? Infinity)`. Re-runs on theme flip so a low-DPR theme (Atari `dprCap: 1.0`) takes effect immediately.
-- **Position-delta refetch** — `GET /api/map/positions?since=N` (`src/daemon/index.ts`) returns only rows whose `layout_version > N`. Renderer (`App.tsx pollStats`) patches existing stars in place by id; unchanged rows keep their object identity so `rawStarsById` / `projectedStars` / `starsById` only rebuild moved entries.
-- **Idle sprite prebuild** — `requestIdleCallback` chain in the `stars` useEffect, 40 stars per tick. Spreads first-paint procedural-sprite cost off the main paint frame.
-- **Hover ref (no React state)** — `hoveredIdRef` in `App.tsx`; `useVimMode` consumes via `getHoveredId()`. Avoids 60+ Hz App re-renders on cursor motion.
-- **JWST nebula FBM cap** — `themes/jwst/drawers.ts`. Image-data buffer capped at 56² pixels; bilinear up-scale via `drawImage` to the sprite size. Dropped peak first-build cost ~60% with no visible change.
-- **Per-id memoised lookups** — `tempBucketCacheRef`, `jitterCacheRef` in `StarMap.tsx` so `tempBucketFor` / `defaultJitterFor` aren't re-hashed every visible frame.
-- **O(1) raw-stars id lookup** — `rawStarsById` in `App.tsx` replaces `stars.find` in `galaxyOffsetForStarId` and `projectedHighlights`.
-
-## Frame metrics + perf overlay
-
-- `src/renderer/src/lib/frameMetrics.ts` — module-level singleton, ring buffer of last 240 frame deltas. Written from the rAF loop once per drawn frame. `recordSkipped()` increments a separate counter for rAF-skipped (dirty=false) frames so we can see how often the gate fires. Tracks: delta ms, interacting flag (mouse drag / vim pan / pin drag / wheel within 200 ms — distinct from animation), most-recent visible-star count.
-- `snapshot()` derives FPS, p50 / p99 / worst ms, dropped (> 33 ms) count, interacting-only avg + p99.
-- `src/renderer/src/components/PerfOverlay/PerfOverlay.tsx` — fixed bottom-left overlay, polls snapshot every 250 ms. Toggle via `Shift+P` (registered in `App.tsx`; suppressed when an input has focus). `reset` clears the buffer; `copy` writes a plain-text summary to clipboard + console. Hidden by default — zero cost when off.
-
-## User-facing toggles (renderer)
-
-Each persists in `localStorage` under its own versioned key. Both follow the `useTheme.ts` pattern (corrupt values → default + clear).
-
-- `useTheme.ts` — theme picker. Drives typed-sprite drawers, chrome (font, accent colour, optional canvas overlay), per-theme image smoothing, and per-theme `dprCap` (a low-DPR theme like Atari sets `1.0` for the 8-bit aesthetic).
-- `useClassificationMode.ts` — `type | usage`. `usage` routes `effectiveStarType` through `usageStarType.ts` percentile buckets on `importance_score`.
+- **Embeddings are L2-normalised in `EmbeddingEngine.embed`** before being handed to HNSW. The HNSW space is `ip` (inner product), so distance only equals `1 − cos_sim` when the input is unit-length. All current callers satisfy this; new callers must too.
+- **`Insert.insertOne` searches HNSW *before* the SQL transaction**, then calls `hnsw.addPoint` *after* commit. This ordering means a transaction rollback can never leave an HNSW orphan. Do not reorder.
+- **`is_pinned` and `star_type` survive re-index.** The upsert in `insertOne` uses `ON CONFLICT` to preserve them. Same for pin coefficients (`pin_alpha/beta/axis_a/axis_b/pinned_at`). New columns that should survive re-index need the same treatment.
+- **`files.x`, `files.y` are NULL until `layout_meta.version >= 1`.** Renderer skips NULL-position files. `layout_version = 0` means indexed but not yet projected.
+- **Edges have at most `K_NEAREST = 20` outgoing rows per `src_id`.** Pruned in `Insert.insertOne`. Don't bypass.
+- **Renderer must never import Node APIs.** No `fs`, no `path`, no `child_process`. Talk to the daemon over `fetch` or add a new endpoint.
+- **F8b per-id jitter is applied at draw time, not baked into the sprite cache.** Reordering the `rng()` calls inside `defaultJitterFor` (`src/renderer/src/components/StarMap/proc.ts`) reseeds every downstream feature. Treat the call order as a stable contract.
 
 ## Test runner caveat
 
-`tests/api/contract.test.ts` (and any other test that imports `src/daemon/index.ts` directly) currently triggers a SIGSEGV on the vitest worker exit due to hnswlib-node's async loader still settling when `node:worker_threads` cleans up the env. Tests pass before the crash; the crash is on tear-down. Prefer running affected tests in isolation (`npx vitest run path/to/file.test.ts`) and route new daemon-side tests through extracted helpers (see `src/daemon/util/openInDefaultApp.ts` for the pattern) to avoid the daemon import.
-
-## Adding a new platform
-
-1. Add a new value to `Platform` in `src/shared/types.ts`.
-2. Implement a walker that yields `{ node: FileNode, content: Buffer }`.
-3. Call `insertOne()` per file from `indexPath()` or a new endpoint.
-4. The file enters the sky like any local file once it has an embedding and a position.
+`tests/api/contract.test.ts` (and any other test that imports `src/daemon/index.ts` directly) currently triggers a SIGSEGV on the vitest worker exit due to `hnswlib-node`'s async loader still settling when `node:worker_threads` cleans up. **Tests pass before the crash; the crash is on tear-down.** Run affected tests in isolation (`npx vitest run path/to/file.test.ts`) and route new daemon-side tests through extracted helpers (see `src/daemon/util/openInDefaultApp.ts` for the pattern) to avoid the daemon import.

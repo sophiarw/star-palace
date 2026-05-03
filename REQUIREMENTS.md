@@ -6,6 +6,10 @@ A persistent star map of the user's files. Each file is a star with a stable 2D 
 
 The user returns to the same view session after session. Spatial memory accrues.
 
+## Design philosophy — memory palace, not query graph
+
+Position is the artifact, not a presentational byproduct. Layout is precomputed, persisted, and updated incrementally — never recomputed at query time. Search returns coordinates and IDs; the renderer pans the camera, it does not lay out a new graph. The ANN index over embeddings drives positioning. Edges are persisted (top-K neighbors) and updated on insert. The system's job: assign each file a coordinate that respects semantic structure, then never move it without good reason.
+
 ---
 
 ## v2 feature roadmap
@@ -1297,6 +1301,30 @@ Push the visual from "stylised CSS" to "JWST-grade." Mandates a WebGL renderer (
 - **Constellation nebulae:** soft alpha-blended noise textures (Perlin/Worley) tinted by cluster color, replacing flat convex hulls. Density modulated by member count.
 - **Milky-Way-like backdrop:** density gradient tied to global cluster centroid distribution.
 - **Tone mapping:** ACES filmic on the final framebuffer so bloom doesn't blow out to white.
+
+### Star Palace as an AI-work visualizer
+
+**Premise.** AI agents now generate code faster than a human can read. Reading is innately slow; visualization scales better. Star Palace's persistent spatial map of files is a natural surface for *watching* an AI work instead of reading every diff.
+
+**Concept.**
+
+- Each cluster represents a **task** (e.g., "renderer UI", "sorting-algorithm impl", "schema migration"). Either auto-derived from the existing constellation grouping or explicitly assigned by the agent at task start.
+- Files the agent creates or edits become **new or modified stars** in the appropriate cluster. A pulse animation (reuse F12) marks recently-touched stars.
+- The agent annotates each cluster as it works: **why** the change was made, **what impact** it has on the overall objective. Annotations live in `clusters.label` (already nullable) plus a new `clusters.rationale` field, surfaced in a per-cluster info card.
+- A timeline scrubber replays which stars lit up in which order across an agent run. Lets a human audit "what did this agent actually do" at a glance.
+
+**What's already there.** Position and edges are persisted; F12 selection pulse and F1 search-pop visuals can stand in for "recently changed". F9 galaxies could host a "this run" galaxy that vanishes when the run ends. F5 collections can serve as a per-task filter today (no schema change needed).
+
+**What's missing.**
+
+- An **agent-visible API** for `tag this commit's files into cluster X with rationale Y`. Today's daemon assumes file changes come from a `walker.ts` pass, not an agent's diff stream.
+- **Directory-as-tag in the embedding** (F19) so cluster boundaries reflect human-curated folder semantics, not just body-text similarity. Without F19 the agent's "UI cluster" can scatter across the map because UI files share words with non-UI files.
+- A **diff-driven update path**: instead of re-walking the tree, accept a `{ added, modified, deleted }` set from the agent and route each through `insertOne` with a `runId` tag.
+- **Per-cluster rationale rendering** in the renderer (likely a panel toggled on cluster click).
+
+**Why this matters for the project itself.** Dogfood opportunity: every commit on Star Palace itself could be visualized in Star Palace, with the agent that wrote the commit narrating its own changes per cluster. The repo becomes its own demo.
+
+**Out of scope for v1.** Multi-agent disambiguation; long-term agent-rationale storage beyond the current run; replaying past runs from git history.
 
 ### Other
 
