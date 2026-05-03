@@ -915,16 +915,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
 
-    // LOD picker: takes the on-screen radius (pre-scale-boost) and returns
-    // the sprite tier to render. Forced focus stars (selected / hovered /
-    // neighbor / highlight) always get the full procedural sprite so the
-    // file the user is acting on never degrades. Threshold matches what the
-    // old `quality === 'high'` preset produced; themes can override per-tier
-    // later if needed (no current consumer does).
-    const lodFor = (spritePx: number, focused: boolean): Lod => {
-      if (focused) return 'full'
-      return spritePx >= 6 ? 'full' : 'cheap'
-    }
+    // LOD picker: deprecated as of post-themes — every star renders the full
+    // procedural drawer at every zoom so themes are recognisable when zoomed
+    // out (the cheap white-dot fallback hid the per-theme aesthetic). The
+    // function stays in place to keep the call site shape intact; the cheap
+    // tier in sprites.ts is now unused but harmless.
+    const lodFor = (_spritePx: number, _focused: boolean): Lod => 'full'
 
     const drawMainStar = (star: Star, allowOffscreen: boolean): void => {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
