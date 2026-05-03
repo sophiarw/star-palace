@@ -17,6 +17,7 @@ const NAV_BINDINGS: Binding[] = [
   { key: 'n / N', desc: 'Next / prev search result (selects + pans)' },
   { key: 'Enter', desc: 'Select hovered star (or hide search bar when typing)' },
   { key: 'o', desc: 'Open selected in default app' },
+  { key: 'O', desc: 'Reveal selected file in file explorer' },
   { key: 't', desc: 'Open star-type dropdown' },
   { key: 'T', desc: 'Cycle star type forward' },
   { key: '⌘F / Ctrl+F', desc: 'Toggle search bar (keeps query + highlights)' },

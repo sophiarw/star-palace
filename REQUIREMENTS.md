@@ -30,7 +30,7 @@ Locked decisions:
 | F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks archived under `prototypes/f8a` + `prototypes/f8a-vapor`. | **DONE** |
 | F12 | Selection animation (pulse / breathe) | XS | Renderer-only; replaces SPRITE_SELECTED_BOOST_ALPHA static treatment with a time-varying pulse. | **DONE** |
 | F13 | Search-match explainability (literal hits + AI insight) | M | Two complementary surfaces in DetailPanel for understanding *why* a file ranked for a query. (a) **Literal**: highlight every occurrence of the query string inside the file content viewer (case-insensitive, scrolls to first hit). (b) **AI insight**: new daemon endpoint calls an LLM with the query + the embedded text + neighborhood snippet → returns a 1-2 sentence explanation of the semantic association. Renderer-only for (a); new daemon endpoint + LLM dependency for (b). | |
-| F14 | Reveal in OS file explorer (capital O) | XS | Vim `O` (capital) opens the selected file's containing folder in the OS file explorer with the file selected. New daemon endpoint + DetailPanel button. macOS `open -R`, Windows `explorer /select,`, Linux `xdg-open <dirname>`. Lowercase `o` keeps existing "open file in default app" behaviour. | |
+| F14 | Reveal in OS file explorer (capital O) | XS | Vim `O` (capital) opens the selected file's containing folder in the OS file explorer with the file selected. New daemon endpoint + DetailPanel button. macOS `open -R`, Windows `explorer /select,`, Linux `xdg-open <dirname>`. Lowercase `o` keeps existing "open file in default app" behaviour. | **DONE** |
 | F15 | Reduce glow / expose procedural detail | XS | Bright additive halos drown out the per-instance procedural detail (red giant mottling, nebula FBM, neutron-star nucleus dots). Lower exposure curve + sprite halo alpha so the artwork reads. | |
 | F16 | Galaxy visibility toggle (hide / show) | S | Renderer-only filter on indexed galaxies. Per-galaxy show/hide checkbox in GalaxyPanel. Hidden galaxies still indexed in DB; just absent from the StarMap, search results, and stats counts. Persisted in `localStorage`. | |
 
@@ -1220,6 +1220,7 @@ Every commit gates on `npm run typecheck && npm run lint && npm run test`. Conve
 8. **F10** — usage-driven classification. Independent. Pairs naturally with F8a (procedural variation gives the new `main-sequence` sprite its visual identity). **DONE**
 9. **F7** — biggest scope; benefits from the tree visualization making the rest of the UI more useful.
 10. **F8** — F8a foundation + per-type variation shipped via F11 (both themes). Remaining work: F8b (default cluster-hue jitter, ½d), F8c (procedural cluster nebulae, 1d), F8d (deep-zoom planet view, 2–3d).
+11. **F14** — XS reveal-in-explorer extension to F6's vim mode. Independent; landed after F6. **DONE**
 
 Each phase = its own feature branch off `main`, merged on green CI.
 
