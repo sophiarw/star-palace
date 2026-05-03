@@ -260,8 +260,12 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
 
 export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection, quality }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
-  const camRef = useRef<Camera>(cam)
+  // Camera is intentionally NOT React state. During pan, native mousemove
+  // dispatches at 60–120 Hz; if every move called setState, React would
+  // schedule and reconcile a re-render per move (rAF_gap mean ≈ 24 ms,
+  // p99 125 ms in profiling). All consumers (rAF draw loop, vim
+  // dispatcher, search auto-pan animation) read `camRef.current` directly.
+  const camRef = useRef<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 })
   const [edges, setEdges] = useState<Edge[]>([])
@@ -513,7 +517,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   useEffect(() => {
     if (!vimAction) return
     const canvas = canvasRef.current
-    const cam = camRef.current
     const currentStars = starsRef.current
 
     if (vimAction.type === 'panVelocity') {
@@ -524,10 +527,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
 
     if (vimAction.type === 'zoom') {
-      const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.zoom * vimAction.factor))
-      const newCam = { ...cam, zoom: newZoom }
-      camRef.current = newCam
-      setCam(newCam)
+      const c = camRef.current
+      const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, c.zoom * vimAction.factor))
+      camRef.current = { ...c, zoom: newZoom }
+      dirtyRef.current = true
       return
     }
 
@@ -546,9 +549,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const zoom = Math.min(w / rangeX, h / rangeY) * 0.9
       const cx = (minX + maxX) / 2
       const cy = (minY + maxY) / 2
-      const newCam = { cx, cy, zoom }
-      camRef.current = newCam
-      setCam(newCam)
+      camRef.current = { cx, cy, zoom }
+      dirtyRef.current = true
       return
     }
 
@@ -569,21 +571,20 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const zoom = Math.min(w / (rangeX + 80), h / (rangeY + 80), 4)
       const cx = (minX + maxX) / 2
       const cy = (minY + maxY) / 2
-      const newCam = { cx, cy, zoom }
-      camRef.current = newCam
-      setCam(newCam)
+      camRef.current = { cx, cy, zoom }
+      dirtyRef.current = true
       return
     }
 
     if (vimAction.type === 'panTo') {
       // Optional zoom lets callers (e.g. galaxy "fly to") snap to a specific
       // viewing zoom in addition to recentering.
+      const c = camRef.current
       const z = vimAction.zoom !== undefined
         ? Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, vimAction.zoom))
-        : cam.zoom
-      const newCam = { ...cam, cx: vimAction.wx, cy: vimAction.wy, zoom: z }
-      camRef.current = newCam
-      setCam(newCam)
+        : c.zoom
+      camRef.current = { ...c, cx: vimAction.wx, cy: vimAction.wy, zoom: z }
+      dirtyRef.current = true
       return
     }
   }, [vimAction])
@@ -617,9 +618,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const zoom = Math.min(w / rangeX, h / rangeY) * margin
     const cx = (minX + maxX) / 2
     const cy = (minY + maxY) / 2
-    const newCam = { cx, cy, zoom }
-    setCam(newCam)
-    camRef.current = newCam
+    camRef.current = { cx, cy, zoom }
+    dirtyRef.current = true
     didFitOnce.current = true
     onReady?.()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1427,7 +1427,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   useEffect(() => {
     let lastT = performance.now()
     let lastTickMs = performance.now()
-    let prevHadVel = false
     const loop = (tNow: number) => {
       const dt = Math.min(0.1, (tNow - lastT) / 1000)  // clamp dt to avoid jumps after a long tab-away
       lastT = tNow
@@ -1440,12 +1439,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           cx: c.cx + (v.vx * dt) / c.zoom,
           cy: c.cy + (v.vy * dt) / c.zoom,
         }
-      } else if (prevHadVel) {
-        // Velocity just stopped — sync React state once for any consumers
-        // that depend on cam (most code reads camRef.current and ignores this).
-        setCam(camRef.current)
       }
-      prevHadVel = hasVel
 
       // Dirty flag detection. Cam mutations done imperatively (mouse drag,
       // wheel, vim) don't go through React, so compare against the last
@@ -1474,14 +1468,24 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         (tNow - lastWheelTsRef.current) < 200
 
       if (dirtyRef.current || continuous) {
+        // Wrap the draw() call so the overlay can show "draw_total" — the
+        // sum of every pass's work — separately from "rAF_gap" — time
+        // outside draw() that still lands in the per-frame interval
+        // (input handling, React reconcile, vsync wait). Lets us see at a
+        // glance whether the bottleneck is paint or scheduling.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const PERF = !!(import.meta as any).env?.DEV
+        const drawT0 = PERF ? performance.now() : 0
         draw()
         const deltaMs = tNow - lastTickMs
         frameMetrics.record(deltaMs, interacting, lastVisibleCountRef.current)
-        // Phase 0: sample sprite cache stats once per drawn frame so the
-        // overlay can show whether the cache is thrashing without polluting
-        // the get*() hot path with per-call recordCounter calls.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((import.meta as any).env?.DEV) {
+        if (PERF) {
+          const drawMs = performance.now() - drawT0
+          frameMetrics.recordTiming('draw_total', drawMs)
+          // rAF_gap = frame interval minus the draw work. A non-trivial
+          // gap with small draw_total means the cost lives in input,
+          // React, or vsync — not the canvas.
+          frameMetrics.recordTiming('rAF_gap', Math.max(0, deltaMs - drawMs))
           const s = spriteCacheStats()
           frameMetrics.recordCounter('spriteCache.default.size', s.defaultSize)
           frameMetrics.recordCounter('spriteCache.default.misses', s.defaultMisses)
@@ -1538,13 +1542,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const elapsed = performance.now() - startTime
       const t = Math.min(elapsed / duration, 1)
       const e = easeInOut(t)
-      const newCam = {
+      camRef.current = {
         cx: startCam.cx + (targetCx - startCam.cx) * e,
         cy: startCam.cy + (targetCy - startCam.cy) * e,
         zoom: startCam.zoom + (targetZoom - startCam.zoom) * e,
       }
-      camRef.current = newCam
-      setCam(newCam)
+      dirtyRef.current = true
       if (t < 1) requestAnimationFrame(animateCamera)
     }
     requestAnimationFrame(animateCamera)
@@ -1589,13 +1592,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const dx = e.clientX - lastMouse.current.x
       const dy = e.clientY - lastMouse.current.y
       lastMouse.current = { x: e.clientX, y: e.clientY }
-      const newCam = {
-        ...camRef.current,
-        cx: camRef.current.cx - dx / camRef.current.zoom,
-        cy: camRef.current.cy - dy / camRef.current.zoom,
+      const c = camRef.current
+      camRef.current = {
+        ...c,
+        cx: c.cx - dx / c.zoom,
+        cy: c.cy - dy / c.zoom,
       }
-      camRef.current = newCam
-      setCam(newCam)
+      dirtyRef.current = true
       return
     }
 
@@ -1682,13 +1685,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
     const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camRef.current.zoom * factor))
     // Zoom towards cursor
-    const newCam = {
+    camRef.current = {
       cx: wx - (e.clientX - w / 2) / newZoom,
       cy: wy - (e.clientY - h / 2) / newZoom,
       zoom: newZoom,
     }
-    camRef.current = newCam
-    setCam(newCam)
+    dirtyRef.current = true
     lastWheelTsRef.current = performance.now()
   }, [])
 
