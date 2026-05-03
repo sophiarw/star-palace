@@ -18,9 +18,11 @@ import { usageStarType, type PercentileBuckets } from './usageStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
 import { buildSpatialGrid, forEachStarInBounds, type SpatialGrid } from './spatialGrid'
 import { convexHull, type Pt } from './convexHull'
+import type { Lod } from './sprites'
 import type { VimAction } from '../../hooks/useVimMode'
 import type { Theme } from '../../themes/types'
 import type { ClassificationMode } from '../../hooks/useClassificationMode'
+import type { GraphicsQuality } from '../../hooks/useGraphicsQuality'
 
 // F5 — active virtual collection. When set, members render at full
 // brightness with a constellation-style hull behind them; non-members
@@ -55,6 +57,11 @@ interface Props {
   // convex-hull outline is drawn behind them in the collection's color.
   // Non-members are dimmed exactly like search-active state.
   activeCollection?: ActiveCollectionVis | null
+  // Graphics-quality setting (low/medium/high/ultra). Drives sprite-LOD
+  // tier swap by on-screen size, animation-overlay skip threshold,
+  // backing-store DPR cap, and the far-out tiny-dot fallback. Optional;
+  // defaults to `high` if absent.
+  quality?: GraphicsQuality
 }
 
 // F5 — hull rendering constants. Fill alpha is intentionally low so the
@@ -236,7 +243,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection, quality }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -293,6 +300,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // theme stay until LRU eviction).
   const themeRef = useRef(theme)
   useEffect(() => { themeRef.current = theme; dirtyRef.current = true }, [theme])
+
+  // Graphics-quality ref. The draw callback reads it each frame to pick
+  // the cheap-vs-full sprite tier per star and to gate the animation
+  // overlay; the resize handler reads it to cap the backing-store DPR.
+  // `ultra` keeps every sprite at full procedural detail at every zoom.
+  const qualityRef = useRef<GraphicsQuality>(quality ?? 'high')
+  useEffect(() => { qualityRef.current = quality ?? 'high'; dirtyRef.current = true }, [quality])
 
   // F10 — classification mode + percentile buckets refs. The draw callback
   // reads them per-frame so flipping the mode toggle re-skins every visible
@@ -516,11 +530,22 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // Resize canvas to window — backing store is sized in device pixels so the
   // image stays crisp on high-DPR displays. All draw code below operates in
   // CSS-pixel coordinates after we apply the dpr transform per frame.
+  // Graphics quality caps the DPR: low/medium machines pay materially less
+  // pixel-fill cost without changing on-screen layout. ultra is uncapped.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const dprCap = (q: GraphicsQuality): number => {
+      switch (q) {
+        case 'low': return 1.0
+        case 'medium': return 1.5
+        case 'high': return 2.0
+        case 'ultra': return Infinity
+      }
+    }
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1
+      const native = window.devicePixelRatio || 1
+      const dpr = Math.min(native, dprCap(qualityRef.current))
       dprRef.current = dpr
       const w = window.innerWidth
       const h = window.innerHeight
@@ -528,11 +553,38 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       canvas.height = Math.round(h * dpr)
       canvas.style.width = `${w}px`
       canvas.style.height = `${h}px`
+      dirtyRef.current = true
     }
     resize()
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
+
+  // Re-run resize when the quality setting flips so the DPR cap takes
+  // effect immediately. Reading qualityRef.current inside resize keeps the
+  // body itself stable across renders.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dprCap = (q: GraphicsQuality): number => {
+      switch (q) {
+        case 'low': return 1.0
+        case 'medium': return 1.5
+        case 'high': return 2.0
+        case 'ultra': return Infinity
+      }
+    }
+    const native = window.devicePixelRatio || 1
+    const dpr = Math.min(native, dprCap(qualityRef.current))
+    dprRef.current = dpr
+    const w = window.innerWidth
+    const h = window.innerHeight
+    canvas.width = Math.round(w * dpr)
+    canvas.height = Math.round(h * dpr)
+    canvas.style.width = `${w}px`
+    canvas.style.height = `${h}px`
+    dirtyRef.current = true
+  }, [quality])
 
   // Main draw loop
   const draw = useCallback(() => {
@@ -743,6 +795,21 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
 
+    const activeQuality = qualityRef.current
+    // LOD picker: takes the on-screen radius (pre-scale-boost) and returns
+    // either the sprite tier to render or 'dot' for the far-out 1-pixel
+    // fallback. Forced focus stars (selected/hovered/neighbor/highlight)
+    // always get full quality so the user can see what they're hovering or
+    // searching for, regardless of zoom.
+    const lodFor = (spritePx: number, focused: boolean): Lod | 'dot' => {
+      if (focused || activeQuality === 'ultra') return 'full'
+      if (activeQuality === 'high') return spritePx >= 6 ? 'full' : 'cheap'
+      if (activeQuality === 'medium') return spritePx >= 12 ? 'full' : 'cheap'
+      // low
+      if (spritePx < 3) return 'dot'
+      return spritePx >= 18 ? 'full' : 'cheap'
+    }
+
     const drawMainStar = (star: Star, allowOffscreen: boolean): void => {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       const offscreen = sx < -cull || sx > w + cull || sy < -cull || sy > h + cull
@@ -750,6 +817,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
       const isNeighbor = neighbors.has(star.id)
+      const isHovered = star.id === hoveredId
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       // Selected stars bypass the zoom-driven exposure curve so they read
       // punchy at every zoom level. Otherwise the 1.4× selection scale +
@@ -762,6 +830,28 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const sb = activeMode === 'usage'
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
+      const focused = isSelected || isHighlighted || isNeighbor || isHovered
+      const spritePx = spriteCoreRadius(sb) * drawScale
+      const lod = lodFor(spritePx, focused)
+
+      if (lod === 'dot') {
+        // Cheapest path — single 2-px arc fill, no halo, no sprite blit.
+        // Used only at quality === 'low' when the on-screen sprite radius
+        // would be < 3 px anyway, so the visual loss is well below
+        // perception threshold. drawnIds still tracked so the forced-draw
+        // pass doesn't double-render.
+        const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
+        const dotColor = cluster
+          ? CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
+          : '#9ab'
+        ctx.fillStyle = dotColor
+        ctx.beginPath()
+        ctx.arc(sx, sy, 1.4, 0, Math.PI * 2)
+        ctx.fill()
+        drawnIds.add(star.id)
+        return
+      }
+
       let sprite: HTMLCanvasElement
       // F8b — only the default-path (cluster-hue) branch picks up the per-id
       // jitter triple. Typed stars get their per-id variation baked into the
@@ -771,17 +861,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       let jitter: ReturnType<typeof defaultJitterFor> | null = null
       const effectiveType = effectiveStarType(star, activeMode, activeBuckets)
       if (effectiveType) {
-        sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
+        sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id, lod)
       } else {
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
         const tb = getTempBucket(star.id)
         jitter = getJitter(star.id)
-        sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant)
+        sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant, lod)
       }
       const sw = sprite.width, sh = sprite.height
       let scale = drawScale
-      if (star.id === hoveredId) scale *= SPRITE_HOVER_SCALE
+      if (isHovered) scale *= SPRITE_HOVER_SCALE
       if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
       if (isNeighbor && !isSelected) scale *= SPRITE_NEIGHBOR_SCALE
       if (isSelected) scale *= SPRITE_SELECTED_SCALE * selectionPulse(tNowMs)
@@ -830,6 +920,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // Animation overlay — pulsar rotating beam + quasar jet flicker. Iterates
     // the precomputed pulsar/quasar list so we don't re-classify every star
     // each frame. Cardinality is small in practice (manually-typed only).
+    // Quality-driven skip: when the on-screen sprite is tiny, the beam is
+    // invisible anyway and re-running the per-frame gradient is pure cost.
+    const animSkipPx =
+      activeQuality === 'low' ? 12 :
+      activeQuality === 'medium' ? 8 :
+      0
     const tNow = performance.now() / 1000
     for (const star of animatedStarsRef.current) {
       const animType = effectiveStarType(star, activeMode, activeBuckets)
@@ -841,6 +937,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
       const r = spriteCoreRadius(sb)
+      if (animSkipPx > 0 && r * drawScale < animSkipPx) continue
       const phaseOffset = (hashStr(star.id) % 1000) / 1000
 
       ctx.save()

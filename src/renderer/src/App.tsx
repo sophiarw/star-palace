@@ -411,6 +411,7 @@ export default function App() {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}
         activeCollection={starMapActiveCollection}
+        quality={gfxCtx.quality}
       />
 
       {showSearch && (
