@@ -3,25 +3,35 @@
 // at 5k+ stars zoomed in to a small region, this drops per-frame work from
 // O(N) to O(visible_cells).
 //
-// Cells are square `CELL_SIZE` world units. Keys are encoded as `${cx}|${cy}`
-// strings for safety against negative coords (galaxy origins push positions
-// outside any single positive offset).
+// Cells are square `CELL_SIZE` world units. Keys are int-packed:
+// `(cx + KEY_OFFSET) * KEY_STRIDE + (cy + KEY_OFFSET)`. KEY_OFFSET handles
+// negative coords (galaxy origins push positions outside any single positive
+// offset). Avoids the per-lookup string concat allocation that the prior
+// `${cx}|${cy}` keying paid.
 
 import type { Star } from '@shared/types'
 
 export const CELL_SIZE = 100
 
+// Tuning: KEY_OFFSET must exceed the largest |cell index| we expect. World
+// coords sit in [-500, 500] for the local-PCA layer and are then offset
+// per-galaxy by spiral coords usually within a few thousand world units —
+// well under 32k cells per axis. KEY_STRIDE of 65536 = 2 ** 16 means the
+// packed key is < 2 ** 32; Map handles uint32 fine without de-opt.
+const KEY_OFFSET = 32768
+const KEY_STRIDE = 65536
+
 export interface SpatialGrid {
-  readonly cells: ReadonlyMap<string, Star[]>
+  readonly cells: ReadonlyMap<number, Star[]>
   readonly cellSize: number
 }
 
-function cellKey(cx: number, cy: number): string {
-  return `${cx}|${cy}`
+function cellKey(cx: number, cy: number): number {
+  return (cx + KEY_OFFSET) * KEY_STRIDE + (cy + KEY_OFFSET)
 }
 
 export function buildSpatialGrid(stars: readonly Star[]): SpatialGrid {
-  const cells = new Map<string, Star[]>()
+  const cells = new Map<number, Star[]>()
   for (const star of stars) {
     const cx = Math.floor(star.x / CELL_SIZE)
     const cy = Math.floor(star.y / CELL_SIZE)
