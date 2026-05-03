@@ -24,10 +24,10 @@ Locked decisions:
 | F5 | Virtual collections | M-L | New tables + endpoints + render hull. | |
 | F6 | Vim mode | M | Pure UI; no backend. | **DONE** |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. | |
-| F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. F8a prototype landed on `worktree-agent-af8ce890cf5c7d92b`. | |
+| F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. F8a foundation (`proc.ts`) and per-id variation shipped via F11 across both themes. F8b/F8c/F8d remain. | F8a **DONE** |
 | F9 | Galaxies (multi-root indexing) | M | New table + galaxy_id column; spiral origin offsets; renderer panel. | **DONE** |
 | F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | |
-| F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks (`worktree-agent-af8ce890cf5c7d92b`, `worktree-agent-acb91a52b583dc370`) prove both designs. | |
+| F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks archived under `prototypes/f8a` + `prototypes/f8a-vapor`. | **DONE** |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -1032,9 +1032,10 @@ Every commit gates on `npm run typecheck && npm run lint && npm run test`. Conve
 4. **F5** — depends on nothing else; can also slot in parallel to F3/F4.
 5. **F6** — independent; nice once F1–F5 land so there's enough surface to bind keys to. **DONE**
 6. **F9** — galaxies; multi-root indexing. Independent. **DONE**
-7. **F10** — usage-driven classification. Independent. Pairs naturally with F8a (procedural variation gives the new `main-sequence` sprite its visual identity).
-8. **F7** — biggest scope; benefits from the tree visualization making the rest of the UI more useful.
-9. **F8** — visual polish on top; split into F8a (typed variants, 1d), F8b (default jitter, ½d), F8c (procedural nebulae, 1d), F8d (planet view, 2–3d). F8a prototype shipped on `worktree-agent-af8ce890cf5c7d92b` for design review.
+7. **F11** — theme selector. Renderer-only; landed the F8a foundation (`proc.ts` + per-id variation) for both `jwst` and `vapor`. **DONE**
+8. **F10** — usage-driven classification. Independent. Pairs naturally with F8a (procedural variation gives the new `main-sequence` sprite its visual identity).
+9. **F7** — biggest scope; benefits from the tree visualization making the rest of the UI more useful.
+10. **F8** — F8a foundation + per-type variation shipped via F11 (both themes). Remaining work: F8b (default cluster-hue jitter, ½d), F8c (procedural cluster nebulae, 1d), F8d (deep-zoom planet view, 2–3d).
 
 Each phase = its own feature branch off `main`, merged on green CI.
 
