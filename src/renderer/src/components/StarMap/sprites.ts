@@ -1,5 +1,11 @@
 import { CONSTELLATION_PALETTE } from '@shared/types'
 import type { StarType } from '@shared/types'
+import { hashStr } from './proc'
+
+// hashStr is re-exported here to keep existing call sites compiling. The
+// canonical definition now lives in proc.ts so the F8a foundation module
+// has no DOM dependency (which lets node-only tests import it freely).
+export { hashStr }
 
 const SIZE_RADII = [3, 4.5, 6, 8, 11, 16, 22] as const
 export const SIZE_BUCKET_COUNT = SIZE_RADII.length
@@ -36,15 +42,6 @@ function blend(a: RGB, b: RGB, t: number): RGB {
     a[1] * (1 - t) + b[1] * t,
     a[2] * (1 - t) + b[2] * t,
   ]
-}
-
-export function hashStr(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
 }
 
 export function tempBucketFor(starId: string): number {
