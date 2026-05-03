@@ -82,6 +82,23 @@ All must pass. No `// @ts-ignore`, no `eslint-disable` (except in vitest.config.
 
 Conventional commits: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
 
+A tracked pre-commit hook at `scripts/git-hooks/pre-commit` enforces
+the three gates above. `scripts/install-git-hooks.sh` copies it into
+`.git/hooks/` and is invoked by the `prepare` script in `package.json`,
+so a fresh `npm install` arms the hook. Re-run the install script
+manually after fresh-cloning into a worktree where `.git/hooks/` is
+empty.
+
+## Renderer hot-paths
+
+- `src/renderer/src/components/StarMap/StarMap.tsx` — canvas draw loop. Backing-store sized to `window.innerWidth × devicePixelRatio` so retina displays render crisp; mouse handlers read `canvas.clientWidth` (CSS pixels).
+- `src/renderer/src/components/StarMap/coords.ts` — pure `worldToScreen`/`screenToWorld` (separated from StarMap so the math is unit-testable in node).
+- `src/renderer/src/hooks/useVimMode.ts` — keybindings: `h/j/k/l` pan, `gg` fit-all, `gh` fit-cluster, `n/N` cycle search hits, `o` open file, `t/T` star type, `?` cheatsheet, `/` focus search. The full table lives in `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx`.
+
+## Test runner caveat
+
+`tests/api/contract.test.ts` (and any other test that imports `src/daemon/index.ts` directly) currently triggers a SIGSEGV on the vitest worker exit due to hnswlib-node's async loader still settling when `node:worker_threads` cleans up the env. Tests pass before the crash; the crash is on tear-down. Prefer running affected tests in isolation (`npx vitest run path/to/file.test.ts`) and route new daemon-side tests through extracted helpers (see `src/daemon/util/openInDefaultApp.ts` for the pattern) to avoid the daemon import.
+
 ## Adding a new platform
 
 1. Add a new value to `Platform` in `src/shared/types.ts`.

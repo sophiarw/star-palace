@@ -35,12 +35,19 @@ Seeding ~2 000 files takes roughly 2–5 minutes (Ollama embed ~50ms/file).
 
 | Action | How |
 |---|---|
-| Pan | Drag |
-| Zoom | Scroll wheel |
-| Hover a star | See file metadata |
-| Click a star | Show nearest-neighbor edges |
-| Search | Type in the search bar; camera animates to results |
-| Clear search | Press Escape |
+| Pan | Drag, or `h` / `j` / `k` / `l` (50 wu); `H J K L` (200 wu) |
+| Zoom | Scroll wheel, or `+` / `-` |
+| Fit all stars | `gg` |
+| Fit selected cluster | `gh` |
+| Hover a star | See file metadata in the hover card |
+| Click / Enter | Select hovered star → DetailPanel opens with content + neighbors |
+| Search | Type in the search bar, or press `/` to focus it |
+| Cycle search results | `n` / `N` |
+| Open file in default app | `o` (selected star) |
+| Star-type dropdown | `t` (open) / `T` (cycle forward) |
+| PC dial (X/Y axes) | Top-left selectors — pick any two of the top 8 PCs |
+| Toggle cheatsheet | `?` |
+| Esc | Leave search / clear selection |
 
 ## Index your own files
 
@@ -66,18 +73,28 @@ See `CLAUDE.md` for internals, schema invariants, and extension guide.
 ## Development
 
 ```sh
-npm run typecheck   # tsc strict check
-npm run lint        # eslint --max-warnings 0
-npm run test        # vitest (47 tests)
+npm run typecheck     # tsc strict check (daemon + renderer)
+npm run lint          # eslint --max-warnings 0
+npm run test          # vitest run
+npm run test:watch    # vitest watch mode
 ```
+
+`npm install` runs the `prepare` script, which copies
+`scripts/git-hooks/pre-commit` into `.git/hooks/`. The hook then runs
+the three gates above before every commit. Re-run
+`bash scripts/install-git-hooks.sh` if you ever need to reinstall it
+manually.
 
 ## Configuration
 
 | Env var | Default | Purpose |
 |---|---|---|
 | `STARPALACE_DB` | `~/.starpalace/index.db` | SQLite path |
-| `STARPALACE_DIR` | `~/.starpalace/` | Data directory |
-| `DAEMON_PORT` | `7373` | Daemon HTTP port |
+| `STARPALACE_DIR` | `~/.starpalace/` | Data directory (HNSW bin, mapping JSON) |
+
+Daemon and Ollama ports are constants in `src/shared/types.ts`
+(`DAEMON_PORT = 7373`, `OLLAMA_PORT = 11434`). Change them there if
+you need a non-default port.
 
 ## Future work
 
