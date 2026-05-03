@@ -7,11 +7,13 @@
 
 import type { Theme, ThemeSummary } from './types'
 import { jwstTheme } from './jwst'
+import { vaporTheme } from './vapor'
 
 export const defaultThemeId = 'jwst'
 
 const themes: Record<string, Theme> = {
   [jwstTheme.id]: jwstTheme,
+  [vaporTheme.id]: vaporTheme,
 }
 
 export function getTheme(id: string): Theme | null {
