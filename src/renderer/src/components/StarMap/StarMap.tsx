@@ -201,7 +201,10 @@ const BACKDROP_MIN_SCALE = 0.5       // clamp so the 2× canvas always fills the
 // neutron-star nucleus dots, etc.). Floor raised (0.3 → 0.45) so deep-zoom-out
 // sprites stay visible while interior detail starts to read.
 const EXPOSURE_REF_ZOOM = 1.0
-const EXPOSURE_MIN = 0.45
+// F-NEXT-B — exposure floor raised 0.45 → 0.6 to restore foreground contrast
+// once the new tighter halo grading + reduced vignette stop pulling brightness
+// out of the disc. Ceiling stays at 1.1 (F15).
+const EXPOSURE_MIN = 0.6
 const EXPOSURE_MAX = 1.1
 const EXPOSURE_GAMMA = 0.55
 
@@ -699,6 +702,15 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const w = canvas.width / dpr, h = canvas.height / dpr
     const activeTheme = themeRef.current
+    // F-NEXT-B — per-theme image smoothing. JWST wants high-quality bilinear
+    // for soft realistic halos; vapor wants nearest-neighbour to keep its
+    // hard pixel-art edges from being smudged by the upscale pass.
+    if (activeTheme.smoothing === 'off') {
+      ctx.imageSmoothingEnabled = false
+    } else {
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+    }
     // F10 — read mode + buckets per-frame so toggle flips re-render the
     // sky without rebuilding the rAF loop.
     const activeMode = classModeRef.current
@@ -791,7 +803,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     if (!vignetteCache || vignetteCache.w !== w || vignetteCache.h !== h) {
       const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
       grad.addColorStop(0, 'rgba(0,0,0,0)')
-      grad.addColorStop(1, 'rgba(0,4,12,0.55)')
+      // F-NEXT-B — outer alpha lowered 0.55 → 0.35. The deck-grade tighter
+      // sprite halos already keep visual focus in the centre; the heavier
+      // vignette was washing the field corners and competing with the new
+      // background-nebula layer (Stage C).
+      grad.addColorStop(1, 'rgba(0,4,12,0.35)')
       vignetteCache = { w, h, grad }
       vignetteCacheRef.current = vignetteCache
     }

@@ -9,6 +9,7 @@ export const vaporTheme: Theme = {
   drawers: vaporDrawers,
   defaultDrawer: vaporDefaultDrawer,
   background: vaporBackground,
+  smoothing: 'off',
   ui: {
     accentColor: '#ff007a',  // hot pink
     fontStack: '"VT323", "Courier New", "Menlo", monospace',

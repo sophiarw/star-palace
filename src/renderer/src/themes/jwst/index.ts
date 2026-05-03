@@ -9,6 +9,7 @@ export const jwstTheme: Theme = {
   drawers: jwstDrawers,
   defaultDrawer: jwstDefaultDrawer,
   background: jwstBackground,
+  smoothing: 'high',
   ui: {
     accentColor: '#ffe066',  // gold — matches existing production aesthetic
     fontStack: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',

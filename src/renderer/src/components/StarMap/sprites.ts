@@ -188,20 +188,25 @@ function renderSprite(
   const tinted = blend(baseRgb, TEMP_TARGETS[tempBucket], TEMP_STRENGTH[tempBucket])
   const core = blend(tinted, [255, 255, 255], 0.6)
 
-  // Soft halo (broad falloff). Mid-stops bumped 0.5→0.85 / 0.12→0.40 so
-  // the disc body reads opaque at high zoom — previously stretched gradient
-  // looked translucent because most of the sprite area was below 0.5 alpha.
-  // Cheap LOD uses a 2-stop halo (no mid-falloff), since at small on-screen
+  // F-NEXT-B — halo grading ported from the graphics-update deck
+  // (docs/gui-update/star-renderers.js, jwstMainSequence crisp branch).
+  // Inner 5% holds full brightness; mid-stops fall off fast (0.85 → 0.45 over
+  // 12-20% radius) so the disc reads as a tight bright nucleus instead of a
+  // broad fog patch. Outer tail lingers at < 0.20 alpha for the long thin
+  // glow signature. Cheap LOD keeps the 2-stop fast path; at small on-screen
   // sizes the broader gradient detail isn't visible anyway.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, half)
   if (lod === 'cheap') {
     halo.addColorStop(0, rgbCss(core, 1))
     halo.addColorStop(1, rgbCss(tinted, 0))
   } else {
-    halo.addColorStop(0, rgbCss(core, 1))
+    halo.addColorStop(0.00, rgbCss(core, 1))
+    halo.addColorStop(0.05, rgbCss(core, 1))
     halo.addColorStop(0.12, rgbCss(tinted, 0.85))
-    halo.addColorStop(0.45, rgbCss(tinted, 0.40))
-    halo.addColorStop(1, rgbCss(tinted, 0))
+    halo.addColorStop(0.20, rgbCss(tinted, 0.45))
+    halo.addColorStop(0.35, rgbCss(tinted, 0.18))
+    halo.addColorStop(0.55, rgbCss(tinted, 0.06))
+    halo.addColorStop(1.00, rgbCss(tinted, 0))
   }
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, size, size)

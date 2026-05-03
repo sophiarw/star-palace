@@ -55,6 +55,14 @@ export interface ThemeUi {
   titleLetterSpacing?: string
 }
 
+/**
+ * F-NEXT-B — image smoothing applied to the main canvas ctx each frame.
+ * `'high'` = bilinear with `imageSmoothingQuality='high'` for soft realistic
+ * sprites (JWST). `'off'` = nearest-neighbour (`imageSmoothingEnabled=false`)
+ * to preserve hard pixel edges in arcade aesthetics (Vapor).
+ */
+export type ThemeSmoothing = 'high' | 'off'
+
 export interface Theme {
   /** Stable id; persisted in localStorage. */
   id: string
@@ -67,6 +75,8 @@ export interface Theme {
   /** Drawer used for cluster-hue stars (no manual `star_type`). */
   defaultDrawer: ThemedDrawer
   background: ThemeBackground
+  /** Image smoothing mode applied to the main canvas ctx each frame. */
+  smoothing: ThemeSmoothing
   ui: ThemeUi
 }
 
