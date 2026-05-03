@@ -31,6 +31,13 @@ export interface IndexedFile extends FileNode {
   osUseCount: number | null
   osLastUsed: number | null
   importanceScore: number | null
+  // B1 — manual tags + the strategy used to build the prompt that produced
+  // `embedding`. Both nullable: legacy rows have NULL embeddingStrategy
+  // (treated as 'content-only'); tags is null until the user assigns any.
+  // Schema layer keeps `embeddingStrategy` typed as plain string so we don't
+  // import the StrategyId union here — db code stays unaware of the registry.
+  tags: string[] | null
+  embeddingStrategy: string | null
 }
 
 export interface FileIndexOptions {
@@ -186,6 +193,62 @@ export class FileIndex {
       CREATE INDEX IF NOT EXISTS idx_cm_file ON collection_members(file_id);
     `)
 
+    // B1 — per-file tags + embedding-strategy provenance. Tags are stored as
+    // a JSON-encoded string[] (or NULL when the user hasn't tagged the file).
+    // embedding_strategy records which prompt-construction strategy produced
+    // the current `embedding`; NULL on legacy rows means "treat as content-
+    // only" (the historical behaviour). Both columns survive re-index via
+    // COALESCE in the upsert ON CONFLICT clause below.
+    if (!this.hasColumn('files', 'tags')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN tags TEXT;`)
+    }
+    if (!this.hasColumn('files', 'embedding_strategy')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN embedding_strategy TEXT;`)
+    }
+
+    // B1 — global k/v settings. Today only `default_strategy` lives here;
+    // future single-row config (active model, similarity floors, etc.) can
+    // ride along without another migration. Seeded with 'content-only' so
+    // brand-new daemons keep legacy embedding behaviour until B3's UI flips
+    // it. INSERT OR IGNORE makes the seed idempotent across restarts.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `)
+    this.db.prepare(
+      `INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)`
+    ).run('default_strategy', 'content-only')
+
+    // B1 — embedding-experiment snapshots. Created here so B2's experiment
+    // endpoints have a place to land; B1 itself never writes to these.
+    // `snapshot_id` is the experiment label (UUID or human-friendly slug),
+    // `scope_path` lets a snapshot cover only a sub-tree, `note` is free-form
+    // user annotation. Per-file rows live in `embedding_snapshot_files` keyed
+    // by (snapshot_id, file_id) so B2 can rebuild a full alternative galaxy
+    // without touching the live `files` table.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS embedding_snapshots (
+        snapshot_id TEXT PRIMARY KEY,
+        created_at  INTEGER NOT NULL,
+        strategy    TEXT NOT NULL,
+        scope_path  TEXT,
+        note        TEXT
+      );
+      CREATE TABLE IF NOT EXISTS embedding_snapshot_files (
+        snapshot_id     TEXT NOT NULL,
+        file_id         TEXT NOT NULL,
+        embedding       BLOB NOT NULL,
+        content_hash    TEXT,
+        x               REAL,
+        y               REAL,
+        layout_version  INTEGER,
+        PRIMARY KEY (snapshot_id, file_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_esf_snapshot ON embedding_snapshot_files(snapshot_id);
+    `)
+
     // Backfill: ensure a "default" galaxy at the spiral origin, then assign any
     // legacy file rows (galaxy_id IS NULL) to it. Idempotent.
     this.ensureDefaultGalaxy()
@@ -225,13 +288,15 @@ export class FileIndex {
         created_at, modified_at, stale,
         embedding, content_hash, x, y, z,
         cluster_id, galaxy_id, layout_version, first_seen, view_count, is_pinned, star_type,
-        os_use_count, os_last_used, importance_score
+        os_use_count, os_last_used, importance_score,
+        tags, embedding_strategy
       ) VALUES (
         @id, @path, @platform, @name, @mime_type, @category, @size,
         @created_at, @modified_at, 0,
         @embedding, @content_hash, @x, @y, @z,
         @cluster_id, @galaxy_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type,
-        @os_use_count, @os_last_used, @importance_score
+        @os_use_count, @os_last_used, @importance_score,
+        @tags, @embedding_strategy
       )
       ON CONFLICT(id) DO UPDATE SET
         path = excluded.path,
@@ -253,7 +318,13 @@ export class FileIndex {
         -- excluded mean "still no signal" — overwriting with NULL is correct.
         os_use_count = excluded.os_use_count,
         os_last_used = excluded.os_last_used,
-        importance_score = excluded.importance_score
+        importance_score = excluded.importance_score,
+        -- B1: tags + embedding_strategy survive re-index the same way
+        -- star_type/pin coefficients do — caller passes NULL when it has no
+        -- new value, COALESCE keeps whatever the row already had. Forgetting
+        -- this would wipe user tags on every walker pass.
+        embedding_strategy = COALESCE(excluded.embedding_strategy, files.embedding_strategy),
+        tags               = COALESCE(excluded.tags, files.tags)
         -- star_type intentionally not updated; manual tagging persists across re-index
     `).run({
       id: file.id,
@@ -280,6 +351,8 @@ export class FileIndex {
       os_use_count: file.osUseCount,
       os_last_used: file.osLastUsed,
       importance_score: file.importanceScore,
+      tags: file.tags === null ? null : JSON.stringify(file.tags),
+      embedding_strategy: file.embeddingStrategy,
     })
   }
 
@@ -306,10 +379,19 @@ export class FileIndex {
     this.db.prepare(`UPDATE files SET cluster_id = ? WHERE id = ?`).run(clusterId, id)
   }
 
-  updateEmbedding(id: string, embedding: Float32Array, contentHash: string): void {
+  // B1 — strategy parameter records which prompt-construction strategy
+  // produced this embedding. Pass null only for legacy/test paths that don't
+  // know (it's then preserved in `embedding_strategy` by COALESCE in the
+  // upsert; here a direct UPDATE writes whatever the caller passes).
+  updateEmbedding(
+    id: string,
+    embedding: Float32Array,
+    contentHash: string,
+    strategy: string | null = null
+  ): void {
     this.db.prepare(`
-      UPDATE files SET embedding = ?, content_hash = ? WHERE id = ?
-    `).run(Buffer.from(embedding.buffer), contentHash, id)
+      UPDATE files SET embedding = ?, content_hash = ?, embedding_strategy = ? WHERE id = ?
+    `).run(Buffer.from(embedding.buffer), contentHash, strategy, id)
   }
 
   incrementViewCount(id: string): void {
@@ -318,6 +400,41 @@ export class FileIndex {
 
   setStarType(id: string, starType: StarType | null): void {
     this.db.prepare(`UPDATE files SET star_type = ? WHERE id = ?`).run(starType, id)
+  }
+
+  // B1 — manual tags. Stored as JSON-encoded string[] in TEXT; null clears.
+  setTags(id: string, tags: string[] | null): void {
+    const encoded = tags === null ? null : JSON.stringify(tags)
+    this.db.prepare(`UPDATE files SET tags = ? WHERE id = ?`).run(encoded, id)
+  }
+
+  getTags(id: string): string[] | null {
+    const row = this.db.prepare(`SELECT tags FROM files WHERE id = ?`).get(id) as
+      | { tags: string | null }
+      | undefined
+    if (!row) return null
+    return parseTags(row.tags)
+  }
+
+  // B1 — global default strategy lookup. Returns the seeded value
+  // ('content-only') on a fresh DB; the column is non-nullable in practice
+  // because migrate() seeds it via INSERT OR IGNORE. Falls back to
+  // 'content-only' if a hand-edit ever wipes the row, so callers never need
+  // to handle null.
+  getDefaultStrategy(): string {
+    const row = this.db.prepare(
+      `SELECT value FROM app_settings WHERE key = 'default_strategy'`
+    ).get() as { value: string | null } | undefined
+    return row?.value ?? 'content-only'
+  }
+
+  setDefaultStrategy(id: string): void {
+    // INSERT OR REPLACE in case the row was deleted out-of-band; cheaper than
+    // a SELECT-then-INSERT/UPDATE branch.
+    this.db.prepare(
+      `INSERT INTO app_settings (key, value) VALUES ('default_strategy', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    ).run(id)
   }
 
   // F4 — pin/unpin. Atomic; overwrites any prior pin coefficients.
@@ -726,6 +843,8 @@ interface DbRow {
   os_use_count: number | null
   os_last_used: number | null
   importance_score: number | null
+  tags: string | null
+  embedding_strategy: string | null
 }
 
 interface GalaxyRow {
@@ -777,6 +896,21 @@ export interface LayoutMetaRow {
 
 // --- Row mappers ---
 
+// B1 — defensive JSON parse: a hand-edit or older corrupt row could leave
+// non-array JSON in the column; treat anything other than a string array as
+// "no tags" so a malformed row never crashes the daemon.
+function parseTags(raw: string | null): string[] | null {
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return null
+    if (!parsed.every(t => typeof t === 'string')) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
 function rowToFile(row: DbRow): IndexedFile {
   return {
     id: row.id,
@@ -811,6 +945,8 @@ function rowToFile(row: DbRow): IndexedFile {
     osUseCount: row.os_use_count,
     osLastUsed: row.os_last_used,
     importanceScore: row.importance_score,
+    tags: parseTags(row.tags),
+    embeddingStrategy: row.embedding_strategy,
   }
 }
 

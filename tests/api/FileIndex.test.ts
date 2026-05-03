@@ -33,6 +33,8 @@ function makeFile(overrides: Partial<IndexedFile> = {}): Omit<IndexedFile, 'isSt
     osUseCount: null,
     osLastUsed: null,
     importanceScore: null,
+    tags: null,
+    embeddingStrategy: null,
     ...overrides,
   }
 }
@@ -385,5 +387,96 @@ describe('FileIndex', () => {
   it('respects an explicit colorIndex override on create', () => {
     const c = idx.createCollection({ name: 'Override', kind: 'static', colorIndex: 4 })
     expect(c.colorIndex).toBe(4)
+  })
+
+  // B1 — tags + embedding strategy + app_settings + snapshot tables
+
+  it('round-trips tags via setTags/getTags (single, multiple, null)', () => {
+    idx.upsert(makeFile({ id: 'tg1', path: '/tg1' }))
+    expect(idx.getTags('tg1')).toBeNull()
+
+    idx.setTags('tg1', ['research'])
+    expect(idx.getTags('tg1')).toEqual(['research'])
+
+    idx.setTags('tg1', ['research', 'pinned', 'q4'])
+    expect(idx.getTags('tg1')).toEqual(['research', 'pinned', 'q4'])
+
+    idx.setTags('tg1', null)
+    expect(idx.getTags('tg1')).toBeNull()
+  })
+
+  it('preserves tags across a re-index that does not pass new tags', () => {
+    idx.upsert(makeFile({ id: 'tg2', path: '/tg2' }))
+    idx.setTags('tg2', ['keepme'])
+    // Re-index passes tags: null — must NOT wipe the existing tags (matches
+    // the is_pinned/star_type COALESCE pattern)
+    idx.upsert(makeFile({ id: 'tg2', path: '/tg2', size: 999, tags: null }))
+    expect(idx.getTags('tg2')).toEqual(['keepme'])
+  })
+
+  it('overwrites tags when caller passes explicit non-null tags via upsert', () => {
+    idx.upsert(makeFile({ id: 'tg3', path: '/tg3' }))
+    idx.setTags('tg3', ['old'])
+    idx.upsert(makeFile({ id: 'tg3', path: '/tg3', tags: ['new'] }))
+    expect(idx.getTags('tg3')).toEqual(['new'])
+  })
+
+  it('default strategy seeded as content-only and round-trips via setDefaultStrategy', () => {
+    expect(idx.getDefaultStrategy()).toBe('content-only')
+    idx.setDefaultStrategy('metadata+content')
+    expect(idx.getDefaultStrategy()).toBe('metadata+content')
+    idx.setDefaultStrategy('content-only')
+    expect(idx.getDefaultStrategy()).toBe('content-only')
+  })
+
+  it('updateEmbedding records the strategy that produced the vector', () => {
+    idx.upsert(makeFile({ id: 'es1', path: '/es1' }))
+    expect(idx.get('es1')!.embeddingStrategy).toBeNull()
+
+    idx.updateEmbedding('es1', new Float32Array(768).fill(0.05), 'hash_es1', 'metadata+content')
+    const f = idx.get('es1')!
+    expect(f.embeddingStrategy).toBe('metadata+content')
+    expect(f.contentHash).toBe('hash_es1')
+  })
+
+  it('preserves embedding_strategy across re-index when caller passes null', () => {
+    idx.upsert(makeFile({ id: 'es2', path: '/es2', embeddingStrategy: 'metadata+content' }))
+    expect(idx.get('es2')!.embeddingStrategy).toBe('metadata+content')
+
+    // Re-upsert without strategy — must preserve the prior value
+    idx.upsert(makeFile({ id: 'es2', path: '/es2', size: 555, embeddingStrategy: null }))
+    expect(idx.get('es2')!.embeddingStrategy).toBe('metadata+content')
+  })
+
+  it('embedding_snapshot tables accept a basic round-trip insert', () => {
+    // B1 just creates the tables — B2 fills them. Verify the schema is
+    // queryable end-to-end so a typo in CREATE TABLE doesn't ship.
+    idx.db.prepare(
+      `INSERT INTO embedding_snapshots (snapshot_id, created_at, strategy, scope_path, note)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run('snap-1', 1_700_000_000_000, 'metadata+content', '/Users/x/scope', 'first try')
+
+    const emb = Buffer.alloc(3072)  // 768 floats * 4 bytes
+    idx.db.prepare(
+      `INSERT INTO embedding_snapshot_files
+       (snapshot_id, file_id, embedding, content_hash, x, y, layout_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run('snap-1', 'fileA', emb, 'hashA', 1.5, -2.3, 7)
+
+    const snap = idx.db.prepare(
+      `SELECT * FROM embedding_snapshots WHERE snapshot_id = ?`
+    ).get('snap-1') as { snapshot_id: string; strategy: string; scope_path: string; note: string }
+    expect(snap.snapshot_id).toBe('snap-1')
+    expect(snap.strategy).toBe('metadata+content')
+    expect(snap.scope_path).toBe('/Users/x/scope')
+
+    const file = idx.db.prepare(
+      `SELECT * FROM embedding_snapshot_files WHERE snapshot_id = ? AND file_id = ?`
+    ).get('snap-1', 'fileA') as { file_id: string; content_hash: string; x: number; y: number; layout_version: number }
+    expect(file.file_id).toBe('fileA')
+    expect(file.content_hash).toBe('hashA')
+    expect(file.x).toBeCloseTo(1.5)
+    expect(file.y).toBeCloseTo(-2.3)
+    expect(file.layout_version).toBe(7)
   })
 })

@@ -68,6 +68,8 @@ beforeAll(() => {
       osUseCount: null,
       osLastUsed: null,
       importanceScore: null,
+      tags: null,
+      embeddingStrategy: null,
     })
     hnsw.addPoint(emb, `seed${i}`)
   }

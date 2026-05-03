@@ -175,6 +175,7 @@ describe('Insert pipeline (mocked Ollama)', () => {
         pinAlpha: null, pinBeta: null,
         pinAxisA: null, pinAxisB: null, pinnedAt: null,
         osUseCount: null, osLastUsed: null, importanceScore: null,
+        tags: null, embeddingStrategy: null,
       })
       hnsw.addPoint(result.embedding, `syn${i}`)
     }

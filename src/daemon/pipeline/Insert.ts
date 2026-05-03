@@ -197,6 +197,12 @@ export async function insertOne(
         osLastUsed: effectiveOsLastUsed,
         now,
       }),
+      // B1 — pure preservation in commit 2. Insert never mutates these (the
+      // ON CONFLICT clause COALESCEs NULL into whatever the row already has),
+      // and commit 4 will replace the literal nulls with the values that
+      // actually drove the embed call.
+      tags: existing?.tags ?? null,
+      embeddingStrategy: existing?.embeddingStrategy ?? null,
     })
 
     if (!embedResult) return
