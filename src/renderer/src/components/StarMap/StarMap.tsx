@@ -291,6 +291,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // "interacting" for ~200 ms after a wheel scroll).
   const lastVisibleCountRef = useRef<number>(0)
   const lastWheelTsRef = useRef<number>(0)
+  // Count of pulsar/quasar stars actually inside the viewport on the most
+  // recent draw. The rAF gate uses this (not animatedStarsRef.current.length)
+  // to decide whether to force a continuous redraw — otherwise a single PDF
+  // or PPTX anywhere in the corpus pins the gate open forever, defeating the
+  // skip path. Initialised conservatively to corpus-total so the very first
+  // frame after stars load still draws; refined to viewport-actual after the
+  // first paint.
+  const visibleAnimatedCountRef = useRef<number>(0)
   // F4 — drag-to-pin state: pinDrag.current holds the live target world
   // coords. The main draw loop runs each frame via rAF, so we don't need to
   // trigger a React re-render on each cursor move; the next frame picks up
@@ -334,6 +342,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (t === 'pulsar' || t === 'quasar') next.push(s)
     }
     animatedStarsRef.current = next
+    // Seed gate-count to corpus-total so the first frame after a mode flip
+    // still draws regardless of whether any animated star is currently in
+    // viewport. Refined by the animation-overlay pass on next draw.
+    visibleAnimatedCountRef.current = next.length
     dirtyRef.current = true
   }, [classMode, percentileBuckets])
 
@@ -357,6 +369,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     pinnedStarsRef.current = pinned
     tempBucketCacheRef.current = new Map()
     jitterCacheRef.current = new Map()
+    // Same seeding rule as the mode-flip path above.
+    visibleAnimatedCountRef.current = animated.length
     dirtyRef.current = true
 
     // Spread sprite-build cost over idle time after the first frame paints.
@@ -1010,11 +1024,16 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       activeQuality === 'medium' ? 8 :
       0
     const tNow = performance.now() / 1000
+    // Count animated stars actually inside the viewport. The rAF gate uses
+    // this (not the corpus-total) so a single PDF (→quasar) at the far end
+    // of the map can't pin the dirty-flag gate open and prevent idle skip.
+    let visibleAnimated = 0
     for (const star of animatedStarsRef.current) {
       const animType = effectiveStarType(star, activeMode, activeBuckets)
       if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
+      visibleAnimated++
 
       const sb = activeMode === 'usage'
         ? sizeBucketForImportance(star.importanceScore ?? 0)
@@ -1065,6 +1084,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       ctx.restore()
     }
+    visibleAnimatedCountRef.current = visibleAnimated
     markEnd('08.animOverlay')
 
     // Decoration pass — additive sprite re-draw (selected) + warm-white selection ring +
@@ -1398,7 +1418,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const continuous =
         selectedId !== null ||                         // selection pulse
         pulseActive ||                                 // search highlight pulse
-        animatedStarsRef.current.length > 0 ||         // pulsar/quasar beams
+        visibleAnimatedCountRef.current > 0 ||         // pulsar/quasar beams in viewport
         hasVel ||                                      // vim pan velocity
         pinDrag.current !== null                       // pin-drag preview
 
