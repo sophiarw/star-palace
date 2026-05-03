@@ -301,3 +301,137 @@ export async function deleteCollection(id: number): Promise<void> {
   const res = await fetch(`${BASE}/api/collections/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`deleteCollection: ${res.status}`)
 }
+
+// F18 (B-task) — Embedding-experiment workflow.
+// The daemon (B2) maintains a strategy registry, snapshots embeddings before
+// re-embedding a subdir under a candidate strategy, and exposes promote /
+// revert flows. The renderer (B3 — this file) calls the surface below to
+// drive the EmbeddingLab panel + tag editing in DetailPanel. All shapes
+// match the planned contract; if B2's actual schema drifts, patch here.
+
+export interface EmbeddingStrategy {
+  id: string
+  label: string
+  description: string
+}
+
+export interface EmbeddingStrategiesResponse {
+  strategies: EmbeddingStrategy[]
+  default: string
+}
+
+export async function getEmbeddingStrategies(): Promise<EmbeddingStrategiesResponse> {
+  const res = await fetch(`${BASE}/api/embedding/strategies`)
+  if (!res.ok) throw new Error(`getEmbeddingStrategies: ${res.status}`)
+  return res.json()
+}
+
+export async function setDefaultStrategy(strategy: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/embedding/default`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy }),
+  })
+  if (!res.ok) throw new Error(`setDefaultStrategy: ${res.status}`)
+}
+
+export interface ExperimentResult {
+  snapshotId: string
+  affectedIds: string[]
+}
+
+export async function runEmbeddingExperiment(
+  scopePath: string,
+  strategy: string,
+  note?: string,
+): Promise<ExperimentResult> {
+  const body: { scopePath: string; strategy: string; note?: string } = { scopePath, strategy }
+  if (note !== undefined && note !== '') body.note = note
+  const res = await fetch(`${BASE}/api/embedding/experiment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({})) as { error?: string }
+    throw new HttpError(res.status, errBody.error ?? `runEmbeddingExperiment: ${res.status}`)
+  }
+  return res.json()
+}
+
+export interface ExperimentPosition {
+  id: string
+  x: number
+  y: number
+}
+
+export async function getExperimentPositions(snapshotId: string): Promise<ExperimentPosition[]> {
+  const res = await fetch(`${BASE}/api/embedding/experiment/${encodeURIComponent(snapshotId)}/positions`)
+  if (!res.ok) throw new Error(`getExperimentPositions: ${res.status}`)
+  return res.json()
+}
+
+export interface PromoteResult {
+  ok: boolean
+  jobId: string
+}
+
+export async function promoteExperiment(snapshotId: string): Promise<PromoteResult> {
+  const res = await fetch(
+    `${BASE}/api/embedding/experiment/${encodeURIComponent(snapshotId)}/promote`,
+    { method: 'POST' },
+  )
+  if (!res.ok) throw new Error(`promoteExperiment: ${res.status}`)
+  return res.json()
+}
+
+export async function revertExperiment(snapshotId: string): Promise<void> {
+  const res = await fetch(
+    `${BASE}/api/embedding/experiment/${encodeURIComponent(snapshotId)}/revert`,
+    { method: 'POST' },
+  )
+  if (!res.ok) throw new Error(`revertExperiment: ${res.status}`)
+}
+
+export interface SnapshotSummary {
+  snapshotId: string
+  createdAt: number
+  strategy: string
+  scopePath: string
+  note: string | null
+}
+
+export async function listSnapshots(): Promise<SnapshotSummary[]> {
+  const res = await fetch(`${BASE}/api/embedding/snapshots`)
+  if (!res.ok) throw new Error(`listSnapshots: ${res.status}`)
+  return res.json()
+}
+
+export async function reindexFile(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/file/${encodeURIComponent(id)}/reindex`, { method: 'POST' })
+  if (!res.ok) throw new Error(`reindexFile: ${res.status}`)
+}
+
+export interface FileTags {
+  tags: string[]
+}
+
+// Tags persist in `files.tags` as a JSON-encoded string[] (B1 schema).
+// The GET endpoint returns the parsed array; POST replaces it wholesale.
+// Both routes are owned by B2; if B2 ships a different shape (e.g. PATCH
+// with add/remove sets) this wrapper is the single point to update.
+export async function getTags(id: string): Promise<string[]> {
+  const res = await fetch(`${BASE}/api/file/${encodeURIComponent(id)}/tags`)
+  if (!res.ok) throw new Error(`getTags: ${res.status}`)
+  const data = await res.json() as FileTags
+  return data.tags
+}
+
+export async function setTags(id: string, tags: string[]): Promise<void> {
+  const res = await fetch(`${BASE}/api/file/${encodeURIComponent(id)}/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  })
+  if (!res.ok) throw new Error(`setTags: ${res.status}`)
+}

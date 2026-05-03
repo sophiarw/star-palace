@@ -395,6 +395,87 @@ body {
   font-style: italic;
 }
 
+/* B3 — tag chip-list editor sits below star-type. Chips render as small
+   pills in the accent colour; the inline input flows in the same row so
+   typing feels continuous. */
+.detail-panel-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.detail-panel-tags-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.detail-panel-tags-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.detail-panel-tags-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--starpalace-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 35%, transparent);
+  border-radius: 999px;
+  color: var(--starpalace-accent);
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.detail-panel-tags-chip-remove {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.detail-panel-tags-chip-remove:hover {
+  color: #fff;
+}
+
+.detail-panel-tags-input {
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 10px;
+  width: 100%;
+}
+
+.detail-panel-tags-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.detail-panel-tags-input[disabled] {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.detail-panel-tags-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.detail-panel-tags-error {
+  color: #e07a7a;
+  font-size: 11px;
+}
+
 .detail-panel-content {
   border: 1px solid var(--border);
   border-radius: 8px;

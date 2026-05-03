@@ -3,7 +3,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Star, FileContent, StarType } from '@shared/types'
 import { CONSTELLATION_PALETTE, STAR_TYPES } from '@shared/types'
-import { fetchContent, openFile, revealFile, rawUrl, fetchNeighborhood, setStarType as apiSetStarType } from '../../api'
+import {
+  fetchContent, openFile, revealFile, rawUrl, fetchNeighborhood,
+  setStarType as apiSetStarType,
+  getTags, setTags as apiSetTags, reindexFile,
+} from '../../api'
 import { defaultStarType, defaultStarTypeReason } from '../StarMap/autoStarType'
 
 const STAR_TYPE_LABELS: Record<StarType, string> = {
@@ -91,6 +95,15 @@ export default function DetailPanel({
   const [openInFlight, setOpenInFlight] = useState(false)
   const [revealInFlight, setRevealInFlight] = useState(false)
 
+  // B3 — tag editor state. Tags are lazy-fetched per selection (cheap GET
+  // separate from /api/file/:id so a selection click doesn't pay for it
+  // when the user never opens the editor). `tagsError` surfaces a 404 when
+  // B2's endpoint isn't live yet — the panel still renders the input.
+  const [tags, setTagsState] = useState<string[] | null>(null)
+  const [tagInput, setTagInput] = useState('')
+  const [tagsSaving, setTagsSaving] = useState(false)
+  const [tagsError, setTagsError] = useState<string | null>(null)
+
   // Allow external control of the type dropdown (for vim 't' binding)
   const typeOpen = typeDropdownOpen !== undefined ? typeDropdownOpen : typeOpenInternal
   const setTypeOpen = (open: boolean) => {
@@ -102,6 +115,9 @@ export default function DetailPanel({
     setContent(null)
     setContentError(null)
     setNeighbors([])
+    setTagsState(null)
+    setTagInput('')
+    setTagsError(null)
 
     let cancelled = false
 
@@ -120,6 +136,17 @@ export default function DetailPanel({
         setNeighbors(summary)
       })
       .catch(() => { /* neighborhood is optional */ })
+
+    // B3 — tags. If the daemon endpoint isn't shipped yet we still render
+    // the editor but seed it from the empty list and surface a soft error
+    // beneath the input.
+    getTags(star.id)
+      .then(t => { if (!cancelled) setTagsState(t) })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setTagsState([])
+        setTagsError(`Tags endpoint unavailable: ${String(err)}`)
+      })
 
     return () => { cancelled = true }
   }, [star.id])
@@ -243,6 +270,80 @@ export default function DetailPanel({
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="detail-panel-tags">
+        <span className="detail-panel-tags-label">Tags</span>
+        <div className="detail-panel-tags-chips">
+          {(tags ?? []).length === 0 && (
+            <span className="detail-panel-tags-empty">no tags</span>
+          )}
+          {(tags ?? []).map(t => (
+            <span key={t} className="detail-panel-tags-chip">
+              {t}
+              <button
+                type="button"
+                className="detail-panel-tags-chip-remove"
+                aria-label={`Remove tag ${t}`}
+                disabled={tagsSaving}
+                onClick={async () => {
+                  if (!tags) return
+                  const next = tags.filter(x => x !== t)
+                  setTagsSaving(true)
+                  setTagsError(null)
+                  try {
+                    await apiSetTags(star.id, next)
+                    setTagsState(next)
+                    // Re-embed so the next strategy run picks up the change.
+                    reindexFile(star.id).catch(() => { /* best-effort */ })
+                  } catch (err) {
+                    setTagsError(`Save failed: ${String(err)}`)
+                  } finally {
+                    setTagsSaving(false)
+                  }
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <input
+          className="detail-panel-tags-input"
+          type="text"
+          placeholder="press enter to add a tag"
+          value={tagInput}
+          disabled={tagsSaving || tags === null}
+          onChange={e => setTagInput(e.target.value)}
+          onKeyDown={async e => {
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            const trimmed = tagInput.trim()
+            if (!trimmed) return
+            const existing = tags ?? []
+            if (existing.includes(trimmed)) {
+              // Dedupe silently — clear the input so the user knows it landed
+              // even if the chip was already there.
+              setTagInput('')
+              return
+            }
+            const next = [...existing, trimmed]
+            setTagsSaving(true)
+            setTagsError(null)
+            try {
+              await apiSetTags(star.id, next)
+              setTagsState(next)
+              setTagInput('')
+              // Trigger a re-embed so the new tag flows into the next vector.
+              reindexFile(star.id).catch(() => { /* best-effort */ })
+            } catch (err) {
+              setTagsError(`Save failed: ${String(err)}`)
+            } finally {
+              setTagsSaving(false)
+            }
+          }}
+        />
+        {tagsError && <span className="detail-panel-tags-error">{tagsError}</span>}
       </div>
 
       <div className="detail-panel-pin">
