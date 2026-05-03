@@ -1046,6 +1046,112 @@ body {
   cursor: not-allowed;
 }
 
+/* F17 — live indexing progress block. Replaces the Index button while a job
+   is in flight. Slim bar (4 px) + counter line + cancel pill. The fill uses
+   the theme accent so JWST/Vapor look at home; indeterminate variant slides
+   a striped band when total is unknown (walker hasn't pre-counted in v1).
+   The bar lives outside the button stack so the cancel sits flush below. */
+
+.galaxy-panel-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 30%, transparent);
+  border-radius: 6px;
+}
+
+.galaxy-panel-progress-bar {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.galaxy-panel-progress-fill {
+  height: 100%;
+  background: var(--starpalace-accent);
+  border-radius: 2px;
+  transition: width 200ms ease-out;
+}
+
+@keyframes galaxy-panel-progress-stripes {
+  0%   { background-position: 0 0; }
+  100% { background-position: 24px 0; }
+}
+
+/* Indeterminate: ignore the inner fill width, paint diagonal stripes that
+   slide. Matches the spec's "animated stripes" cue for the discovery phase. */
+.galaxy-panel-progress-bar--indeterminate {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--starpalace-accent) 35%, transparent) 0,
+    color-mix(in srgb, var(--starpalace-accent) 35%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  background-size: 24px 4px;
+  animation: galaxy-panel-progress-stripes 600ms linear infinite;
+}
+
+.galaxy-panel-progress-bar--indeterminate .galaxy-panel-progress-fill {
+  display: none;
+}
+
+.galaxy-panel-progress-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.galaxy-panel-progress-counts {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.galaxy-panel-progress-path {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.galaxy-panel-progress-hint {
+  font-size: 10.5px;
+  font-style: italic;
+}
+
+.galaxy-panel-progress-hint--stall {
+  color: #ffb74d;
+}
+
+.galaxy-panel-progress-hint--err {
+  color: #ff9944;
+}
+
+.galaxy-panel-progress-cancel {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 35%, transparent);
+  border-radius: 5px;
+  color: var(--starpalace-accent);
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.galaxy-panel-progress-cancel:hover {
+  background: color-mix(in srgb, var(--starpalace-accent) 14%, transparent);
+}
+
 .galaxy-panel-msg {
   font-size: 11px;
   padding: 4px 6px;
