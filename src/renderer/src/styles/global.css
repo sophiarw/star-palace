@@ -698,3 +698,197 @@ body {
   font-family: monospace;
   color: var(--accent);
 }
+
+/* Galaxy panel (F9) — bottom-right; collapsible. */
+
+.galaxy-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 48px;  /* clear of stats-bar; stats-bar is bottom-left so no overlap on width */
+  width: 280px;
+  z-index: 85;
+  background: rgba(2, 11, 24, 0.93);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(12px);
+  box-shadow: -8px -8px 32px rgba(0, 0, 0, 0.55);
+  max-height: 60vh;
+  overflow: hidden;
+}
+
+.galaxy-panel-collapsed {
+  position: fixed;
+  right: 16px;
+  bottom: 48px;
+  z-index: 85;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 6px 10px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.galaxy-panel-collapsed:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.galaxy-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.galaxy-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.galaxy-panel-collapse {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.galaxy-panel-collapse:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.galaxy-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.galaxy-panel-input {
+  width: 100%;
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 9px;
+  outline: none;
+  font-family: monospace;
+}
+
+.galaxy-panel-input:focus {
+  border-color: var(--accent);
+}
+
+.galaxy-panel-input--name {
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.galaxy-panel-input::placeholder {
+  color: var(--text-muted);
+}
+
+.galaxy-panel-input[disabled] {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.galaxy-panel-index-btn {
+  background: rgba(74, 158, 255, 0.15);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.galaxy-panel-index-btn:hover:not(:disabled) {
+  background: rgba(74, 158, 255, 0.28);
+}
+
+.galaxy-panel-index-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.galaxy-panel-msg {
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+.galaxy-panel-msg--err {
+  color: #ff9944;
+  background: rgba(255, 153, 68, 0.08);
+  border: 1px solid rgba(255, 153, 68, 0.3);
+}
+
+.galaxy-panel-msg--ok {
+  color: #80cbc4;
+  background: rgba(128, 203, 196, 0.08);
+  border: 1px solid rgba(128, 203, 196, 0.3);
+}
+
+.galaxy-panel-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.galaxy-panel-row {
+  margin: 0;
+}
+
+.galaxy-panel-fly {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.galaxy-panel-fly:hover {
+  background: rgba(74, 158, 255, 0.12);
+  border-color: rgba(74, 158, 255, 0.3);
+}
+
+.galaxy-panel-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.galaxy-panel-count {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}

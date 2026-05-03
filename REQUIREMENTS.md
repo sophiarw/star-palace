@@ -25,6 +25,7 @@ Locked decisions:
 | F6 | Vim mode | M | Pure UI; no backend. | **IN PROGRESS** |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. | |
 | F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. | |
+| F9 | Galaxies (multi-root indexing) | M | New table + galaxy_id column; spiral origin offsets; renderer panel. | **DONE** |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -296,6 +297,7 @@ User says "everything about magnets" or "all my pitch decks". Result is a named,
 | `pin_axis_b` | `INTEGER` | F4: PC index 0..7 active at pin time. |
 | `pinned_at` | `INTEGER` | F4: unix ms; null = not pinned. |
 | `tree_node_id` | `INTEGER` | F7: leaf reference into `cluster_tree(id)`. |
+| `galaxy_id` | `INTEGER` | F9: parent galaxy. NULL only on legacy rows pre-migration; backfilled to the `default` galaxy on startup. |
 
 `pos`-related columns may be NULL for files in cold-start phase. Renderer skips NULL-position files.
 
@@ -385,6 +387,8 @@ Flat `clusters` table preserved for compatibility; `tree_node_id` is the leaf as
 | `/api/tree/:nodeId/members` | GET | F7: paginated. |
 | `/api/tree/relabel` | POST | F7: kick off LLM label generation (out of v1 scope). |
 | `/api/relayout` | POST | Admin: force a re-fit. |
+| `/api/galaxies` | GET | F9: list galaxies with member counts. |
+| `/api/index` | POST | Body `{ path, galaxyName? }` — F9 extends this; returns walk stats + assigned `galaxyId`/`galaxyName`. |
 
 CORS enabled for all origins. Renderer never invokes Node APIs directly. Port `7373` (`DAEMON_PORT`).
 
@@ -581,6 +585,88 @@ Total max memory: ~500 × 64 KB (typed) + ~500 × 256 KB (planets) + ~40 × 64 K
 4. Camera animates pan + zoom to bounding box over ~600ms with easing.
 5. Highlight applied; non-matching dimmed (per F1a).
 6. Pressing Escape clears highlights and returns to free browse.
+
+---
+
+## Galaxies (F9)
+
+Multi-root indexing without files merging into one big sky. Each indexed
+directory becomes its own **galaxy** at a deterministic origin offset on
+the map; the user pans/zooms between them or uses a "Fly to" button in
+the panel.
+
+### Data model
+
+```sql
+CREATE TABLE galaxies (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  root_path   TEXT NOT NULL UNIQUE,
+  origin_x    REAL NOT NULL,
+  origin_y    REAL NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+ALTER TABLE files ADD COLUMN galaxy_id INTEGER REFERENCES galaxies(id);
+```
+
+Migration is additive. A `default` galaxy at origin `(0, 0)` is created on
+startup if it doesn't already exist; any pre-existing files (galaxy_id
+NULL) are backfilled to it so the migration is safe on a populated DB.
+
+### File ID derivation
+
+`fileIdFromPath(path, galaxyScope?)` salts the SHA-1 input with the
+galaxy ID when one is supplied. Same on-disk path under two galaxy roots
+produces two distinct file IDs (and therefore two distinct stars). When
+the scope is undefined the legacy path-only ID is preserved.
+
+### Origin spiral
+
+`galaxySpiralOffset(n)` walks a square Ulam spiral around `(0, 0)` with
+leg lengths `1, 1, 2, 2, 3, 3, …` and direction order
+`right → up → left → down`. Step size is `GALAXY_SPIRAL_STEP = 4000`
+world units (PCA spread is ±500, so 4000 keeps each galaxy visually
+separated with comfortable empty space).
+
+| n | (x_step, y_step) |
+|---|---|
+| 1 | (0, 0) — `default` |
+| 2 | (1, 0) |
+| 3 | (1, 1) |
+| 4 | (0, 1) |
+| 5 | (-1, 1) |
+| … | … |
+
+### Endpoints
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/index` | POST | Body `{ path, galaxyName? }`. Find-or-create galaxy → assign every walked file to it. Defaults to `basename(path)`. |
+| `/api/galaxies` | GET | `{ galaxies: GalaxySummary[] }` with `id, name, rootPath, originX, originY, createdAt, memberCount`. |
+
+### Renderer
+
+Each star's displayed position is `localPCA(x, y) + galaxy.origin`. The
+offset is composed in `App.tsx`'s `projectedStars` memo, layered on top
+of (and independent from) any future pin offset.
+
+### UI
+
+`GalaxyPanel` lives at the bottom-right (collapsible). Inputs for path
++ optional galaxy name + Index button. Below that, a list of all
+galaxies with their member count and a "Fly to" button that pans the
+camera to the galaxy's origin at zoom `0.3` so the whole galaxy fits.
+
+Indexing the same path twice is idempotent: the galaxy's row is reused
+(unique on `root_path`) and contents re-walked.
+
+### Out of scope (v1 of F9)
+
+- No deduplication when the same file appears under two galaxies.
+- No galaxy-level color theming.
+- No drag-to-reorder of galaxy origins on the spiral.
+- No `/api/galaxies/:id/refresh` endpoint (re-index by re-POSTing `path`).
+- No galaxy hulls or labels in `StarMap`.
 
 ---
 

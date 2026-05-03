@@ -169,7 +169,7 @@ describe('Insert pipeline (mocked Ollama)', () => {
         embedding: result.embedding,
         contentHash: result.contentHash,
         x: null, y: null, z: null,
-        clusterId: null, layoutVersion: 0,
+        clusterId: null, galaxyId: null, layoutVersion: 0,
         firstSeen: 0, viewCount: 0, isPinned: false,
         starType: null,
       })

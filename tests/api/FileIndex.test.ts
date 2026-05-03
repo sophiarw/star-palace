@@ -19,6 +19,7 @@ function makeFile(overrides: Partial<IndexedFile> = {}): Omit<IndexedFile, 'isSt
     y: null,
     z: null,
     clusterId: null,
+    galaxyId: null,
     layoutVersion: 0,
     firstSeen: 1000,
     viewCount: 0,
@@ -133,5 +134,40 @@ describe('FileIndex', () => {
     // Re-upsert as if a re-index happened
     idx.upsert(makeFile({ id: 'tag2', path: '/t2', size: 200 }))
     expect(idx.get('tag2')!.starType).toBe('quasar')
+  })
+
+  it('creates a default galaxy on migration', () => {
+    const galaxies = idx.listGalaxies()
+    expect(galaxies.length).toBeGreaterThanOrEqual(1)
+    const def = galaxies.find(g => g.name === 'default')
+    expect(def).toBeDefined()
+    expect(def!.originX).toBe(0)
+    expect(def!.originY).toBe(0)
+  })
+
+  it('getOrCreateGalaxy is idempotent on root_path', () => {
+    const a = idx.getOrCreateGalaxy('/Users/foo/projects', 'projects')
+    const b = idx.getOrCreateGalaxy('/Users/foo/projects', 'projects')
+    expect(a.id).toBe(b.id)
+    expect(a.originX).toBe(b.originX)
+    expect(a.originY).toBe(b.originY)
+  })
+
+  it('places successive galaxies on distinct spiral slots', () => {
+    const a = idx.getOrCreateGalaxy('/a', 'a')
+    const b = idx.getOrCreateGalaxy('/b', 'b')
+    const c = idx.getOrCreateGalaxy('/c', 'c')
+    expect(a.originX === b.originX && a.originY === b.originY).toBe(false)
+    expect(b.originX === c.originX && b.originY === c.originY).toBe(false)
+  })
+
+  it('lists galaxies with member_count', () => {
+    const g = idx.getOrCreateGalaxy('/Users/foo/notes', 'notes')
+    idx.upsert(makeFile({ id: 'gx1', path: '/Users/foo/notes/a.md', galaxyId: g.id }))
+    idx.upsert(makeFile({ id: 'gx2', path: '/Users/foo/notes/b.md', galaxyId: g.id }))
+    const list = idx.listGalaxies()
+    const found = list.find(x => x.id === g.id)
+    expect(found).toBeDefined()
+    expect(found!.memberCount).toBe(2)
   })
 })

@@ -51,6 +51,7 @@ beforeAll(() => {
       y: (i - 2) * 30.0,
       z: null,
       clusterId: null,
+      galaxyId: null,
       layoutVersion: 1,
       firstSeen: 1000,
       viewCount: 0,

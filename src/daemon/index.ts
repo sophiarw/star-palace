@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { homedir } from 'os'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { mkdirSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
 import { openInDefaultApp } from './util/openInDefaultApp'
@@ -88,16 +88,29 @@ app.get('/api/health', async (_req, res) => {
 })
 
 // --- Index a directory ---
+// F9: a request body with `galaxyName` creates / reuses that named galaxy.
+// Without one we default to basename(path) so each indexed root becomes its
+// own galaxy automatically.
 app.post('/api/index', async (req, res) => {
-  const { path } = req.body as { path?: string }
-  if (!path) return res.status(400).json({ error: 'path required' })
+  const { path: rootPath, galaxyName } = req.body as { path?: string; galaxyName?: string }
+  if (!rootPath) return res.status(400).json({ error: 'path required' })
   try {
-    const stats = await indexPath(path, { db, hnsw, embedEngine, relayouter })
+    const fallbackName = basename(rootPath) || rootPath
+    const name = ((galaxyName ?? '').trim() || fallbackName).slice(0, 80)
+    const galaxy = db.getOrCreateGalaxy(rootPath, name)
+    const stats = await indexPath(rootPath, {
+      db, hnsw, embedEngine, relayouter, galaxyId: galaxy.id,
+    })
     hnsw.save()
-    res.json(stats)
+    res.json({ ...stats, galaxyId: galaxy.id, galaxyName: galaxy.name })
   } catch (err) {
     res.status(500).json({ error: String(err) })
   }
+})
+
+// --- Galaxies (F9) ---
+app.get('/api/galaxies', (_req, res) => {
+  res.json({ galaxies: db.listGalaxies() })
 })
 
 // --- Viewport query ---

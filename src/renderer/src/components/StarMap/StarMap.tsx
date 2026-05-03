@@ -240,7 +240,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
 
     if (vimAction.type === 'panTo') {
-      const newCam = { ...cam, cx: vimAction.wx, cy: vimAction.wy }
+      // Optional zoom lets callers (e.g. galaxy "fly to") snap to a specific
+      // viewing zoom in addition to recentering.
+      const z = vimAction.zoom !== undefined
+        ? Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, vimAction.zoom))
+        : cam.zoom
+      const newCam = { ...cam, cx: vimAction.wx, cy: vimAction.wy, zoom: z }
       camRef.current = newCam
       setCam(newCam)
       return

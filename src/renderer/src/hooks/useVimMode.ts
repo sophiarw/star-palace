@@ -10,7 +10,7 @@ export type VimAction =
   | { type: 'zoom'; factor: number }
   | { type: 'fitAll' }
   | { type: 'fitCluster'; clusterId: number }
-  | { type: 'panTo'; wx: number; wy: number }
+  | { type: 'panTo'; wx: number; wy: number; zoom?: number }
 
 interface UseVimModeOptions {
   onAction: (action: VimAction) => void

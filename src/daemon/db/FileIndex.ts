@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3'
-import type { FileNode, FileCategory, Star, StarType, Edge, Cluster } from '../../shared/types'
+import type { FileNode, FileCategory, Star, StarType, Edge, Cluster, Galaxy, GalaxySummary } from '../../shared/types'
+import { DEFAULT_GALAXY_NAME } from '../../shared/types'
+import { galaxySpiralOffset } from './galaxySpiral'
 
 export interface IndexedFile extends FileNode {
   // star-palace fields
@@ -9,6 +11,7 @@ export interface IndexedFile extends FileNode {
   y: number | null
   z: number | null
   clusterId: number | null
+  galaxyId: number | null
   layoutVersion: number
   firstSeen: number
   viewCount: number
@@ -94,6 +97,49 @@ export class FileIndex {
       this.db.exec(`ALTER TABLE files ADD COLUMN star_type TEXT;`)
     }
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_star_type ON files(star_type);`)
+
+    // F9 — galaxies. One row per indexed root path; each gets a deterministic
+    // origin offset on the spiral so they live as separate spatial clusters.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS galaxies (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        root_path   TEXT NOT NULL UNIQUE,
+        origin_x    REAL NOT NULL,
+        origin_y    REAL NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+    `)
+    if (!this.hasColumn('files', 'galaxy_id')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN galaxy_id INTEGER REFERENCES galaxies(id);`)
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_galaxy ON files(galaxy_id);`)
+
+    // Backfill: ensure a "default" galaxy at the spiral origin, then assign any
+    // legacy file rows (galaxy_id IS NULL) to it. Idempotent.
+    this.ensureDefaultGalaxy()
+  }
+
+  private ensureDefaultGalaxy(): void {
+    const existing = this.db.prepare(
+      `SELECT id FROM galaxies WHERE name = ? AND origin_x = 0 AND origin_y = 0`
+    ).get(DEFAULT_GALAXY_NAME) as { id: number } | undefined
+
+    let defaultId: number
+    if (existing) {
+      defaultId = existing.id
+    } else {
+      // Use a sentinel root path so the UNIQUE constraint can't fight us when
+      // the user later tries to index "/" or some other real root.
+      const result = this.db.prepare(
+        `INSERT INTO galaxies (name, root_path, origin_x, origin_y, created_at)
+         VALUES (?, ?, 0, 0, ?)`
+      ).run(DEFAULT_GALAXY_NAME, `__default__:${DEFAULT_GALAXY_NAME}`, Date.now())
+      defaultId = result.lastInsertRowid as number
+    }
+
+    // Backfill any legacy files (created before this column existed)
+    this.db.prepare(`UPDATE files SET galaxy_id = ? WHERE galaxy_id IS NULL`).run(defaultId)
   }
 
   private hasColumn(table: string, col: string): boolean {
@@ -107,12 +153,12 @@ export class FileIndex {
         id, path, platform, name, mime_type, category, size,
         created_at, modified_at, stale,
         embedding, content_hash, x, y, z,
-        cluster_id, layout_version, first_seen, view_count, is_pinned, star_type
+        cluster_id, galaxy_id, layout_version, first_seen, view_count, is_pinned, star_type
       ) VALUES (
         @id, @path, @platform, @name, @mime_type, @category, @size,
         @created_at, @modified_at, 0,
         @embedding, @content_hash, @x, @y, @z,
-        @cluster_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type
+        @cluster_id, @galaxy_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type
       )
       ON CONFLICT(id) DO UPDATE SET
         path = excluded.path,
@@ -127,6 +173,7 @@ export class FileIndex {
         x = COALESCE(excluded.x, files.x),
         y = COALESCE(excluded.y, files.y),
         cluster_id = COALESCE(excluded.cluster_id, files.cluster_id),
+        galaxy_id = COALESCE(excluded.galaxy_id, files.galaxy_id),
         layout_version = excluded.layout_version
         -- star_type intentionally not updated; manual tagging persists across re-index
     `).run({
@@ -145,6 +192,7 @@ export class FileIndex {
       y: file.y,
       z: file.z,
       cluster_id: file.clusterId,
+      galaxy_id: file.galaxyId,
       layout_version: file.layoutVersion,
       first_seen: file.firstSeen,
       view_count: file.viewCount,
@@ -294,6 +342,40 @@ export class FileIndex {
     this.db.prepare(`UPDATE files SET cluster_id = NULL`).run()
   }
 
+  // F9 — Galaxies
+  getOrCreateGalaxy(rootPath: string, name: string): Galaxy {
+    const existing = this.db.prepare(`SELECT * FROM galaxies WHERE root_path = ?`).get(rootPath) as GalaxyRow | undefined
+    if (existing) return rowToGalaxy(existing)
+
+    // Spiral slot = current galaxy count + 1 (1-indexed). The default galaxy
+    // already occupies slot 1 (origin), so the first user galaxy lands at slot 2.
+    const total = (this.db.prepare(`SELECT COUNT(*) AS c FROM galaxies`).get() as { c: number }).c
+    const slot = total + 1
+    const [originX, originY] = galaxySpiralOffset(slot)
+    const result = this.db.prepare(
+      `INSERT INTO galaxies (name, root_path, origin_x, origin_y, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(name, rootPath, originX, originY, Date.now())
+    const id = result.lastInsertRowid as number
+    return { id, name, rootPath, originX, originY, createdAt: Date.now() }
+  }
+
+  getGalaxy(id: number): Galaxy | null {
+    const row = this.db.prepare(`SELECT * FROM galaxies WHERE id = ?`).get(id) as GalaxyRow | undefined
+    return row ? rowToGalaxy(row) : null
+  }
+
+  listGalaxies(): GalaxySummary[] {
+    const rows = this.db.prepare(`
+      SELECT g.*, COALESCE(COUNT(f.id), 0) AS member_count
+      FROM galaxies g
+      LEFT JOIN files f ON f.galaxy_id = g.id
+      GROUP BY g.id
+      ORDER BY g.id
+    `).all() as (GalaxyRow & { member_count: number })[]
+    return rows.map(r => ({ ...rowToGalaxy(r), memberCount: r.member_count }))
+  }
+
   // Layout meta
   saveLayoutMeta(version: number, algorithm: string, model: Buffer, nodeCount: number): void {
     this.db.prepare(`
@@ -337,11 +419,21 @@ interface DbRow {
   y: number | null
   z: number | null
   cluster_id: number | null
+  galaxy_id: number | null
   layout_version: number
   first_seen: number
   view_count: number
   is_pinned: number
   star_type: string | null
+}
+
+interface GalaxyRow {
+  id: number
+  name: string
+  root_path: string
+  origin_x: number
+  origin_y: number
+  created_at: number
 }
 
 interface EdgeRow {
@@ -392,6 +484,7 @@ function rowToFile(row: DbRow): IndexedFile {
     y: row.y,
     z: row.z,
     clusterId: row.cluster_id,
+    galaxyId: row.galaxy_id,
     layoutVersion: row.layout_version,
     firstSeen: row.first_seen,
     viewCount: row.view_count,
@@ -415,11 +508,23 @@ function rowToStar(row: DbRow): Star {
     x: row.x!,
     y: row.y!,
     clusterId: row.cluster_id,
+    galaxyId: row.galaxy_id,
     layoutVersion: row.layout_version,
     firstSeen: row.first_seen,
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
     starType: row.star_type as StarType | null,
+  }
+}
+
+function rowToGalaxy(row: GalaxyRow): Galaxy {
+  return {
+    id: row.id,
+    name: row.name,
+    rootPath: row.root_path,
+    originX: row.origin_x,
+    originY: row.origin_y,
+    createdAt: row.created_at,
   }
 }
 
