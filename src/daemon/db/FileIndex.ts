@@ -248,6 +248,13 @@ export class FileIndex {
       );
       CREATE INDEX IF NOT EXISTS idx_esf_snapshot ON embedding_snapshot_files(snapshot_id);
     `)
+    // B2 — capture the prior embedding_strategy alongside each snapshot row so
+    // a revert restores the (embedding, strategy) tuple atomically. Without
+    // this, a revert would leave embedding_strategy pointing at the experiment
+    // strategy even though the embedding bytes are the pre-experiment ones.
+    if (!this.hasColumn('embedding_snapshot_files', 'prior_strategy')) {
+      this.db.exec(`ALTER TABLE embedding_snapshot_files ADD COLUMN prior_strategy TEXT;`)
+    }
 
     // Backfill: ensure a "default" galaxy at the spiral origin, then assign any
     // legacy file rows (galaxy_id IS NULL) to it. Idempotent.
@@ -514,6 +521,22 @@ export class FileIndex {
 
   listWithEmbeddings(): IndexedFile[] {
     const rows = this.db.prepare(`SELECT * FROM files WHERE embedding IS NOT NULL`).all() as DbRow[]
+    return rows.map(rowToFile)
+  }
+
+  // B2 — files whose `path` starts with `prefix`. We match
+  // `LIKE prefix || '%'` so both `/foo/bar` (the dir itself) and
+  // `/foo/bar/baz.txt` qualify when prefix is `/foo/bar`. `embeddedOnly` is
+  // the experiment-endpoint default — re-embedding a never-embedded row would
+  // be a noop because the snapshot needs an old vector to capture.
+  // Wildcards in the user-supplied prefix are escaped so a path containing
+  // `%` or `_` doesn't match unintended siblings.
+  listFilesUnderPath(prefix: string, opts: { embeddedOnly?: boolean } = {}): IndexedFile[] {
+    const escaped = prefix.replace(/[\\%_]/g, ch => `\\${ch}`)
+    const stmt = opts.embeddedOnly
+      ? this.db.prepare(`SELECT * FROM files WHERE path LIKE ? ESCAPE '\\' AND embedding IS NOT NULL`)
+      : this.db.prepare(`SELECT * FROM files WHERE path LIKE ? ESCAPE '\\'`)
+    const rows = stmt.all(`${escaped}%`) as DbRow[]
     return rows.map(rowToFile)
   }
 
