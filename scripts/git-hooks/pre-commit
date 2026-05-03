@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Star Palace pre-commit gate. Mirrors CLAUDE.md § Git discipline:
+# typecheck + lint + test must pass before any commit lands.
+#
+# Installed by scripts/install-git-hooks.sh, which is run from the
+# package.json `prepare` script (so `npm install` wires it up).
+
+set -e
+
+echo "[pre-commit] typecheck"
+npm run typecheck
+
+echo "[pre-commit] lint"
+npm run lint
+
+echo "[pre-commit] test"
+npm run test
+
+echo "[pre-commit] OK"
