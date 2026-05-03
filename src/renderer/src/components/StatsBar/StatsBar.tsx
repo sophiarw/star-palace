@@ -7,6 +7,10 @@ import type { ClassificationMode } from '../../hooks/useClassificationMode'
 interface Props {
   stats: MapStats | null
   starCount: number
+  // F16 — count of stars currently hidden because their galaxy is toggled
+  // off. Drives a small "(M hidden)" suffix next to the in-view count.
+  // Optional so existing call sites still compile.
+  hiddenStarCount?: number
   vimMode?: VimMode
   // F11 — theme picker. `themes` and `currentThemeId` together drive the
   // dropdown; `onThemeChange` fires on click. Optional so existing call
@@ -33,7 +37,7 @@ const CLASS_MODE_LABELS: Record<ClassificationMode, string> = {
 
 const CLASS_MODE_ORDER: ClassificationMode[] = ['type', 'usage']
 
-export default function StatsBar({ stats, starCount, vimMode, themes, currentThemeId, onThemeChange, classMode, onClassModeChange }: Props) {
+export default function StatsBar({ stats, starCount, hiddenStarCount, vimMode, themes, currentThemeId, onThemeChange, classMode, onClassModeChange }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -53,9 +57,22 @@ export default function StatsBar({ stats, starCount, vimMode, themes, currentThe
 
   const current = themes?.find((t) => t.id === currentThemeId) ?? null
 
+  // F16 — when galaxies are hidden, the headline "N stars" reflects the
+  // visible-only count and gains a "(M hidden)" suffix. `starCount` is the
+  // renderer-side visible total and is the right number to lead with;
+  // `stats.total` (daemon-side) is preserved as a fallback when no
+  // visibility filter is in effect.
+  const hasHidden = (hiddenStarCount ?? 0) > 0
+  const headlineCount = hasHidden ? starCount : stats.total
+
   return (
     <div className="stats-bar">
-      <span>{stats.total.toLocaleString()} stars</span>
+      <span>
+        {headlineCount.toLocaleString()} stars
+        {hasHidden ? (
+          <span className="stats-bar-hidden">{` (${hiddenStarCount} hidden)`}</span>
+        ) : null}
+      </span>
       <span>{stats.clusterCount} constellations</span>
       {stats.layoutVersion > 0
         ? <span>layout v{stats.layoutVersion}</span>

@@ -17,6 +17,7 @@ import { useClassificationMode } from './hooks/useClassificationMode'
 import { computePercentileBuckets } from './components/StarMap/usageStarType'
 import CollectionsPanel from './components/CollectionsPanel/CollectionsPanel'
 import { useCollections } from './hooks/useCollections'
+import { useGalaxyVisibility } from './hooks/useGalaxyVisibility'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -102,19 +103,42 @@ export default function App() {
   const themeCtx = useTheme()
   const classCtx = useClassificationMode()
 
+  // F16 — per-galaxy visibility filter (renderer-only). Drives projected
+  // stars, search highlights, and the percentile-bucket input below.
+  // `knownIds` is the canonical list so the hook can prune stale entries
+  // (galaxy deleted between sessions).
+  const knownGalaxyIds = useMemo(() => galaxies.map(g => g.id), [galaxies])
+  const galaxyVis = useGalaxyVisibility(knownGalaxyIds)
+
+  // F16 — a star is visible iff its galaxy is visible. Defaults to true
+  // for legacy rows with galaxyId === null (predate F9; can't be hidden
+  // without a backfill) and for galaxy ids the hook hasn't seen yet
+  // (e.g. before /api/galaxies finishes loading on first paint).
+  const isStarVisible = useCallback((galaxyId: number | null): boolean => {
+    if (galaxyId === null) return true
+    return galaxyVis.isVisible(galaxyId)
+  }, [galaxyVis])
+
+  const visibleStars = useMemo(
+    () => stars.filter(s => isStarVisible(s.galaxyId)),
+    [stars, isStarVisible],
+  )
+
   // F10 — corpus-wide percentile thresholds for the usage classifier.
-  // Recomputed whenever the star list mutates (re-index, daemon poll). The
-  // classifier reads buckets at draw time so the sky re-skins instantly on
-  // mode flip without paying the sort cost again.
+  // Recomputed whenever the visible star set mutates (re-index, daemon
+  // poll, F16 visibility flip). The classifier reads buckets at draw time
+  // so the sky re-skins instantly on mode flip without paying the sort
+  // cost again. Hidden galaxies are excluded so they don't influence
+  // others' classification (per F16 spec).
   const percentileBuckets = useMemo(() => {
     const scores: number[] = []
-    for (const s of stars) {
+    for (const s of visibleStars) {
       // Treat null importance_score (pre-walker-pass legacy rows) as 0 so
       // they land in the bottom bucket. Matches the "babies" intuition.
       scores.push(s.importanceScore ?? 0)
     }
     return computePercentileBuckets(scores)
-  }, [stars])
+  }, [visibleStars])
 
   // F11 — propagate active theme into CSS so chrome (HoverCard ring,
   // DetailPanel pin badge, SearchBar highlight, StarMap selection ring)
@@ -146,8 +170,10 @@ export default function App() {
     return galaxyOffsetById.get(star.galaxyId) ?? [0, 0]
   }, [stars, galaxyOffsetById])
 
+  // F16 — `visibleStars` already excludes hidden galaxies, so projection
+  // here only sees what the renderer should draw.
   const projectedStars = useMemo(() => {
-    return stars.map(s => {
+    return visibleStars.map(s => {
       const local = pcDial.ready && pcDial.scaledById.size > 0
         ? pcDial.scaledById.get(s.id) ?? null
         : null
@@ -158,19 +184,24 @@ export default function App() {
         : [0, 0]
       return { ...s, x: baseX + offset[0], y: baseY + offset[1] }
     })
-  }, [stars, pcDial.ready, pcDial.scaledById, galaxyOffsetById])
+  }, [visibleStars, pcDial.ready, pcDial.scaledById, galaxyOffsetById])
 
+  // F16 — drop search hits whose underlying star lives in a hidden galaxy.
+  // The daemon still scans everything (cheaper than rewriting /api/search);
+  // we filter client-side so hidden hits don't show up in highlight cycling.
   const projectedHighlights = useMemo(() => {
-    return highlights.map(h => {
+    return highlights.flatMap(h => {
+      const star = stars.find(s => s.id === h.id)
+      if (star && !isStarVisible(star.galaxyId)) return []
       const local = pcDial.ready && pcDial.scaledById.size > 0
         ? pcDial.scaledById.get(h.id) ?? null
         : null
       const baseX = local ? local[0] : h.x
       const baseY = local ? local[1] : h.y
       const [ox, oy] = galaxyOffsetForStarId(h.id)
-      return { ...h, x: baseX + ox, y: baseY + oy }
+      return [{ ...h, x: baseX + ox, y: baseY + oy }]
     })
-  }, [highlights, pcDial.ready, pcDial.scaledById, galaxyOffsetForStarId])
+  }, [highlights, stars, isStarVisible, pcDial.ready, pcDial.scaledById, galaxyOffsetForStarId])
 
   const projectedHighlightsRef = useRef<{ id: string; x: number; y: number }[]>([])
   projectedHighlightsRef.current = projectedHighlights
@@ -311,6 +342,15 @@ export default function App() {
   })
 
   const showEmpty = stars.length === 0
+  // F16 — distinct empty state when the user has indexed galaxies but
+  // hidden every one. Only triggers once the user has actually toggled
+  // something (galaxies known but visibleSet empty).
+  const allHidden = stars.length > 0
+    && knownGalaxyIds.length > 0
+    && galaxyVis.visibleSet.size === 0
+  // F16 — count of stars residing in hidden galaxies. Drives the
+  // "(M hidden)" suffix in StatsBar.
+  const hiddenStarCount = stars.length - visibleStars.length
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#020b18' }}>
@@ -353,7 +393,8 @@ export default function App() {
 
       <StatsBar
         stats={stats}
-        starCount={stars.length}
+        starCount={visibleStars.length}
+        hiddenStarCount={hiddenStarCount}
         vimMode={mode}
         themes={themeCtx.available}
         currentThemeId={themeCtx.theme.id}
@@ -366,6 +407,8 @@ export default function App() {
         galaxies={galaxies}
         onIndexed={handleGalaxyIndexed}
         onFlyTo={handleGalaxyFlyTo}
+        isVisible={galaxyVis.isVisible}
+        onToggleVisible={galaxyVis.toggle}
       />
 
       <CollectionsPanel
@@ -418,6 +461,15 @@ export default function App() {
                 <code>npm run seed:demo</code>
               </>
           }
+        </div>
+      )}
+
+      {!showEmpty && allHidden && (
+        <div className="empty-state">
+          <h2>All galaxies hidden</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Toggle visibility in the panel to bring stars back.
+          </p>
         </div>
       )}
     </div>

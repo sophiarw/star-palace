@@ -6,11 +6,27 @@ interface Props {
   galaxies: GalaxySummary[]
   onIndexed: () => void
   onFlyTo: (originX: number, originY: number) => void
+  // F16 — visibility toggle. `isVisible` defaults true for unknown ids.
+  isVisible: (id: number) => boolean
+  onToggleVisible: (id: number) => void
 }
 
 const FLY_TO_ZOOM = 0.3
 
-export default function GalaxyPanel({ galaxies, onIndexed, onFlyTo }: Props) {
+// F16 — the migrated default galaxy uses a sentinel root path (see
+// FileIndex.ensureDefaultGalaxy). We label it explicitly so users know
+// hidden legacy files live there.
+const DEFAULT_GALAXY_ROOT_PREFIX = '__default__:'
+
+function isDefaultGalaxy(g: GalaxySummary): boolean {
+  return g.rootPath.startsWith(DEFAULT_GALAXY_ROOT_PREFIX)
+}
+
+function displayName(g: GalaxySummary): string {
+  return isDefaultGalaxy(g) ? `${g.name} (legacy)` : g.name
+}
+
+export default function GalaxyPanel({ galaxies, onIndexed, onFlyTo, isVisible, onToggleVisible }: Props) {
   const [path, setPath] = useState('')
   const [galaxyName, setGalaxyName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -100,19 +116,31 @@ export default function GalaxyPanel({ galaxies, onIndexed, onFlyTo }: Props) {
 
       {galaxies.length > 0 && (
         <ul className="galaxy-panel-list">
-          {galaxies.map(g => (
-            <li key={g.id} className="galaxy-panel-row">
-              <button
-                type="button"
-                className="galaxy-panel-fly"
-                onClick={() => onFlyTo(g.originX, g.originY)}
-                title={`Fly to (${g.originX.toFixed(0)}, ${g.originY.toFixed(0)}) at zoom ${FLY_TO_ZOOM}`}
-              >
-                <span className="galaxy-panel-name">{g.name}</span>
-                <span className="galaxy-panel-count">{g.memberCount}</span>
-              </button>
-            </li>
-          ))}
+          {galaxies.map(g => {
+            const visible = isVisible(g.id)
+            return (
+              <li key={g.id} className="galaxy-panel-row">
+                <button
+                  type="button"
+                  className="galaxy-panel-eye"
+                  onClick={() => onToggleVisible(g.id)}
+                  aria-pressed={visible}
+                  title={visible ? 'Hide galaxy' : 'Show galaxy'}
+                >
+                  {visible ? '◉' : '○'}
+                </button>
+                <button
+                  type="button"
+                  className={`galaxy-panel-fly${visible ? '' : ' galaxy-panel-fly--hidden'}`}
+                  onClick={() => onFlyTo(g.originX, g.originY)}
+                  title={`Fly to (${g.originX.toFixed(0)}, ${g.originY.toFixed(0)}) at zoom ${FLY_TO_ZOOM}`}
+                >
+                  <span className="galaxy-panel-name">{displayName(g)}</span>
+                  <span className="galaxy-panel-count">{g.memberCount}</span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
