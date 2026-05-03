@@ -11,7 +11,7 @@ import {
   spriteCoreRadius,
   hashStr,
 } from './sprites'
-import { getBackdrop } from './background'
+import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import type { VimAction } from '../../hooks/useVimMode'
 
@@ -48,6 +48,12 @@ const SEARCH_PULSE_MS = 200
 const CULL_MARGIN = 48
 const ZOOM_MAX = 100
 const ZOOM_MIN = 0.05
+
+// Backdrop parallax: deep-field image scales + pans with the camera at sub-unity
+// rates so it feels deeper than the indexed star layer.
+const BACKDROP_ZOOM_PARALLAX = 0.4   // backdrop zooms ~40% as much as foreground (gentle gamma)
+const BACKDROP_PAN_PARALLAX = 0.3    // backdrop pans 30% of camera pan
+const BACKDROP_MIN_SCALE = 0.5       // clamp so the 2× canvas always fills the viewport
 
 // Zoom-aware exposure: dim when zoomed out, brighten when zoomed in.
 const EXPOSURE_REF_ZOOM = 1.0
@@ -312,9 +318,19 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const pulseT = Math.min(1, (performance.now() - searchPulseStart.current) / SEARCH_PULSE_MS)
     const pulseScale = pulseT < 1 ? SPRITE_HIGHLIGHT_PULSE * (1 - easeOutCubic(pulseT)) : 0
 
-    // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies)
+    // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies),
+    // scaled + panned with parallax so it reads as deeper space behind the stars.
     const backdrop = getBackdrop(w, h)
-    ctx.drawImage(backdrop, 0, 0)
+    const m = getBackdropMultiplier()
+    const bgScale = Math.max(BACKDROP_MIN_SCALE, Math.pow(cam.zoom, BACKDROP_ZOOM_PARALLAX))
+    const bgTx = -cam.cx * BACKDROP_PAN_PARALLAX * cam.zoom
+    const bgTy = -cam.cy * BACKDROP_PAN_PARALLAX * cam.zoom
+    ctx.save()
+    ctx.translate(w / 2, h / 2)
+    ctx.scale(bgScale, bgScale)
+    ctx.translate(bgTx, bgTy)
+    ctx.drawImage(backdrop, -(w * m) / 2, -(h * m) / 2)
+    ctx.restore()
 
     // Vignette to keep focus toward center
     const vignette = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
