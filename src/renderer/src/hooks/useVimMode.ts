@@ -203,14 +203,6 @@ export function useVimMode({
               .catch((err) => console.warn('setStarType failed:', err))
             break
           }
-          case 'p':
-            e.preventDefault()
-            console.warn('Pin not yet implemented (F4 pending)')
-            break
-          case 'u':
-            e.preventDefault()
-            console.warn('Unpin not yet implemented (F4 pending)')
-            break
           case '?':
             e.preventDefault()
             onToggleCheatsheet()

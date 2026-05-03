@@ -19,8 +19,6 @@ const NORMAL_BINDINGS: Binding[] = [
   { key: 'o', desc: 'Open selected in default app' },
   { key: 't', desc: 'Open star-type dropdown' },
   { key: 'T', desc: 'Cycle star type forward' },
-  { key: 'p', desc: 'Pin selected star (stub)' },
-  { key: 'u', desc: 'Unpin selected star (stub)' },
   { key: '/', desc: 'Enter search mode' },
   { key: 'Esc', desc: 'Back to normal / clear' },
   { key: '?', desc: 'Toggle this cheatsheet' },
