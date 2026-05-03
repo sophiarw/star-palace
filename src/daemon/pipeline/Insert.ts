@@ -93,6 +93,10 @@ export async function insertOne(
       y: null,
       z: null,
       clusterId: null,
+      // F9: galaxy assignment is wired in by indexPath; default null preserves
+      // legacy behavior (back-compat) and keeps tests that drive insertOne()
+      // directly working without per-call boilerplate.
+      galaxyId: existing?.galaxyId ?? null,
       layoutVersion: 0,
       firstSeen: existing?.firstSeen ?? now,
       viewCount: existing?.viewCount ?? 0,
