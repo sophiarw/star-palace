@@ -17,15 +17,16 @@ Locked decisions:
 | ID | Feature | Effort | Notes | Status |
 |---|---|---|---|---|
 | F1 | Search pop + extended zoom + zoom-exposure | XS | Visual only; same-day. | **DONE** |
-| — | **BUG**: neighbor stars still vanish at high zoom despite bypass-cull fix | — | Root cause unclear; multiple fix attempts failed. | **OPEN** |
+| — | **BUG**: neighbor stars still vanish at high zoom despite bypass-cull fix | — | Resolved by `bfd8d6a` + `6b8d5bc` (cull-bypass + edge chevrons). | **DONE** |
 | F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. | **DONE** |
 | F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. | **DONE** |
 | F4 | Manual reposition + pin | M | New columns; embedding-delta math. | **DONE** |
 | F5 | Virtual collections | M-L | New tables + endpoints + render hull. | |
-| F6 | Vim mode | M | Pure UI; no backend. | **IN PROGRESS** |
+| F6 | Vim mode | M | Pure UI; no backend. | **DONE** |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. | |
-| F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. | |
+| F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. F8a prototype landed on `worktree-agent-af8ce890cf5c7d92b`. | |
 | F9 | Galaxies (multi-root indexing) | M | New table + galaxy_id column; spiral origin offsets; renderer panel. | **DONE** |
+| F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -310,6 +311,9 @@ User says "everything about magnets" or "all my pitch decks". Result is a named,
 | `pinned_at` | `INTEGER` | F4: unix ms; null = not pinned. |
 | `tree_node_id` | `INTEGER` | F7: leaf reference into `cluster_tree(id)`. |
 | `galaxy_id` | `INTEGER` | F9: parent galaxy. NULL only on legacy rows pre-migration; backfilled to the `default` galaxy on startup. |
+| `os_use_count` | `INTEGER` | F10: Spotlight `kMDItemUseCount` on macOS; NULL on platforms without a count signal. Re-read on every walker pass. |
+| `os_last_used` | `INTEGER` | F10: unix ms. Spotlight `kMDItemUseDate` on macOS, `stat().atimeMs` elsewhere. |
+| `importance_score` | `REAL` | F10: denormalised composite of `view_count`, `os_use_count`, recency. Recomputed at index time. NULL means "compute on next walk". |
 
 `pos`-related columns may be NULL for files in cold-start phase. Renderer skips NULL-position files.
 
@@ -495,6 +499,105 @@ Without manual tagging, certain file types should still look distinct. Powerpoin
 - DetailPanel star-type chip should label "Default → Pulsar (from .pptx)" so the user understands what they'd be overriding.
 - Acceptance: open a PowerPoint → pulsar visuals without tagging. Override to `red-giant` → visuals change, persists. Clear override → reverts to pulsar (the auto-default), not plain cluster hue.
 - Out of scope: DB backfill / `star_type` column writes; user-editable rules.
+- **F2 + F10 interaction:** F2's extension-derived defaults are the entire payload of "type mode" in the F10 toggle. When the toggle flips to "usage mode" the F2 mapping is bypassed; manual `star_type` overrides still win in either mode.
+
+### F10 — Usage-driven star classification (mode toggle)
+
+PM framing: "the user could select either the type-based classification of stars, or usage based." White dwarfs are babies (small, untouched); red giants and blue supergiants are the files the user keeps coming back to.
+
+**Locked decisions (from PM + user):**
+- Two classification modes, user-selectable, persisted in `localStorage`. **Type** = current F2 extension-driven path. **Usage** = new percentile-driven lifecycle on the indexed corpus.
+- Lifecycle chain (most-to-least common): `white-dwarf` → `main-sequence` → `red-giant` → `blue-supergiant`.
+- New `STAR_TYPES` member: `'main-sequence'`. Requires a new sprite drawer.
+- OS metadata source: macOS Spotlight (`mdls -name kMDItemUseCount -name kMDItemUseDate`) primary; `stat().atimeMs` fallback elsewhere.
+
+#### Importance score
+
+Denormalised composite, computed once at index/re-index time and stored in `files.importance_score`:
+
+```
+importance_score = view_count
+                 + log2(os_use_count + 1) * 4
+                 + recency_boost
+recency_boost    = clamp(1 - (now - os_last_used) / SEVEN_DAYS_MS, 0, 1) * 5
+```
+
+Tunable. Recomputed on every walker pass since usage decays/grows continuously. Cheap (no embed call). Daemon never reads `importance_score` for layout — it only feeds the renderer's classifier.
+
+#### Usage classifier (renderer-only)
+
+When the toggle is "usage", the renderer computes corpus-wide percentiles of `importance_score` once per data load (or on score change) and assigns:
+
+| Percentile | Type |
+|---|---|
+| Bottom 50% | `white-dwarf` |
+| Next 30% (50–80%) | `main-sequence` |
+| Next 15% (80–95%) | `red-giant` |
+| Top 5% | `blue-supergiant` |
+
+Ties broken by file id hash to prevent visual flicker on edge cases. Star size in usage mode also scales with `importance_score` (replaces the existing `view_count`-only sizing in this mode).
+
+#### Mode toggle UI
+
+- New `useClassificationMode()` hook in `src/renderer/src/hooks/`: returns `mode: 'type' | 'usage'`, `setMode()`. Persists to `localStorage` key `starpalace.classMode.v1`. Default: `'type'`.
+- Toggle UI: small segmented control top-right of the canvas, near the PC dial. Two pills: "Type" / "Usage". One-click flip; whole sky re-renders.
+- New helper `effectiveStarType(star, mode, percentileBuckets): StarType | null`:
+  1. If `star.starType` (manual override): return it.
+  2. Else if `mode === 'type'`: `defaultStarType(name, mimeType, category)` (existing F2 helper).
+  3. Else if `mode === 'usage'`: bucket via percentile.
+  4. Else null (cluster hue fallback).
+
+#### OS metadata ingestion
+
+In the walker (`src/daemon/index/walker.ts`):
+
+- macOS path: `execFile('mdls', ['-raw', '-name', 'kMDItemUseCount', '-name', 'kMDItemUseDate', path])`. Parse output (Spotlight returns `(null)` for never-opened files — treat as 0 / NULL). Per-file fork ~1ms; acceptable on local FS scale.
+- Other OS: `fs.stat(path)` and use `atimeMs` as `os_last_used`; leave `os_use_count = NULL`. Importance score weights `os_last_used` more heavily when count is missing.
+- Spotlight unreachable on macOS (rare): same fallback path; log once per session.
+- Cloud platforms (Google Drive etc.): no Spotlight, no atime. Both columns NULL; importance score reduces to `view_count` alone. Acceptable.
+
+#### Schema migration
+
+```sql
+ALTER TABLE files ADD COLUMN os_use_count INTEGER;     -- NULL ok
+ALTER TABLE files ADD COLUMN os_last_used INTEGER;     -- NULL ok
+ALTER TABLE files ADD COLUMN importance_score REAL;    -- NULL ok
+```
+
+All NULL on existing rows; first walker pass after upgrade backfills.
+
+`STAR_TYPES` array gains `'main-sequence'`. No DB enum to migrate (column is `TEXT`).
+
+#### Sprite work
+
+- New `drawMainSequence(ctx, cx, cy, r)` in `sprites.ts`. Visual target: warm yellow Sun-like core, modest halo, no spikes baked. Sits between `white-dwarf` (small/cool/white) and `red-giant` (large/warm/orange) on the lifecycle scale.
+- F8a procedural variation features for `main-sequence` deferred to F8a rollout; F10 MVP renders deterministically.
+- `TYPED_SCALE` map in `sprites.ts` gains a `'main-sequence': 1.0` entry.
+
+#### Edge cases
+
+- New file with `importance_score = 0` or NULL → bottom percentile → `white-dwarf` in usage mode. Matches "baby" intuition.
+- Single-file corpus: every file lands in the bottom percentile → all `white-dwarf`. Acceptable; degenerate.
+- Toggle while a star has manual override: override stays; mode is irrelevant for that star.
+- Galaxies (F9) interaction: percentile computed across the **entire corpus**, not per-galaxy, for v1. Means a galaxy of frequently-used files could read mostly red giants while a galaxy of unread files reads mostly white dwarfs. Revisit if this looks washed-out per galaxy.
+- Pinned star (F4): pin only affects position, not type. Mode toggle and pin are orthogonal.
+
+#### Out of scope (v1 of F10)
+
+- User-tunable percentile thresholds.
+- More than 4 buckets in usage mode.
+- Per-galaxy percentile windowing.
+- Background re-walk to refresh `os_use_count` without re-indexing.
+- Decay / time-weighted model on `importance_score` beyond the 7-day recency boost.
+- Server-side classifier (stays renderer-only for symmetry with F2).
+- Linux `stat -c %X` per-platform branching beyond what `fs.stat` already exposes.
+
+#### Acceptance
+
+1. Index a folder containing one frequently-opened `.pdf` and many never-opened `.pdfs`.
+2. Toggle "Color by" → "Usage". Frequently-opened `.pdf` becomes `red-giant` or `blue-supergiant`; others become `white-dwarf`.
+3. Toggle back → "Type". All `.pdfs` become `quasar` (existing F2 behaviour).
+4. Manually set one `.pdf` to `nebula`. Both modes show `nebula` for that file.
 
 ### F8 — Procedural per-file graphics
 
@@ -747,6 +850,7 @@ Visual mode (after F4 / F5 land):
 - Stale files re-indexed lazily when they appear in queries or background work.
 - On re-index, embedding recomputed only if content fingerprint changed.
 - On re-index that produces a sufficiently different embedding (cosine to old < 0.95), `(x, y)` is recomputed via current `project` model and animated to the new position.
+- **F10 — usage metadata read at every walker pass**. macOS: `mdls -raw -name kMDItemUseCount -name kMDItemUseDate <path>` per file (~1ms fork). Other platforms: `fs.stat().atimeMs`. Result: `os_use_count`, `os_last_used`, recomputed `importance_score`. Cheap; no embed call, no Ollama dependency.
 
 ---
 
@@ -827,13 +931,15 @@ Every commit gates on `npm run typecheck && npm run lint && npm run test`. Conve
 
 ## Recommended sequencing
 
-1. **F1 + F2** (one branch, one PR) — small, immediate user-visible gain.
-2. **F3** — unlocks F4. Self-contained.
-3. **F4** — depends on F3 for the multi-PC-aware embedding-delta math.
+1. **F1 + F2** (one branch, one PR) — small, immediate user-visible gain. **DONE**
+2. **F3** — unlocks F4. Self-contained. **DONE**
+3. **F4** — depends on F3 for the multi-PC-aware embedding-delta math. **DONE**
 4. **F5** — depends on nothing else; can also slot in parallel to F3/F4.
-5. **F6** — independent; nice once F1–F5 land so there's enough surface to bind keys to.
-6. **F7** — biggest scope; benefits from the tree visualization making the rest of the UI more useful.
-7. **F8** — visual polish on top; split into F8a (typed variants, 1d), F8b (default jitter, ½d), F8c (procedural nebulae, 1d), F8d (planet view, 2–3d).
+5. **F6** — independent; nice once F1–F5 land so there's enough surface to bind keys to. **DONE**
+6. **F9** — galaxies; multi-root indexing. Independent. **DONE**
+7. **F10** — usage-driven classification. Independent. Pairs naturally with F8a (procedural variation gives the new `main-sequence` sprite its visual identity).
+8. **F7** — biggest scope; benefits from the tree visualization making the rest of the UI more useful.
+9. **F8** — visual polish on top; split into F8a (typed variants, 1d), F8b (default jitter, ½d), F8c (procedural nebulae, 1d), F8d (planet view, 2–3d). F8a prototype shipped on `worktree-agent-af8ce890cf5c7d92b` for design review.
 
 Each phase = its own feature branch off `main`, merged on green CI.
 
