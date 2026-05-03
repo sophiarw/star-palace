@@ -16,6 +16,7 @@ import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import { usageStarType, type PercentileBuckets } from './usageStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
+import { buildSpatialGrid, forEachStarInBounds, type SpatialGrid } from './spatialGrid'
 import { convexHull, type Pt } from './convexHull'
 import type { VimAction } from '../../hooks/useVimMode'
 import type { Theme } from '../../themes/types'
@@ -253,6 +254,29 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   const lastMouse = useRef({ x: 0, y: 0 })
   const searchPulseStart = useRef<number>(0)
   const dprRef = useRef<number>(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
+  // Spatial grid bucketed by world position. Built once per `stars` mutation
+  // so the draw loop can iterate only the cells inside the camera viewport
+  // instead of scanning every star four times per frame. Sized cells = 100
+  // world units; see `spatialGrid.ts`.
+  const gridRef = useRef<SpatialGrid>(buildSpatialGrid(stars))
+  // Pre-derived lists so per-frame work is O(animated) and O(pinned) instead
+  // of O(N) scans inside the rAF loop. Refreshed in the `stars` useEffect.
+  const animatedStarsRef = useRef<Star[]>([])
+  const pinnedStarsRef = useRef<Star[]>([])
+  // O(1) neighbor lookup for the edge pass — replaces a per-edge linear
+  // `currentNeighbors.find(...)` scan that was O(neighbors × edges).
+  const neighborStarMapRef = useRef<Map<string, Star>>(new Map())
+  // Per-id memoised temp-bucket and default-jitter results so we don't
+  // re-hash the star id on every visible frame. Same key space as the sprite
+  // cache; cleared when `stars` mutates so id collisions are impossible.
+  const tempBucketCacheRef = useRef<Map<string, number>>(new Map())
+  const jitterCacheRef = useRef<Map<string, ReturnType<typeof defaultJitterFor>>>(new Map())
+  // Dirty-flag rAF gate. true means the next frame must redraw; set by every
+  // state-or-cam change that affects the visible image. Continuous animations
+  // (selection pulse, search pulse, pulsar/quasar beams, pin-drag, vim pan
+  // velocity) bypass the gate via `needsContinuousRedraw()` below.
+  const dirtyRef = useRef<boolean>(true)
+  const lastCamSnapRef = useRef<Camera>({ cx: NaN, cy: NaN, zoom: NaN })
   // F4 — drag-to-pin state: pinDrag.current holds the live target world
   // coords. The main draw loop runs each frame via rAF, so we don't need to
   // trigger a React re-render on each cursor move; the next frame picks up
@@ -268,22 +292,60 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // loop (cache key includes the theme id so cached sprites for the previous
   // theme stay until LRU eviction).
   const themeRef = useRef(theme)
-  useEffect(() => { themeRef.current = theme }, [theme])
+  useEffect(() => { themeRef.current = theme; dirtyRef.current = true }, [theme])
 
   // F10 — classification mode + percentile buckets refs. The draw callback
   // reads them per-frame so flipping the mode toggle re-skins every visible
   // star instantly without rebuilding the rAF loop.
   const classModeRef = useRef<ClassificationMode>(classMode ?? 'type')
-  useEffect(() => { classModeRef.current = classMode ?? 'type' }, [classMode])
   const bucketsRef = useRef<PercentileBuckets | undefined>(percentileBuckets)
-  useEffect(() => { bucketsRef.current = percentileBuckets }, [percentileBuckets])
+  // Mode + bucket changes flip pulsar/quasar membership for type-mode stars
+  // routed through the F2 default classifier, so the animated-stars list
+  // must be rebuilt — otherwise overlay beams stick to the old mode's set.
+  useEffect(() => {
+    classModeRef.current = classMode ?? 'type'
+    bucketsRef.current = percentileBuckets
+    const next: Star[] = []
+    const mode = classModeRef.current
+    const buckets = bucketsRef.current
+    for (const s of starsRef.current) {
+      const t = effectiveStarType(s, mode, buckets)
+      if (t === 'pulsar' || t === 'quasar') next.push(s)
+    }
+    animatedStarsRef.current = next
+    dirtyRef.current = true
+  }, [classMode, percentileBuckets])
 
   // Keep refs in sync
-  useEffect(() => { starsRef.current = stars }, [stars])
-  useEffect(() => { clustersRef.current = clusters }, [clusters])
-  useEffect(() => { highlightsRef.current = searchHighlights }, [searchHighlights])
-  useEffect(() => { edgesRef.current = edges }, [edges])
-  useEffect(() => { neighborStarsRef.current = neighborStars }, [neighborStars])
+  useEffect(() => {
+    starsRef.current = stars
+    gridRef.current = buildSpatialGrid(stars)
+    // Rebuild small precomputed lists. classMode/buckets are read by
+    // effectiveStarType; classifying once here avoids re-classifying every
+    // frame inside the animation overlay pass.
+    const animated: Star[] = []
+    const pinned: Star[] = []
+    const mode = classModeRef.current
+    const buckets = bucketsRef.current
+    for (const s of stars) {
+      const t = effectiveStarType(s, mode, buckets)
+      if (t === 'pulsar' || t === 'quasar') animated.push(s)
+      if (s.isPinned) pinned.push(s)
+    }
+    animatedStarsRef.current = animated
+    pinnedStarsRef.current = pinned
+    tempBucketCacheRef.current = new Map()
+    jitterCacheRef.current = new Map()
+    dirtyRef.current = true
+  }, [stars])
+  useEffect(() => { clustersRef.current = clusters; dirtyRef.current = true }, [clusters])
+  useEffect(() => { highlightsRef.current = searchHighlights; dirtyRef.current = true }, [searchHighlights])
+  useEffect(() => { edgesRef.current = edges; dirtyRef.current = true }, [edges])
+  useEffect(() => {
+    neighborStarsRef.current = neighborStars
+    neighborStarMapRef.current = new Map(neighborStars.map(n => [n.id, n]))
+    dirtyRef.current = true
+  }, [neighborStars])
 
   const neighborSet = useRef<Set<string>>(new Set())
   useEffect(() => {
@@ -329,6 +391,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   useEffect(() => {
     onHoveredChange?.(hoveredId)
   }, [hoveredId, onHoveredChange])
+
+  // Bump dirty flag for state changes that affect the rendered image but
+  // aren't covered by the ref-sync effects above. selectedId + hoveredId are
+  // the two main drivers — both gate decoration-pass + label emphasis.
+  useEffect(() => { dirtyRef.current = true }, [hoveredId, selectedId, activeCollection])
 
   // Handle imperative vim actions from useVimMode
   useEffect(() => {
@@ -489,10 +556,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.fillStyle = activeTheme.background.canvasFill
     ctx.fillRect(0, 0, w, h)
     const cam = camRef.current
-    const currentStars = starsRef.current
     const currentClusters = clustersRef.current
     const currentEdges = edgesRef.current
     const currentNeighbors = neighborStarsRef.current
+    const neighborStarMap = neighborStarMapRef.current
+    const grid = gridRef.current
     const highlights = highlightSet.current
     const neighbors = neighborSet.current
     const hasHighlights = highlights.size > 0
@@ -502,6 +570,34 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const tNowMs = performance.now()
     const pulseT = Math.min(1, (tNowMs - searchPulseStart.current) / SEARCH_PULSE_MS)
     const pulseScale = pulseT < 1 ? SPRITE_HIGHLIGHT_PULSE * (1 - easeOutCubic(pulseT)) : 0
+    const cull = cullMarginFor(drawScale)
+    // World-space bounds covering the viewport plus the cull margin. Feeds
+    // the spatial grid so we only iterate cells overlapping the visible
+    // region — at 5k+ stars zoomed in this drops per-frame work from O(N)
+    // to O(visible_cells).
+    const [minWorldX, minWorldY] = screenToWorld(-cull, -cull, cam, w, h)
+    const [maxWorldX, maxWorldY] = screenToWorld(w + cull, h + cull, cam, w, h)
+
+    // Per-id memoised lookups. Same id space as the sprite cache; cleared
+    // when `stars` mutates (see the stars useEffect above).
+    const tempBucketCache = tempBucketCacheRef.current
+    const jitterCache = jitterCacheRef.current
+    const getTempBucket = (id: string): number => {
+      let v = tempBucketCache.get(id)
+      if (v === undefined) {
+        v = tempBucketFor(id)
+        tempBucketCache.set(id, v)
+      }
+      return v
+    }
+    const getJitter = (id: string): ReturnType<typeof defaultJitterFor> => {
+      let j = jitterCache.get(id)
+      if (!j) {
+        j = defaultJitterFor(id)
+        jitterCache.set(id, j)
+      }
+      return j
+    }
 
     // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies),
     // scaled + panned with parallax so it reads as deeper space behind the stars.
@@ -561,8 +657,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const activeColl = activeCollectionRef.current
     if (activeColl && activeColl.memberIds.size > 0) {
       const memberPts: Pt[] = []
-      for (const star of currentStars) {
-        if (!activeColl.memberIds.has(star.id)) continue
+      // Look up members via the starIndex Map (O(members)) instead of a
+      // full O(N) scan over every star. Members not present in the index
+      // (e.g. hidden by a galaxy filter) simply don't contribute to the hull.
+      for (const id of activeColl.memberIds) {
+        const star = starIndex.current.get(id)
+        if (!star) continue
         memberPts.push(worldToScreen(star.x, star.y, cam, w, h))
       }
       if (memberPts.length === 1) {
@@ -608,7 +708,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const originStar = selectedId ? starIndex.current.get(selectedId) : null
       for (const edge of currentEdges) {
         const src = starIndex.current.get(edge.srcId) ?? (originStar?.id === edge.srcId ? originStar : null)
-        const dst = starIndex.current.get(edge.dstId) ?? currentNeighbors.find(n => n.id === edge.dstId) ?? null
+        // O(1) neighbor lookup via the per-frame neighbor Map; replaces the
+        // previous per-edge linear scan over `currentNeighbors`.
+        const dst = starIndex.current.get(edge.dstId) ?? neighborStarMap.get(edge.dstId) ?? null
         if (!src || !dst) continue
         const [sx, sy] = worldToScreen(src.x, src.y, cam, w, h)
         const [dx, dy] = worldToScreen(dst.x, dst.y, cam, w, h)
@@ -636,21 +738,18 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       rotation: number | null
     }
     const drawnByFocusId = new Map<string, DrawnSprite>()
+    const drawnIds = new Set<string>()
 
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
-    const cull = cullMarginFor(drawScale)
-    for (const star of currentStars) {
+
+    const drawMainStar = (star: Star, allowOffscreen: boolean): void => {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
+      const offscreen = sx < -cull || sx > w + cull || sy < -cull || sy > h + cull
+      if (offscreen && !allowOffscreen) return
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
       const isNeighbor = neighbors.has(star.id)
-      // Neighbors, selected, and hovered stars bypass the cull: their sprites
-      // peek in from the canvas edge as you zoom. Canvas clips naturally;
-      // off-screen draws are near-free.
-      if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) {
-        if (!isNeighbor && !isSelected && star.id !== hoveredId) continue
-      }
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       // Selected stars bypass the zoom-driven exposure curve so they read
       // punchy at every zoom level. Otherwise the 1.4× selection scale +
@@ -676,8 +775,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       } else {
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
-        const tb = tempBucketFor(star.id)
-        jitter = defaultJitterFor(star.id)
+        const tb = getTempBucket(star.id)
+        jitter = getJitter(star.id)
         sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant)
       }
       const sw = sprite.width, sh = sprite.height
@@ -708,12 +807,31 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           rotation: jitter ? jitter.rotation : null,
         })
       }
+      drawnIds.add(star.id)
     }
+
+    forEachStarInBounds(grid, minWorldX, minWorldY, maxWorldX, maxWorldY, star => {
+      drawMainStar(star, false)
+    })
+
+    // Forced-draw set: selected + hovered + neighbors get rendered even
+    // when their cell sat outside the viewport bounds, so their sprites
+    // peek in from the canvas edge as the user pans/zooms.
+    const renderForced = (id: string | null): void => {
+      if (!id || drawnIds.has(id)) return
+      const star = starIndex.current.get(id) ?? neighborStarMap.get(id) ?? null
+      if (star) drawMainStar(star, true)
+    }
+    renderForced(selectedId)
+    renderForced(hoveredId)
+    for (const n of currentNeighbors) renderForced(n.id)
     ctx.restore()
 
-    // Animation overlay — pulsar rotating beam + quasar jet flicker. Cardinality is small.
+    // Animation overlay — pulsar rotating beam + quasar jet flicker. Iterates
+    // the precomputed pulsar/quasar list so we don't re-classify every star
+    // each frame. Cardinality is small in practice (manually-typed only).
     const tNow = performance.now() / 1000
-    for (const star of currentStars) {
+    for (const star of animatedStarsRef.current) {
       const animType = effectiveStarType(star, activeMode, activeBuckets)
       if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
@@ -769,17 +887,22 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
 
     // Decoration pass — additive sprite re-draw (selected) + warm-white selection ring +
-    // gold ring (highlighted) + cyan ring (neighbors). No solid fills; the typed sprite
-    // stays the visual identity at every zoom.
+    // gold ring (highlighted) + cyan ring (neighbors). Iterates the small focus-id set
+    // (≤ ~30 ids: selected + neighbors + highlights) instead of all stars.
     if (hasFocus) {
       ctx.save()
-      for (const star of currentStars) {
-        const isHighlighted = highlights.has(star.id)
-        const isSelected = star.id === selectedId
-        const isNeighbor = neighbors.has(star.id)
-        if (!isHighlighted && !isSelected && !isNeighbor) continue
-        const drawn = drawnByFocusId.get(star.id)
-        if (!drawn) continue  // off-screen + not selected/neighbor — main pass culled
+      const focusIds = new Set<string>()
+      if (selectedId) focusIds.add(selectedId)
+      for (const id of neighbors) focusIds.add(id)
+      for (const id of highlights) focusIds.add(id)
+      for (const id of focusIds) {
+        const isHighlighted = highlights.has(id)
+        const isSelected = id === selectedId
+        const isNeighbor = neighbors.has(id)
+        const drawn = drawnByFocusId.get(id)
+        if (!drawn) continue  // off-screen + not drawn this frame
+        const star = starIndex.current.get(id) ?? neighborStarMap.get(id)
+        if (!star) continue
         const { sprite, sx, sy, drawW, drawH, rotation } = drawn
 
         // F8b — for default-path stars the main pass rotated the sprite, so
@@ -890,7 +1013,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     // F4 — pinned-star lock glyph at high zoom. Cheap text glyph above the
     // sprite, only when zoomed in enough that the user can see it (low zoom
-    // would be visual clutter).
+    // would be visual clutter). Iterates the precomputed pinned list so this
+    // is O(pinned) instead of O(N).
     if (cam.zoom > 1.5) {
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
@@ -898,8 +1022,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.fillStyle = activeTheme.ui.accentColor
       ctx.globalAlpha = 0.85
       ctx.textAlign = 'center'
-      for (const star of currentStars) {
-        if (!star.isPinned) continue
+      for (const star of pinnedStarsRef.current) {
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
         if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
         const sbLock = activeMode === 'usage'
@@ -917,7 +1040,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // where they're aiming.
     const drag = pinDrag.current
     if (drag) {
-      const star = currentStars.find(s => s.id === drag.id)
+      const star = starIndex.current.get(drag.id) ?? null
       if (star) {
         const [nx, ny] = worldToScreen(star.x, star.y, cam, w, h)
         const [tx, ty] = worldToScreen(drag.worldX, drag.worldY, cam, w, h)
@@ -946,8 +1069,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         } else {
           const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
           const colorIndex = cluster ? cluster.colorIndex : -1
-          const tb = tempBucketFor(star.id)
-          jitter = defaultJitterFor(star.id)
+          const tb = getTempBucket(star.id)
+          jitter = getJitter(star.id)
           sprite = getStarSprite(colorIndex, tb, sb, jitter.spikeVariant)
         }
         const sw = sprite.width, sh = sprite.height
@@ -968,11 +1091,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
 
     // Labels — alpha tapers smoothly from zoom 0.8 upward; no hard cutoff.
-    ctx.save()
-    for (const star of currentStars) {
+    // Below zoom 0.8 only the hovered label can render (zoomAlpha = 0 for
+    // everything else), so we early-exit the per-cell scan and just render
+    // the hovered label if any. Above 0.8 we iterate viewport cells via the
+    // grid so labels stay O(visible_cells).
+    const drawLabel = (star: Star): void => {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-      if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
-
+      if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) return
       const isHovered = star.id === hoveredId
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
@@ -982,8 +1107,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const isEmphasized = isHovered || isHighlighted || isSelected || isNeighbor
       const emphasisAlpha = isEmphasized ? 1 : 0.5
       const alpha = focusAlpha * zoomAlpha * emphasisAlpha
-      if (alpha < 0.05) continue
-
+      if (alpha < 0.05) return
       const sbLabel = activeMode === 'usage'
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
@@ -994,12 +1118,53 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const name = star.name.replace(/\.[^.]+$/, '')
       ctx.fillText(name, sx + r + 4, sy + 4)
     }
+    ctx.save()
+    if (cam.zoom < 0.8) {
+      // Only the hovered star can produce a non-zero label alpha at this
+      // zoom level. Skip the grid scan entirely.
+      if (hoveredId) {
+        const hs = starIndex.current.get(hoveredId)
+        if (hs) drawLabel(hs)
+      }
+    } else {
+      const labelDrawn = new Set<string>()
+      forEachStarInBounds(grid, minWorldX, minWorldY, maxWorldX, maxWorldY, star => {
+        labelDrawn.add(star.id)
+        drawLabel(star)
+      })
+      // Emphasized stars outside the viewport still want their label so the
+      // user can ID off-screen neighbors / search hits via the chevron edge.
+      if (hoveredId && !labelDrawn.has(hoveredId)) {
+        const s = starIndex.current.get(hoveredId)
+        if (s) drawLabel(s)
+      }
+      if (selectedId && !labelDrawn.has(selectedId)) {
+        const s = starIndex.current.get(selectedId)
+        if (s) drawLabel(s)
+      }
+      for (const id of neighbors) {
+        if (labelDrawn.has(id)) continue
+        const s = starIndex.current.get(id) ?? neighborStarMap.get(id)
+        if (s) drawLabel(s)
+      }
+      for (const id of highlights) {
+        if (labelDrawn.has(id)) continue
+        const s = starIndex.current.get(id)
+        if (s) drawLabel(s)
+      }
+    }
     ctx.restore()
+
+    dirtyRef.current = false
+    lastCamSnapRef.current = cam
   }, [hoveredId, selectedId])
 
   // Animate. Also integrates hjkl pan velocity into camRef each frame and
   // syncs the React cam state once when velocity drops to zero, so consumers
   // that read cam state (rare, but possible) see the settled position.
+  // The dirty-flag rAF gate skips draw() when nothing affecting the visible
+  // image has changed; continuous animations (selection pulse, search pulse,
+  // pulsar/quasar beams, pin-drag, vim pan velocity) bypass the gate.
   useEffect(() => {
     let lastT = performance.now()
     let prevHadVel = false
@@ -1021,12 +1186,32 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         setCam(camRef.current)
       }
       prevHadVel = hasVel
-      draw()
+
+      // Dirty flag detection. Cam mutations done imperatively (mouse drag,
+      // wheel, vim) don't go through React, so compare against the last
+      // snapshot to detect them. Continuous animations force a redraw via
+      // the second branch.
+      const cam = camRef.current
+      const snap = lastCamSnapRef.current
+      if (cam.cx !== snap.cx || cam.cy !== snap.cy || cam.zoom !== snap.zoom) {
+        dirtyRef.current = true
+      }
+      const pulseActive = (tNow - searchPulseStart.current) < SEARCH_PULSE_MS
+      const continuous =
+        selectedId !== null ||                         // selection pulse
+        pulseActive ||                                 // search highlight pulse
+        animatedStarsRef.current.length > 0 ||         // pulsar/quasar beams
+        hasVel ||                                      // vim pan velocity
+        pinDrag.current !== null                       // pin-drag preview
+
+      if (dirtyRef.current || continuous) {
+        draw()
+      }
       animRef.current = requestAnimationFrame(loop)
     }
     animRef.current = requestAnimationFrame(loop)
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
-  }, [draw])
+  }, [draw, selectedId])
 
   // Animate camera to bounding box of search results
   const prevSearchHighlights = useRef<SearchResult[]>([])
