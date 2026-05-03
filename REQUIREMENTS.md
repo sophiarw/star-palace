@@ -33,6 +33,7 @@ Locked decisions:
 | F14 | Reveal in OS file explorer (capital O) | XS | Vim `O` (capital) opens the selected file's containing folder in the OS file explorer with the file selected. New daemon endpoint + DetailPanel button. macOS `open -R`, Windows `explorer /select,`, Linux `xdg-open <dirname>`. Lowercase `o` keeps existing "open file in default app" behaviour. | **DONE** |
 | F15 | Reduce glow / expose procedural detail | XS | Bright additive halos drown out the per-instance procedural detail (red giant mottling, nebula FBM, neutron-star nucleus dots). Lower exposure curve + sprite halo alpha so the artwork reads. | |
 | F16 | Galaxy visibility toggle (hide / show) | S | Renderer-only filter on indexed galaxies. Per-galaxy show/hide checkbox in GalaxyPanel. Hidden galaxies still indexed in DB; just absent from the StarMap, search results, and stats counts. Persisted in `localStorage`. | |
+| F17 | Indexing progress bar | S | Live progress UI while `POST /api/index` walks a directory. Walker emits `{scanned, indexed, skipped, errors, currentPath}` events; renderer subscribes via SSE or polls a status endpoint. Shows in GalaxyPanel as a progress fill + "234 / ~1500 (15%)" text. Currently the indexer blocks UI feedback until the whole walk completes. | |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -845,6 +846,44 @@ User has 3 indexed galaxies (e.g. `~/code`, `~/Documents`, `~/scratch`). Sometim
 - Per-cluster or per-collection hide.
 - "Solo" mode (hide all but one) — derived from the existing toggle in two clicks.
 - Daemon-side filter (search still scans all stars; renderer drops the hidden ones from results — cheaper than rewriting `/api/search`).
+
+### F17 — Indexing progress bar
+
+`POST /api/index` walks a directory tree, embedding each file via Ollama (~10–100 ms per file). On a Documents folder of 1500 files this can take 1–3 minutes. Currently the renderer just hangs on the request — no visual feedback until completion. Need live progress.
+
+**Daemon side:**
+- Walker (`src/daemon/index/walker.ts` or pipeline `Insert.ts`) emits a periodic event with `{scanned, indexed, skipped, errors, currentPath, etaSec}` (~10 Hz, throttled).
+- Two transport options:
+  - **SSE (Server-Sent Events)** — `GET /api/index/progress?jobId=…` streams events; each `POST /api/index` returns a `jobId`. Cleaner; one connection per indexing job.
+  - **Polling endpoint** — `GET /api/index/status` returns current job's stats. Renderer polls every 250 ms while indexing. Simpler; no streaming dependency.
+- Recommend **SSE** for v1 — Express has built-in support, and avoids the polling overhead at high file counts.
+- New helper: in-memory `Map<jobId, ProgressState>` in daemon. Job ids are unix-ms + random suffix. Cleaned up 60 s after completion.
+
+**Renderer side:**
+- `useIndexProgress(jobId)` hook subscribes to the SSE stream and exposes `{scanned, indexed, total?, percent?, errors, currentPath}`.
+- `total` is unknown until the walker has discovered all files; `percent` is computed from `scanned / total` once `total > 0`. Before that, show indeterminate (animated stripes).
+- GalaxyPanel "Index" button morphs into a progress row while `jobId` is active: thin progress fill (theme accent) + "234 / 1500 (15%) — current/path/here.md" + cancel button.
+- Cancel: `DELETE /api/index/progress/:jobId` aborts the walker. Walker checks an abort flag at each step.
+
+**Files (when implemented):**
+- `src/daemon/index/walker.ts` — emit progress events.
+- `src/daemon/index.ts` — extend `POST /api/index` to return jobId; add `GET /api/index/progress?jobId=` SSE endpoint; add `DELETE /api/index/progress/:jobId` cancel.
+- `src/daemon/index/progressStore.ts` (NEW) — in-memory Map + emit/subscribe/cleanup.
+- `src/renderer/src/hooks/useIndexProgress.ts` (NEW) — EventSource wrapper.
+- `src/renderer/src/components/GalaxyPanel/GalaxyPanel.tsx` — progress row.
+- `src/renderer/src/styles/global.css` — `.galaxy-panel-progress*` styles.
+
+**Edge cases:**
+- Browser disconnects mid-stream (tab close): walker continues to completion; cleanup removes the Map entry on next GC.
+- Two concurrent index jobs (rare): each gets its own jobId; UI shows the most recent.
+- Embedding API (Ollama) hangs on a single file: progress stalls but doesn't error — UI shows last-update timestamp + "stalled?" hint after 10 s of no movement.
+- Ollama unreachable mid-walk: walker returns indexed=0 errors=N; UI shows the error count + reload hint.
+
+**Out of scope (v1):**
+- Pause/resume (cancel-then-restart is the workflow).
+- Persistent job history (refresh loses the in-memory Map).
+- Per-file detail breakdown (just an aggregate count + currentPath).
+- Notifications when indexing completes from a backgrounded tab.
 
 ### F14 — Reveal in OS file explorer (capital O)
 
