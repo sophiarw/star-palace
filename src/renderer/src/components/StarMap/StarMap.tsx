@@ -106,7 +106,7 @@ function effectiveStarType(
     return usageStarType(star.importanceScore ?? 0, buckets)
   }
   // type mode (or usage mode with no buckets yet) → F2 default
-  return defaultStarType(star.name, star.mimeType, star.category)
+  return defaultStarType(star.name, star.mimeType)
 }
 
 // F10 — usage-mode size mapping. Replaces sizeBucketFor(viewCount) so a

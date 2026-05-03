@@ -187,7 +187,7 @@ export default function DetailPanel({
           {star.starType
             ? STAR_TYPE_LABELS[star.starType]
             : (() => {
-                const auto = defaultStarType(star.name, star.mimeType, star.category)
+                const auto = defaultStarType(star.name, star.mimeType)
                 return auto
                   ? `Default → ${STAR_TYPE_LABELS[auto]} (from ${defaultStarTypeReason(star.name)})`
                   : 'Default (cluster hue)'
@@ -213,7 +213,7 @@ export default function DetailPanel({
                 aria-current={star.starType === null}
               >
                 {(() => {
-                  const auto = defaultStarType(star.name, star.mimeType, star.category)
+                  const auto = defaultStarType(star.name, star.mimeType)
                   return auto
                     ? `Default → ${STAR_TYPE_LABELS[auto]} (from ${defaultStarTypeReason(star.name)})`
                     : 'Default (cluster hue)'
