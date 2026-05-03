@@ -10,6 +10,9 @@ import { useVimMode } from './hooks/useVimMode'
 import type { VimAction } from './hooks/useVimMode'
 import PCDial from './components/PCDial/PCDial'
 import { usePcDial } from './hooks/usePcDial'
+import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
+
+const GALAXY_FLY_TO_ZOOM = 0.3
 
 const STATS_POLL_MS = 10_000  // re-poll stats every 10s
 
@@ -168,6 +171,15 @@ export default function App() {
     setTypeDropdownOpen(true)
   }, [])
 
+  const handleGalaxyIndexed = useCallback(() => {
+    loadGalaxies()
+    loadMap()
+  }, [loadGalaxies, loadMap])
+
+  const handleGalaxyFlyTo = useCallback((wx: number, wy: number) => {
+    setVimAction({ type: 'panTo', wx, wy, zoom: GALAXY_FLY_TO_ZOOM })
+  }, [])
+
   const { mode } = useVimMode({
     onAction: dispatchVimAction,
     onFocusSearch: handleFocusSearch,
@@ -211,6 +223,12 @@ export default function App() {
       />
 
       <StatsBar stats={stats} starCount={stars.length} vimMode={mode} />
+
+      <GalaxyPanel
+        galaxies={galaxies}
+        onIndexed={handleGalaxyIndexed}
+        onFlyTo={handleGalaxyFlyTo}
+      />
 
       {selectedStar && (
         <DetailPanel
