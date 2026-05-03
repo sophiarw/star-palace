@@ -852,9 +852,10 @@ the scope is undefined the legacy path-only ID is preserved.
 
 `galaxySpiralOffset(n)` walks a square Ulam spiral around `(0, 0)` with
 leg lengths `1, 1, 2, 2, 3, 3, …` and direction order
-`right → up → left → down`. Step size is `GALAXY_SPIRAL_STEP = 4000`
-world units (PCA spread is ±500, so 4000 keeps each galaxy visually
-separated with comfortable empty space).
+`right → up → left → down`. Step size is `GALAXY_SPIRAL_STEP = 1000`
+world units (PCA spread is ±500, so 1000 puts adjacent galaxies one
+diameter apart — visibly separated and easily reachable with a single
+pan or `gh`).
 
 | n | (x_step, y_step) |
 |---|---|

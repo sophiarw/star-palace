@@ -162,8 +162,9 @@ export const MAX_TEXT_BYTES = 30 * 1024  // 30KB ≈ 7500 tokens; stays under no
 export const MAX_FILE_BYTES = 5 * 1024 * 1024  // 5MB
 
 // F9 galaxies: world-unit spacing for the deterministic spiral that places
-// each new galaxy's origin. Local PCA spread is ±500, so 4000 keeps galaxies
-// visually separated with comfortable empty-space buffer.
-export const GALAXY_SPIRAL_STEP = 4000
+// each new galaxy's origin. Local PCA spread is ±500, so 1000 puts adjacent
+// galaxies one diameter apart — visibly separated, still in one viewport at
+// fit-all zoom.
+export const GALAXY_SPIRAL_STEP = 1000
 // Default galaxy created on migration to host any legacy files (no galaxy_id).
 export const DEFAULT_GALAXY_NAME = 'default'
