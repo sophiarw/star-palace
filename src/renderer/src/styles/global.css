@@ -615,6 +615,13 @@ body {
   white-space: nowrap;
 }
 
+/* F16 — "(M hidden)" suffix on the in-view star count. Smaller + dimmer
+   so the visible count remains the primary signal. */
+.stats-bar-hidden {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
 /* Vim mode indicator in stats bar */
 
 .stats-bar-mode {
@@ -1070,10 +1077,13 @@ body {
 
 .galaxy-panel-row {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .galaxy-panel-fly {
-  width: 100%;
+  flex: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1091,6 +1101,37 @@ body {
 .galaxy-panel-fly:hover {
   background: rgba(74, 158, 255, 0.12);
   border-color: rgba(74, 158, 255, 0.3);
+}
+
+/* F16 — hidden galaxies dim their label so the eye-toggle state reads at a glance. */
+.galaxy-panel-fly--hidden {
+  opacity: 0.45;
+}
+
+/* F16 — eye toggle. Sits left of the fly-to button; mirrors the
+   collapse-button visual language but uses an accent border when active. */
+.galaxy-panel-eye {
+  width: 24px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: center;
+}
+
+.galaxy-panel-eye[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: rgba(74, 158, 255, 0.4);
+}
+
+.galaxy-panel-eye:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .galaxy-panel-name {
