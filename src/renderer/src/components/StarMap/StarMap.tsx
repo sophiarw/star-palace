@@ -1348,6 +1348,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // the hovered label if any. Above 0.8 we iterate viewport cells via the
     // grid so labels stay O(visible_cells).
     markStart()
+    // Phase 2.1A — skip labels whose underlying sprite is below this on-
+    // screen radius unless the star is emphasized (hover/select/neighbor/
+    // search hit). `fillText` is the most expensive ordinary Canvas2D op
+    // in Skia; at zoom-out where sprites are 5–10 px and labels are
+    // unreadable, drawing them is pure cost. Threshold matches the
+    // sprite-LOD cheap-tier swap so labels disappear in lockstep with
+    // procedural detail.
+    const LABEL_SKIP_PX = 12
     const drawLabel = (star: Star): void => {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) return
@@ -1355,16 +1363,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
       const isNeighbor = neighbors.has(star.id)
-      const focusAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
-      const zoomAlpha = isHovered ? 1 : Math.max(0, Math.min(1, (cam.zoom - 0.8) * 2))
       const isEmphasized = isHovered || isHighlighted || isSelected || isNeighbor
-      const emphasisAlpha = isEmphasized ? 1 : 0.5
-      const alpha = focusAlpha * zoomAlpha * emphasisAlpha
-      if (alpha < 0.05) return
       const sbLabel = activeMode === 'usage'
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
       const r = spriteCoreRadius(sbLabel) * drawScale
+      if (!isEmphasized && r < LABEL_SKIP_PX) return
+      const focusAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
+      const zoomAlpha = isHovered ? 1 : Math.max(0, Math.min(1, (cam.zoom - 0.8) * 2))
+      const emphasisAlpha = isEmphasized ? 1 : 0.5
+      const alpha = focusAlpha * zoomAlpha * emphasisAlpha
+      if (alpha < 0.05) return
       ctx.fillStyle = '#c8dff5'
       ctx.font = `${Math.min(11, 8 + cam.zoom * 1.5)}px monospace`
       ctx.globalAlpha = alpha
