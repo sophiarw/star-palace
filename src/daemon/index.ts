@@ -14,7 +14,7 @@ import { PC_COUNT } from './layout/Pca'
 import { projectOnAxis } from './math/pinMath'
 import { LAYOUT_THRESHOLD } from '../shared/types'
 import { indexPath } from './pipeline/Insert'
-import type { MapStats, ViewportResult, SearchResult, FileContent, StarType } from '../shared/types'
+import type { MapStats, ViewportResult, SearchResult, FileContent, StarType, CollectionKind } from '../shared/types'
 import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES, isStarType } from '../shared/types'
 
 const RAW_MIME_ALLOW = /^image\/(png|jpeg|gif|webp|svg\+xml)$/
@@ -121,6 +121,164 @@ app.post('/api/index', async (req, res) => {
 // --- Galaxies (F9) ---
 app.get('/api/galaxies', (_req, res) => {
   res.json({ galaxies: db.listGalaxies() })
+})
+
+// --- Collections (F5) ---
+//
+// Seven endpoints:
+//   GET    /api/collections                       — list with member counts
+//   POST   /api/collections                       — create static or dynamic
+//   GET    /api/collections/:id                   — detail with member ids
+//   POST   /api/collections/:id/members           — add file ids (static use)
+//   DELETE /api/collections/:id/members/:fileId   — remove single member
+//   POST   /api/collections/:id/refresh           — re-evaluate dynamic membership
+//   DELETE /api/collections/:id                   — drop collection (members cascade)
+//
+// Validation policy: kind must be 'static' or 'dynamic'; dynamic creates
+// require a non-empty query. Unique-name conflict surfaces from the
+// collections.name UNIQUE constraint as a SqliteError → HTTP 409.
+
+const COLLECTION_REFRESH_LIMIT = 200  // top-K candidates for hnsw search before floor cut
+
+function isCollectionKind(value: unknown): value is CollectionKind {
+  return value === 'static' || value === 'dynamic'
+}
+
+app.get('/api/collections', (_req, res) => {
+  res.json({ collections: db.listCollections() })
+})
+
+app.post('/api/collections', (req, res) => {
+  const body = req.body as {
+    name?: unknown; kind?: unknown; query?: unknown;
+    similarityFloor?: unknown; fileIds?: unknown; colorIndex?: unknown;
+  }
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (!name) return res.status(400).json({ error: 'name required' })
+  if (!isCollectionKind(body.kind)) {
+    return res.status(400).json({ error: "kind must be 'static' or 'dynamic'" })
+  }
+  if (body.kind === 'dynamic') {
+    const q = typeof body.query === 'string' ? body.query.trim() : ''
+    if (!q) return res.status(400).json({ error: 'dynamic collection requires non-empty query' })
+  }
+
+  let fileIds: string[] | undefined
+  if (Array.isArray(body.fileIds)) {
+    fileIds = body.fileIds.filter((x): x is string => typeof x === 'string')
+  }
+  let similarityFloor: number | undefined
+  if (typeof body.similarityFloor === 'number' && Number.isFinite(body.similarityFloor)) {
+    similarityFloor = body.similarityFloor
+  }
+  let colorIndex: number | undefined
+  if (typeof body.colorIndex === 'number' && Number.isInteger(body.colorIndex) && body.colorIndex >= 0) {
+    colorIndex = body.colorIndex
+  }
+
+  try {
+    const coll = db.createCollection({
+      name,
+      kind: body.kind,
+      query: typeof body.query === 'string' ? body.query : null,
+      similarityFloor,
+      fileIds,
+      colorIndex,
+    })
+    const memberCount = db.getCollectionMembers(coll.id).length
+    res.json({ ...coll, memberCount })
+  } catch (err) {
+    const msg = String(err)
+    if (/UNIQUE/i.test(msg)) {
+      return res.status(409).json({ error: `collection name '${name}' already exists` })
+    }
+    res.status(500).json({ error: msg })
+  }
+})
+
+app.get('/api/collections/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' })
+  const coll = db.getCollection(id)
+  if (!coll) return res.status(404).json({ error: 'not found' })
+  const memberIds = db.getCollectionMembers(id)
+  res.json({ ...coll, memberIds, memberCount: memberIds.length })
+})
+
+app.post('/api/collections/:id/members', (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' })
+  const coll = db.getCollection(id)
+  if (!coll) return res.status(404).json({ error: 'not found' })
+
+  const body = req.body as { fileIds?: unknown }
+  if (!Array.isArray(body.fileIds)) return res.status(400).json({ error: 'fileIds must be an array' })
+  const fileIds = body.fileIds.filter((x): x is string => typeof x === 'string')
+  db.addCollectionMembers(id, fileIds)
+  const memberIds = db.getCollectionMembers(id)
+  res.json({ ok: true, memberCount: memberIds.length, memberIds })
+})
+
+app.delete('/api/collections/:id/members/:fileId', (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' })
+  const coll = db.getCollection(id)
+  if (!coll) return res.status(404).json({ error: 'not found' })
+  db.removeCollectionMember(id, req.params.fileId)
+  res.json({ ok: true })
+})
+
+// Refresh re-runs the dynamic collection's saved query through the embedder
+// + hnsw, filters by similarity floor, intersects with currently-projected
+// stars (need an x/y to render the hull), and atomically replaces membership.
+// Returns the {added, removed} delta so the renderer can flash the diff.
+//
+// 503 when Ollama is unreachable (graceful failure per spec edge case).
+// 400 if the collection is static (refresh has no meaning).
+app.post('/api/collections/:id/refresh', async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' })
+  const coll = db.getCollection(id)
+  if (!coll) return res.status(404).json({ error: 'not found' })
+  if (coll.kind !== 'dynamic') {
+    return res.status(400).json({ error: 'only dynamic collections can refresh' })
+  }
+  if (!coll.query) {
+    return res.status(400).json({ error: 'dynamic collection has no query' })
+  }
+
+  try {
+    const embedResult = await embedEngine.embed(coll.query)
+    const knnResults = hnsw.searchKNN(embedResult.embedding, COLLECTION_REFRESH_LIMIT)
+    const floor = coll.similarityFloor ?? 0
+    const newMembers: string[] = []
+    for (const r of knnResults) {
+      const sim = 1 - r.distance
+      if (sim < floor) continue
+      const file = db.get(r.id)
+      if (!file || file.x === null || file.y === null) continue  // only positioned stars
+      newMembers.push(r.id)
+    }
+    const diff = db.setCollectionMembership(id, newMembers)
+    res.json({ ...diff, memberCount: newMembers.length })
+  } catch (err) {
+    const msg = String(err)
+    // Ollama down: distinguish from a generic 500 so the UI can show
+    // a friendly "refresh failed (embedder offline)" rather than crash.
+    if (/Ollama|ECONNREFUSED|fetch failed/i.test(msg)) {
+      return res.status(503).json({ error: 'embedder unavailable' })
+    }
+    res.status(500).json({ error: msg })
+  }
+})
+
+app.delete('/api/collections/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'invalid id' })
+  const coll = db.getCollection(id)
+  if (!coll) return res.status(404).json({ error: 'not found' })
+  db.deleteCollection(id)
+  res.json({ ok: true })
 })
 
 // --- Viewport query ---
