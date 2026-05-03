@@ -50,7 +50,16 @@ const SPRITE_SELECTED_BOOST_ALPHA = 0.6  // additive re-draw of sprite for brigh
 const SPRITE_NEIGHBOR_SCALE = 1.6
 const SPRITE_NEIGHBOR_BOOST_ALPHA = 0.35  // smaller pop than selected, so neighbors stay visible without competing
 const SEARCH_PULSE_MS = 200
-const CULL_MARGIN = 48
+// Cull margin scales with drawScale because procedural sprites (F8a + F11)
+// can render up to ~150px from their center at base scale. At max draw
+// scale (4×), a star's halo can reach ~600px outside the viewport edge —
+// so the margin must grow with the on-screen sprite size or stars vanish
+// at high zoom even though they should still be visible.
+const MIN_CULL_MARGIN = 48
+const MAX_SPRITE_HALF = 150  // largest sprite half-width across all theme drawers
+function cullMarginFor(drawScale: number): number {
+  return Math.max(MIN_CULL_MARGIN, MAX_SPRITE_HALF * drawScale)
+}
 const ZOOM_MAX = 100
 const ZOOM_MIN = 0.05
 
@@ -432,15 +441,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
+    const cull = cullMarginFor(drawScale)
     for (const star of currentStars) {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       const isHighlighted = highlights.has(star.id)
       const isSelected = star.id === selectedId
       const isNeighbor = neighbors.has(star.id)
-      // Neighbors and selected star bypass the cull: their sprites peek in from the canvas
-      // edge as you zoom. Canvas clips naturally; off-screen draws are near-free.
-      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) {
-        if (!isNeighbor && !isSelected) continue
+      // Neighbors, selected, and hovered stars bypass the cull: their sprites
+      // peek in from the canvas edge as you zoom. Canvas clips naturally;
+      // off-screen draws are near-free.
+      if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) {
+        if (!isNeighbor && !isSelected && star.id !== hoveredId) continue
       }
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
@@ -476,7 +487,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const animType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
       if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+      if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
 
       const sb = sizeBucketFor(star.viewCount)
       const r = spriteCoreRadius(sb)
@@ -638,7 +649,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       for (const star of currentStars) {
         if (!star.isPinned) continue
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-        if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+        if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
         const r = spriteCoreRadius(sizeBucketFor(star.viewCount)) * drawScale
         ctx.fillText('\u{1F512}', sx, sy - r - 6)
       }
@@ -691,7 +702,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.save()
     for (const star of currentStars) {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
-      if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+      if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
 
       const isHovered = star.id === hoveredId
       const isHighlighted = highlights.has(star.id)
