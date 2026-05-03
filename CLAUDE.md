@@ -31,9 +31,10 @@ Override with `STARPALACE_DB=/path/to/db` and `STARPALACE_DIR=/path/to/dir`.
 
 ## Schema invariants
 
-- `files.embedding` is a 768-float32 BLOB (3072 bytes). NULL until embedded.
+- `files.embedding` is a 768-float32 BLOB (3072 bytes). NULL until embedded. Vectors are L2-normalised in `EmbeddingEngine.embed` so the HNSW `ip` space yields cosine similarity directly.
 - `files.x`, `files.y` are NULL until `layout_meta.version >= 1`. Renderer skips NULL-position files.
 - `files.layout_version = 0` means file was indexed but not yet projected. Gets updated to 1+ during Relayouter.train().
+- `files.is_pinned` (0/1) and `files.star_type` (nullable text from `STAR_TYPES`) survive re-index — `upsert` does not overwrite them.
 - `edges` has at most K=20 outgoing rows per `src_id`. Pruned in Insert pipeline.
 - `clusters.color_index` is modulo-indexed into `CONSTELLATION_PALETTE`.
 
@@ -42,13 +43,10 @@ Override with `STARPALACE_DB=/path/to/db` and `STARPALACE_DIR=/path/to/dir`.
 `insertOne()` in `src/daemon/pipeline/Insert.ts`:
 
 1. Hash content → skip if `files.content_hash` matches (no re-embed).
-2. Embed via Ollama.
-3. Upsert `files` row.
-4. Add to HNSW.
-5. ANN top-K=20 → write `edges`.
-6. Update neighbors' `edges` if this file displaces their K-th.
-7. Cluster: plurality vote on neighbors' `cluster_id`.
-8. Project if `Relayouter.isReady`.
+2. Embed via Ollama (vector validated + normalised).
+3. ANN top-K=20 against the existing index (new point added afterwards so a transaction rollback never leaves an HNSW orphan).
+4. **Single DB transaction**: upsert `files` row, write outgoing `edges`, displace K-th edge of neighbors if applicable, cluster vote, project position.
+5. After commit, `hnsw.addPoint()` registers the new embedding.
 
 Layout trains automatically once 200 embeddings exist (first call to `relayouter.maybeTrainFirst()`).
 
@@ -56,10 +54,10 @@ Layout trains automatically once 200 embeddings exist (first call to `relayouter
 
 `src/daemon/layout/Pca.ts` wraps `ml-pca`:
 
-- `StarPca.train(embeddings)` — SVD, extract columns 0 and 1 of the eigenvector matrix (PC directions).
-- `pca.project(embedding)` — subtract mean, dot with each PC.
+- `StarPca.train(embeddings)` — SVD, keep top `PC_COUNT` eigenvector columns (PC directions). `PC_COUNT = 8` powers the F3 PC dial: the renderer picks any two of the top 8 components for X/Y without retraining.
+- `pca.project(embedding)` — subtract mean, dot with each active PC.
 - Positions are scaled to `[-500, 500]` world units by `scalePositions()`.
-- Serialised to `layout_meta.projection_model` as JSON.
+- Serialised to `layout_meta.projection_model` as JSON. Daemon startup runs an F3 migration: if a persisted model has fewer than `PC_COUNT` components it retrains once.
 
 UMAP swap: implement `Umap` with same `train/project/serialize` interface in `Pca.ts`, update `Relayouter.train()` to call it.
 
@@ -68,7 +66,7 @@ UMAP swap: implement `Umap` with same `train/project/serialize` interface in `Pc
 `src/daemon/ann/HnswIndex.ts` wraps `hnswlib-node`:
 
 - Space: `ip` (inner product). For normalised vectors: distance = 1 - cosine_similarity.
-- `addPoint(embedding, fileId)` — embedding must be normalised Float32Array for cosine math to hold.
+- `addPoint(embedding, fileId)` — embedding must be normalised. `EmbeddingEngine.embed` normalises before returning, so all callers in this codebase already satisfy the contract.
 - `searchKNN(embedding, k)` returns `{ id, distance }` sorted ascending by distance (= descending by similarity).
 - `hnsw.save()` / `hnsw.load()` persist bin + JSON map to disk. Called after `/api/index` completes.
 
