@@ -29,7 +29,19 @@ export default function HoverCard({ star, position, clusterSize, clusterColorInd
   return (
     <div className="hover-card" style={{ left, top }}>
       <div className="hover-card-header">
-        <div className="hover-card-name">{star.name}</div>
+        <div className="hover-card-name">
+          {star.isPinned && (
+            <span
+              className="hover-card-pin-badge"
+              title="Pinned (F4)"
+              aria-label="pinned"
+              style={{ marginRight: 6 }}
+            >
+              {'\u{1F512}'}
+            </span>
+          )}
+          {star.name}
+        </div>
         <span className="hover-card-hint">click to open</span>
       </div>
       <div className="hover-card-path">{star.path}</div>

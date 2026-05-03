@@ -188,6 +188,9 @@ export default function App() {
           onStarTypeChange={handleStarTypeChange}
           typeDropdownOpen={typeDropdownOpen}
           onTypeDropdownChange={setTypeDropdownOpen}
+          onUnpin={(id) => {
+            pcDial.unpinFile(id).catch(err => console.warn('unpinFile failed:', err))
+          }}
         />
       )}
 
