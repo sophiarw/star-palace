@@ -153,6 +153,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // trigger a React re-render on each cursor move; the next frame picks up
   // the new ref value.
   const pinDrag = useRef<{ id: string; worldX: number; worldY: number } | null>(null)
+  // Vim-mode hjkl smooth pan: velocity in screen px/sec, integrated by the
+  // animation loop into camRef every frame. Held keys in useVimMode set this;
+  // empty velocity means "not panning".
+  const panVelRef = useRef<{ vx: number; vy: number }>({ vx: 0, vy: 0 })
 
   // F11 — active theme ref. The draw callback below reads it each frame so
   // theme switches re-render every visible star without rebuilding the rAF
@@ -207,14 +211,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const cam = camRef.current
     const currentStars = starsRef.current
 
-    if (vimAction.type === 'pan') {
-      const newCam = {
-        ...cam,
-        cx: cam.cx + vimAction.dx / cam.zoom,
-        cy: cam.cy + vimAction.dy / cam.zoom,
-      }
-      camRef.current = newCam
-      setCam(newCam)
+    if (vimAction.type === 'panVelocity') {
+      // Velocity is in screen px/sec; the animation loop integrates it into
+      // camRef every frame (divided by zoom for world units).
+      panVelRef.current = { vx: vimAction.vx, vy: vimAction.vy }
       return
     }
 
@@ -734,9 +734,30 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.restore()
   }, [hoveredId, selectedId])
 
-  // Animate
+  // Animate. Also integrates hjkl pan velocity into camRef each frame and
+  // syncs the React cam state once when velocity drops to zero, so consumers
+  // that read cam state (rare, but possible) see the settled position.
   useEffect(() => {
-    const loop = () => {
+    let lastT = performance.now()
+    let prevHadVel = false
+    const loop = (tNow: number) => {
+      const dt = Math.min(0.1, (tNow - lastT) / 1000)  // clamp dt to avoid jumps after a long tab-away
+      lastT = tNow
+      const v = panVelRef.current
+      const hasVel = v.vx !== 0 || v.vy !== 0
+      if (hasVel) {
+        const c = camRef.current
+        camRef.current = {
+          ...c,
+          cx: c.cx + (v.vx * dt) / c.zoom,
+          cy: c.cy + (v.vy * dt) / c.zoom,
+        }
+      } else if (prevHadVel) {
+        // Velocity just stopped — sync React state once for any consumers
+        // that depend on cam (most code reads camRef.current and ignores this).
+        setCam(camRef.current)
+      }
+      prevHadVel = hasVel
       draw()
       animRef.current = requestAnimationFrame(loop)
     }

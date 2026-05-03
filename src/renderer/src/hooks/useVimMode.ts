@@ -6,7 +6,7 @@ import { openFile, setStarType } from '../api'
 export type VimMode = 'normal' | 'search'
 
 export type VimAction =
-  | { type: 'pan'; dx: number; dy: number }
+  | { type: 'panVelocity'; vx: number; vy: number }   // screen px/sec; held-key continuous pan
   | { type: 'zoom'; factor: number }
   | { type: 'fitAll' }
   | { type: 'fitCluster'; clusterId: number }
@@ -14,9 +14,10 @@ export type VimAction =
 
 interface UseVimModeOptions {
   onAction: (action: VimAction) => void
-  onFocusSearch: () => void
+  onToggleSearch: () => void
   onEscape: () => void
   onSelectHovered: () => void
+  onSelectStar: (id: string) => void
   hoveredId: string | null
   selectedId: string | null
   selectedStar: Star | null
@@ -26,15 +27,31 @@ interface UseVimModeOptions {
   onOpenTypeDropdown: () => void
 }
 
-const PAN_SMALL = 50   // world units per small step
-const PAN_LARGE = 200  // world units per large step
+// Velocity in screen pixels per second. StarMap divides by zoom so screen-
+// space pan speed stays constant regardless of how zoomed in the camera is.
+const PAN_VEL_SLOW = 600    // hjkl
+const PAN_VEL_FAST = 2400   // HJKL (4×)
 const ZOOM_FACTOR = 1.2
+
+// Maps each pan key to its (vx, vy) contribution. Held keys sum, so
+// h+j → diagonal down-left.
+const KEY_VEL: Record<string, [number, number]> = {
+  h: [-PAN_VEL_SLOW, 0], H: [-PAN_VEL_FAST, 0],
+  j: [0,  PAN_VEL_SLOW], J: [0,  PAN_VEL_FAST],
+  k: [0, -PAN_VEL_SLOW], K: [0, -PAN_VEL_FAST],
+  l: [ PAN_VEL_SLOW, 0], L: [ PAN_VEL_FAST, 0],
+}
+
+function isPanKey(k: string): boolean {
+  return Object.prototype.hasOwnProperty.call(KEY_VEL, k)
+}
 
 export function useVimMode({
   onAction,
-  onFocusSearch,
+  onToggleSearch,
   onEscape,
   onSelectHovered,
+  onSelectStar,
   hoveredId,
   selectedId,
   selectedStar,
@@ -48,6 +65,7 @@ export function useVimMode({
   const lastKeyRef = useRef<string>('')
   const lastKeyTimeRef = useRef<number>(0)
   const searchIndexRef = useRef<number>(-1)
+  const heldPanKeysRef = useRef<Set<string>>(new Set())
 
   const setModeSync = useCallback((m: VimMode) => {
     modeRef.current = m
@@ -67,12 +85,28 @@ export function useVimMode({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as Element
-      // Don't capture while typing in input/textarea — but still handle Escape
+      const isCmdF = (e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')
+
+      // Don't capture while typing in input/textarea — but still handle Escape and Cmd/Ctrl+F
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         if (e.key === 'Escape') {
           setModeSync('normal')
           onEscape()
+          return
         }
+        if (isCmdF) {
+          e.preventDefault()
+          // Stay in search mode; bar just hides so n/N can cycle.
+          onToggleSearch()
+          return
+        }
+        return
+      }
+
+      if (isCmdF) {
+        e.preventDefault()
+        setModeSync('search')
+        onToggleSearch()
         return
       }
 
@@ -86,50 +120,42 @@ export function useVimMode({
         const prevWasG = prevKey === 'g' && timeSinceLast < 500
         const isDoubleG = key === 'g' && prevWasG
 
+        // gh sequence: fit current cluster. Wins over the pan-key branch so
+        // the user's "g then h" intent isn't swallowed by the velocity start.
+        if (key === 'h' && prevWasG) {
+          e.preventDefault()
+          lastKeyRef.current = key
+          lastKeyTimeRef.current = now
+          if (selectedStar !== null && selectedStar.clusterId !== null) {
+            onAction({ type: 'fitCluster', clusterId: selectedStar.clusterId })
+          }
+          return
+        }
+
+        // Pan keys: smooth velocity. First keydown for a pan key adds it to
+        // the held set and emits an updated velocity vector. Subsequent
+        // auto-repeat keydowns are no-ops (already in set).
+        if (isPanKey(key)) {
+          e.preventDefault()
+          lastKeyRef.current = key
+          lastKeyTimeRef.current = now
+          if (!heldPanKeysRef.current.has(key)) {
+            heldPanKeysRef.current.add(key)
+            let vx = 0, vy = 0
+            for (const k of heldPanKeysRef.current) {
+              const v = KEY_VEL[k]
+              if (v) { vx += v[0]; vy += v[1] }
+            }
+            onAction({ type: 'panVelocity', vx, vy })
+          }
+          return
+        }
+
         // Update last key tracking
         lastKeyRef.current = key
         lastKeyTimeRef.current = now
 
         switch (key) {
-          case 'h':
-            e.preventDefault()
-            if (prevWasG) {
-              // gh = fit current cluster
-              if (selectedStar !== null && selectedStar.clusterId !== null) {
-                onAction({ type: 'fitCluster', clusterId: selectedStar.clusterId })
-              }
-            } else {
-              onAction({ type: 'pan', dx: -PAN_SMALL, dy: 0 })
-            }
-            break
-          case 'j':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: 0, dy: PAN_SMALL })
-            break
-          case 'k':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: 0, dy: -PAN_SMALL })
-            break
-          case 'l':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: PAN_SMALL, dy: 0 })
-            break
-          case 'H':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: -PAN_LARGE, dy: 0 })
-            break
-          case 'J':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: 0, dy: PAN_LARGE })
-            break
-          case 'K':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: 0, dy: -PAN_LARGE })
-            break
-          case 'L':
-            e.preventDefault()
-            onAction({ type: 'pan', dx: PAN_LARGE, dy: 0 })
-            break
           case '+':
           case '=':
             e.preventDefault()
@@ -147,11 +173,6 @@ export function useVimMode({
             }
             // If not double-g, wait — stored in lastKeyRef for the next keypress
             break
-          case '/':
-            e.preventDefault()
-            setModeSync('search')
-            onFocusSearch()
-            break
           case 'Escape':
             e.preventDefault()
             onEscape()
@@ -161,6 +182,7 @@ export function useVimMode({
             if (searchHighlights.length === 0) break
             searchIndexRef.current = (searchIndexRef.current + 1) % searchHighlights.length
             const hitN = searchHighlights[searchIndexRef.current]
+            onSelectStar(hitN.id)
             onAction({ type: 'panTo', wx: hitN.x, wy: hitN.y })
             break
           }
@@ -170,6 +192,7 @@ export function useVimMode({
             const len = searchHighlights.length
             searchIndexRef.current = ((searchIndexRef.current - 1) + len) % len
             const hitPrev = searchHighlights[searchIndexRef.current]
+            onSelectStar(hitPrev.id)
             onAction({ type: 'panTo', wx: hitPrev.x, wy: hitPrev.y })
             break
           }
@@ -229,20 +252,64 @@ export function useVimMode({
         }
       } else if (currentMode === 'search') {
         if (key === 'Escape') {
+          e.preventDefault()
           setModeSync('normal')
           onEscape()
+          return
+        }
+        if (key === 'n' || key === 'N') {
+          e.preventDefault()
+          if (searchHighlights.length === 0) return
+          if (key === 'n') {
+            searchIndexRef.current = (searchIndexRef.current + 1) % searchHighlights.length
+          } else {
+            const len = searchHighlights.length
+            searchIndexRef.current = ((searchIndexRef.current - 1) + len) % len
+          }
+          const hit = searchHighlights[searchIndexRef.current]
+          onSelectStar(hit.id)
+          onAction({ type: 'panTo', wx: hit.x, wy: hit.y })
+          return
         }
       }
     }
 
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (heldPanKeysRef.current.has(e.key)) {
+        heldPanKeysRef.current.delete(e.key)
+        let vx = 0, vy = 0
+        for (const k of heldPanKeysRef.current) {
+          const v = KEY_VEL[k]
+          if (v) { vx += v[0]; vy += v[1] }
+        }
+        onAction({ type: 'panVelocity', vx, vy })
+      }
+    }
+
+    // Blur stops all pan velocity so keys don't get stuck if the user tabs
+    // away while holding a direction.
+    const onBlur = () => {
+      if (heldPanKeysRef.current.size > 0) {
+        heldPanKeysRef.current.clear()
+        onAction({ type: 'panVelocity', vx: 0, vy: 0 })
+      }
+    }
+
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
   }, [
     setModeSync,
     onAction,
-    onFocusSearch,
+    onToggleSearch,
     onEscape,
     onSelectHovered,
+    onSelectStar,
     hoveredId,
     selectedId,
     selectedStar,
