@@ -65,8 +65,7 @@ extensions like `.py`, `.csv`, `.yaml`, `.sql`, `.go`, `.rb`).
 ### Top bar (StatsBar)
 
 - **Color by** — `Type` uses the auto/manual star type; `Usage` buckets by the daemon's `importance_score`.
-- **Quality** — `Low` / `Med` / `High` / `Ultra` LOD setting. See [Performance](#performance).
-- **Theme** — dropdown picker. Ships with `jwst` (deep-space realism) and `vapor` (synthwave). Per-theme procedural drawers + chrome.
+- **Theme** — dropdown picker. Per-theme procedural drawers + chrome. Each theme owns its own DPR cap (e.g. Atari bakes at 1.0 for an 8-bit aesthetic).
 
 ### Panels
 
@@ -132,19 +131,18 @@ drag / wheel within 200 ms), and the visible-star count from the most
 recent draw. `reset` clears the buffer; `copy` puts a plain-text summary
 on the clipboard and dumps to console.
 
-Quality presets (StatsBar):
+LOD policy (always on):
 
-| Quality | Far-star sprites | Far-star fallback | Pulsar/quasar beams | Backing-store DPR cap |
-|---|---|---|---|---|
-| `low` | cheap < 18 px | dot < 3 px | skip < 12 px | 1.0 |
-| `medium` | cheap < 12 px | sprite | skip < 8 px | 1.5 |
-| `high` (default) | cheap < 6 px | sprite | always | 2.0 |
-| `ultra` | always full | sprite | always | uncapped |
+- Far-star sprites swap to a cheap halo+core variant below 6 px on-screen.
+- Pulsar / quasar beam overlay skips below 4 px on-screen (sub-perceivable).
+- Backing-store DPR caps at the active theme's `dprCap` (or native if none).
+  Atari sets `dprCap: 1.0` so the 8-bit aesthetic reads chunky by default;
+  JWST / Vapor / Lost / Bio leave it uncapped for crisp high-DPI rendering.
 
 Focused stars (selected / hovered / neighbor / search hit) always render
-at full quality regardless of preset, so the file you're acting on never
-degrades. CLAUDE.md has the implementation index (spatial grid, dirty-flag
-rAF, sprite LOD cache, position-delta refetch, idle prebuild, frame metrics).
+at full quality, so the file you're acting on never degrades. CLAUDE.md has
+the implementation index (spatial grid, dirty-flag rAF, sprite LOD cache,
+position-delta refetch, idle prebuild, frame metrics).
 
 ## Development
 

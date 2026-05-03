@@ -28,7 +28,6 @@ import type { Lod } from './sprites'
 import type { VimAction } from '../../hooks/useVimMode'
 import type { Theme } from '../../themes/types'
 import type { ClassificationMode } from '../../hooks/useClassificationMode'
-import type { GraphicsQuality } from '../../hooks/useGraphicsQuality'
 
 // F5 — active virtual collection. When set, members render at full
 // brightness with a constellation-style hull behind them; non-members
@@ -75,11 +74,6 @@ interface Props {
   // convex-hull outline is drawn behind them in the collection's color.
   // Non-members are dimmed exactly like search-active state.
   activeCollection?: ActiveCollectionVis | null
-  // Graphics-quality setting (low/medium/high/ultra). Drives sprite-LOD
-  // tier swap by on-screen size, animation-overlay skip threshold,
-  // backing-store DPR cap, and the far-out tiny-dot fallback. Optional;
-  // defaults to `high` if absent.
-  quality?: GraphicsQuality
 }
 
 // F5 — hull rendering constants. Fill alpha is intentionally low so the
@@ -264,7 +258,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection, quality }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Camera is intentionally NOT React state. During pan, native mousemove
   // dispatches at 60–120 Hz; if every move called setState, React would
@@ -354,13 +348,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     setSpriteCacheActiveTheme(theme.id)
     dirtyRef.current = true
   }, [theme])
-
-  // Graphics-quality ref. The draw callback reads it each frame to pick
-  // the cheap-vs-full sprite tier per star and to gate the animation
-  // overlay; the resize handler reads it to cap the backing-store DPR.
-  // `ultra` keeps every sprite at full procedural detail at every zoom.
-  const qualityRef = useRef<GraphicsQuality>(quality ?? 'high')
-  useEffect(() => { qualityRef.current = quality ?? 'high'; dirtyRef.current = true }, [quality])
 
   // F10 — classification mode + percentile buckets refs. The draw callback
   // reads them per-frame so flipping the mode toggle re-skins every visible
@@ -634,22 +621,15 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // Resize canvas to window — backing store is sized in device pixels so the
   // image stays crisp on high-DPR displays. All draw code below operates in
   // CSS-pixel coordinates after we apply the dpr transform per frame.
-  // Graphics quality caps the DPR: low/medium machines pay materially less
-  // pixel-fill cost without changing on-screen layout. ultra is uncapped.
+  // Per-theme `dprCap` lets a low-res aesthetic (e.g. Atari 8-bit) bake at
+  // 1.0 DPR by default; themes that omit `dprCap` get full native DPR.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const dprCap = (q: GraphicsQuality): number => {
-      switch (q) {
-        case 'low': return 1.0
-        case 'medium': return 1.5
-        case 'high': return 2.0
-        case 'ultra': return Infinity
-      }
-    }
     const resize = () => {
       const native = window.devicePixelRatio || 1
-      const dpr = Math.min(native, dprCap(qualityRef.current))
+      const cap = themeRef.current.dprCap ?? Infinity
+      const dpr = Math.min(native, cap)
       dprRef.current = dpr
       setSpriteCacheDpr(dpr)
       const w = window.innerWidth
@@ -665,22 +645,15 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     return () => window.removeEventListener('resize', resize)
   }, [])
 
-  // Re-run resize when the quality setting flips so the DPR cap takes
-  // effect immediately. Reading qualityRef.current inside resize keeps the
-  // body itself stable across renders.
+  // Re-run resize when the theme flips so a `dprCap` change takes effect
+  // immediately (e.g. JWST → Atari should drop the backing store to 1.0
+  // DPR right away rather than wait for the next window resize).
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const dprCap = (q: GraphicsQuality): number => {
-      switch (q) {
-        case 'low': return 1.0
-        case 'medium': return 1.5
-        case 'high': return 2.0
-        case 'ultra': return Infinity
-      }
-    }
     const native = window.devicePixelRatio || 1
-    const dpr = Math.min(native, dprCap(qualityRef.current))
+    const cap = theme.dprCap ?? Infinity
+    const dpr = Math.min(native, cap)
     dprRef.current = dpr
     setSpriteCacheDpr(dpr)
     const w = window.innerWidth
@@ -690,7 +663,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     canvas.style.width = `${w}px`
     canvas.style.height = `${h}px`
     dirtyRef.current = true
-  }, [quality])
+  }, [theme])
 
   // Main draw loop
   const draw = useCallback(() => {
@@ -942,19 +915,15 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
 
-    const activeQuality = qualityRef.current
     // LOD picker: takes the on-screen radius (pre-scale-boost) and returns
-    // either the sprite tier to render or 'dot' for the far-out 1-pixel
-    // fallback. Forced focus stars (selected/hovered/neighbor/highlight)
-    // always get full quality so the user can see what they're hovering or
-    // searching for, regardless of zoom.
-    const lodFor = (spritePx: number, focused: boolean): Lod | 'dot' => {
-      if (focused || activeQuality === 'ultra') return 'full'
-      if (activeQuality === 'high') return spritePx >= 6 ? 'full' : 'cheap'
-      if (activeQuality === 'medium') return spritePx >= 12 ? 'full' : 'cheap'
-      // low
-      if (spritePx < 3) return 'dot'
-      return spritePx >= 18 ? 'full' : 'cheap'
+    // the sprite tier to render. Forced focus stars (selected / hovered /
+    // neighbor / highlight) always get the full procedural sprite so the
+    // file the user is acting on never degrades. Threshold matches what the
+    // old `quality === 'high'` preset produced; themes can override per-tier
+    // later if needed (no current consumer does).
+    const lodFor = (spritePx: number, focused: boolean): Lod => {
+      if (focused) return 'full'
+      return spritePx >= 6 ? 'full' : 'cheap'
     }
 
     const drawMainStar = (star: Star, allowOffscreen: boolean): void => {
@@ -980,24 +949,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const focused = isSelected || isHighlighted || isNeighbor || isHovered
       const spritePx = spriteCoreRadius(sb) * drawScale
       const lod = lodFor(spritePx, focused)
-
-      if (lod === 'dot') {
-        // Cheapest path — single 2-px arc fill, no halo, no sprite blit.
-        // Used only at quality === 'low' when the on-screen sprite radius
-        // would be < 3 px anyway, so the visual loss is well below
-        // perception threshold. drawnIds still tracked so the forced-draw
-        // pass doesn't double-render.
-        const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
-        const dotColor = cluster
-          ? CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
-          : '#9ab'
-        ctx.fillStyle = dotColor
-        ctx.beginPath()
-        ctx.arc(sx, sy, 1.4, 0, Math.PI * 2)
-        ctx.fill()
-        drawnIds.add(star.id)
-        return
-      }
 
       let sprite: HTMLCanvasElement
       // F8b — only the default-path (cluster-hue) branch picks up the per-id
@@ -1069,17 +1020,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // the precomputed pulsar/quasar list so we don't re-classify every star
     // each frame. Cardinality is small in practice (manually-typed only).
     markStart()
-    // Quality-driven skip: when the on-screen sprite is tiny, the beam is
-    // invisible anyway and re-running the per-frame gradient is pure cost.
-    // Below this on-screen radius the animation beam is sub-perceivable;
-    // skip drawing AND skip counting toward the rAF gate so a far-zoomed-
-    // out scene with PDFs/PPTXs in view doesn't pin the gate open at 60 fps
-    // for animations the user can't see anyway.
-    const animSkipPx =
-      activeQuality === 'low' ? 12 :
-      activeQuality === 'medium' ? 8 :
-      activeQuality === 'high' ? 4 :
-      2  // ultra still wants idle skip when truly invisible
+    // When the on-screen sprite is tiny the beam is invisible anyway and the
+    // per-frame gradient is pure cost. Below this on-screen radius the beam
+    // is sub-perceivable; skip drawing AND skip counting toward the rAF gate
+    // so a far-zoomed-out scene with PDFs/PPTXs in view doesn't pin the gate
+    // open at 60 fps for animations the user can't see. Threshold matches
+    // what the old `quality === 'high'` preset produced.
+    const animSkipPx = 4
     const tNow = performance.now() / 1000
     // Count animated stars actually inside the viewport. The rAF gate uses
     // this (not the corpus-total) so a single PDF (→quasar) at the far end

@@ -91,7 +91,7 @@ empty.
 
 ## Renderer hot-paths
 
-- `src/renderer/src/components/StarMap/StarMap.tsx` — canvas draw loop. Backing-store sized to `window.innerWidth × effectiveDpr`; `effectiveDpr` is `min(window.devicePixelRatio, qualityCap)` (see [Renderer perf gates](#renderer-perf-gates)). Mouse handlers read `canvas.clientWidth` (CSS pixels).
+- `src/renderer/src/components/StarMap/StarMap.tsx` — canvas draw loop. Backing-store sized to `window.innerWidth × effectiveDpr`; `effectiveDpr` is `min(window.devicePixelRatio, theme.dprCap ?? Infinity)` (see [Renderer perf gates](#renderer-perf-gates)). Mouse handlers read `canvas.clientWidth` (CSS pixels).
 - `src/renderer/src/components/StarMap/coords.ts` — pure `worldToScreen`/`screenToWorld` (separated from StarMap so the math is unit-testable in node).
 - `src/renderer/src/components/StarMap/spatialGrid.ts` — pure 100-world-unit cell grid; the draw loop iterates only cells overlapping the viewport instead of every star.
 - `src/renderer/src/hooks/useVimMode.ts` — keybindings. Full table lives in `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx` and the README. Hovered-id is consumed via a `getHoveredId()` getter (the hovered id lives in a ref in `App.tsx` to avoid 60 Hz full-app re-renders during pan).
@@ -103,9 +103,8 @@ Index of the mechanisms that keep the canvas at 60 fps under user load. Each is 
 - **Spatial grid** — `spatialGrid.ts`. Built once per `stars` mutation; iterating cells in viewport bounds drops main + label passes from O(N) to O(visible_cells).
 - **Dirty-flag rAF gate** — `dirtyRef` + `lastCamSnapRef` in `StarMap.tsx`. Skips `draw()` when nothing changed and no continuous animation is running. Continuous = selection pulse, search pulse < 200 ms, any pulsar/quasar in scene, vim pan velocity, pin drag.
 - **Sprite LOD cache** — `sprites.ts`. `getStarSprite(...,  lod)` and `getTypedStarSprite(..., lod)` accept `'cheap' | 'full'`; cache key carries the lod suffix so both tiers coexist. Cheap default = halo+core only (skip diffraction spikes); cheap typed = per-type tinted halo+core, no procedural drawer.
-- **Quality-driven LOD swap** — `lodFor(spritePx, focused)` in the main pass. Focused stars (selected / hovered / neighbor / highlighted) are pinned to `'full'`. Quality table lives in the README.
-- **Far-out tiny-dot fallback** — at quality `low` and on-screen radius < 3 px, a 1.4-px arc fill replaces the sprite blit entirely.
-- **Backing-store DPR cap** — `resize()` in `StarMap.tsx` clamps `dpr = min(devicePixelRatio, qualityCap)`. `low`=1.0, `medium`=1.5, `high`=2.0, `ultra`=∞. Re-runs on quality flip.
+- **LOD swap** — `lodFor(spritePx, focused)` in the main pass swaps to `'cheap'` below 6 px on-screen. Focused stars (selected / hovered / neighbor / highlighted) are pinned to `'full'`.
+- **Backing-store DPR cap** — `resize()` in `StarMap.tsx` clamps `dpr = min(devicePixelRatio, theme.dprCap ?? Infinity)`. Re-runs on theme flip so a low-DPR theme (Atari `dprCap: 1.0`) takes effect immediately.
 - **Position-delta refetch** — `GET /api/map/positions?since=N` (`src/daemon/index.ts`) returns only rows whose `layout_version > N`. Renderer (`App.tsx pollStats`) patches existing stars in place by id; unchanged rows keep their object identity so `rawStarsById` / `projectedStars` / `starsById` only rebuild moved entries.
 - **Idle sprite prebuild** — `requestIdleCallback` chain in the `stars` useEffect, 40 stars per tick. Spreads first-paint procedural-sprite cost off the main paint frame.
 - **Hover ref (no React state)** — `hoveredIdRef` in `App.tsx`; `useVimMode` consumes via `getHoveredId()`. Avoids 60+ Hz App re-renders on cursor motion.
@@ -121,10 +120,9 @@ Index of the mechanisms that keep the canvas at 60 fps under user load. Each is 
 
 ## User-facing toggles (renderer)
 
-Each persists in `localStorage` under its own versioned key. All three follow the `useTheme.ts` pattern (corrupt values → default + clear).
+Each persists in `localStorage` under its own versioned key. Both follow the `useTheme.ts` pattern (corrupt values → default + clear).
 
-- `useGraphicsQuality.ts` — `low | medium | high | ultra`, default `high`. Drives every gate in [Renderer perf gates](#renderer-perf-gates).
-- `useTheme.ts` — `jwst | vapor`. Drives typed-sprite drawers and chrome (font, accent colour, optional canvas overlay).
+- `useTheme.ts` — theme picker. Drives typed-sprite drawers, chrome (font, accent colour, optional canvas overlay), per-theme image smoothing, and per-theme `dprCap` (a low-DPR theme like Atari sets `1.0` for the 8-bit aesthetic).
 - `useClassificationMode.ts` — `type | usage`. `usage` routes `effectiveStarType` through `usageStarType.ts` percentile buckets on `importance_score`.
 
 ## Test runner caveat

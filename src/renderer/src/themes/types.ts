@@ -59,7 +59,7 @@ export interface ThemeUi {
  * F-NEXT-B — image smoothing applied to the main canvas ctx each frame.
  * `'high'` = bilinear with `imageSmoothingQuality='high'` for soft realistic
  * sprites (JWST). `'off'` = nearest-neighbour (`imageSmoothingEnabled=false`)
- * to preserve hard pixel edges in arcade aesthetics (Vapor).
+ * to preserve hard pixel edges in arcade aesthetics (Vapor, Atari).
  */
 export type ThemeSmoothing = 'high' | 'off'
 
@@ -85,6 +85,14 @@ export interface Theme {
    * effective DPR — most callers need only the size.
    */
   postPass?: (ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number) => void
+  /**
+   * Backing-store DPR cap. `effectiveDpr = min(window.devicePixelRatio, dprCap)`.
+   * Themes that intentionally render at low resolution (e.g. Atari 8-bit
+   * aesthetic) set this to `1.0`. Omitted / `undefined` = no cap (native DPR
+   * for high-DPI displays). The renderer re-runs its resize handler when the
+   * theme flips so the cap takes effect immediately.
+   */
+  dprCap?: number
   ui: ThemeUi
 }
 
