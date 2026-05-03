@@ -54,8 +54,30 @@ app.use(cors())
 app.use(express.json({ limit: '5mb' }))
 
 // --- Health ---
+// Cache Ollama availability for OLLAMA_HEALTH_TTL_MS so the renderer's 10 s
+// poll doesn't fire a 3 s blocking probe every tick when Ollama is slow or
+// down.
+const OLLAMA_HEALTH_TTL_MS = 5_000
+let cachedOllamaOk = false
+let cachedOllamaAt = 0
+let inflightOllamaCheck: Promise<boolean> | null = null
+
+async function getOllamaAvailability(): Promise<boolean> {
+  const now = Date.now()
+  if (now - cachedOllamaAt < OLLAMA_HEALTH_TTL_MS) return cachedOllamaOk
+  if (inflightOllamaCheck) return inflightOllamaCheck
+  inflightOllamaCheck = ollamaClient.isAvailable()
+    .then(ok => {
+      cachedOllamaOk = ok
+      cachedOllamaAt = Date.now()
+      return ok
+    })
+    .finally(() => { inflightOllamaCheck = null })
+  return inflightOllamaCheck
+}
+
 app.get('/api/health', async (_req, res) => {
-  const ollamaOk = await ollamaClient.isAvailable()
+  const ollamaOk = await getOllamaAvailability()
   res.json({
     ok: true,
     indexed: db.count(),
