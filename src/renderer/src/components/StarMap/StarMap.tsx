@@ -46,7 +46,19 @@ const SPRITE_HOVER_SCALE = 1.35
 const SPRITE_HIGHLIGHT_SCALE = 1.4
 const SPRITE_HIGHLIGHT_PULSE = 0.35  // extra scale at pulse peak
 const SPRITE_SELECTED_SCALE = 1.4
-const SPRITE_SELECTED_BOOST_ALPHA = 0.6  // additive re-draw of sprite for brightness pop
+// F12 — selection breathes via a 1.5s sine wave on both scale and additive alpha,
+// so the selected star reads as alive instead of static. Pin-drag preview keeps
+// the static SPRITE_SELECTED_SCALE (a brief preview shouldn't pulse).
+const SELECTION_PULSE_PERIOD_MS = 1500
+const SELECTION_PULSE_AMPL = 0.06        // ±6% scale oscillation
+const SELECTION_BOOST_ALPHA_BASE = 0.45
+const SELECTION_BOOST_ALPHA_AMPL = 0.15  // 0.30 .. 0.60 range
+function selectionPulse(tNowMs: number): number {
+  return 1 + Math.sin((tNowMs / SELECTION_PULSE_PERIOD_MS) * Math.PI * 2) * SELECTION_PULSE_AMPL
+}
+function selectionBoostAlpha(tNowMs: number): number {
+  return SELECTION_BOOST_ALPHA_BASE + Math.sin((tNowMs / SELECTION_PULSE_PERIOD_MS) * Math.PI * 2) * SELECTION_BOOST_ALPHA_AMPL
+}
 const SPRITE_NEIGHBOR_SCALE = 1.6
 const SPRITE_NEIGHBOR_BOOST_ALPHA = 0.35  // smaller pop than selected, so neighbors stay visible without competing
 const SEARCH_PULSE_MS = 200
@@ -369,7 +381,8 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const hasFocus = hasHighlights || selectedId !== null
     const exposure = exposureFor(cam.zoom)
     const drawScale = zoomDrawScale(cam.zoom)
-    const pulseT = Math.min(1, (performance.now() - searchPulseStart.current) / SEARCH_PULSE_MS)
+    const tNowMs = performance.now()
+    const pulseT = Math.min(1, (tNowMs - searchPulseStart.current) / SEARCH_PULSE_MS)
     const pulseScale = pulseT < 1 ? SPRITE_HIGHLIGHT_PULSE * (1 - easeOutCubic(pulseT)) : 0
 
     // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies),
@@ -483,7 +496,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (star.id === hoveredId) scale *= SPRITE_HOVER_SCALE
       if (isHighlighted) scale *= SPRITE_HIGHLIGHT_SCALE + pulseScale
       if (isNeighbor && !isSelected) scale *= SPRITE_NEIGHBOR_SCALE
-      if (isSelected) scale *= SPRITE_SELECTED_SCALE
+      if (isSelected) scale *= SPRITE_SELECTED_SCALE * selectionPulse(tNowMs)
       const drawW = sw * scale, drawH = sh * scale
       ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
       if (isSelected || isHighlighted || isNeighbor) {
@@ -565,14 +578,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         let scaleR = drawScale
         if (isHighlighted) scaleR *= SPRITE_HIGHLIGHT_SCALE + pulseScale
         if (isNeighbor && !isSelected) scaleR *= SPRITE_NEIGHBOR_SCALE
-        if (isSelected) scaleR *= SPRITE_SELECTED_SCALE
+        if (isSelected) scaleR *= SPRITE_SELECTED_SCALE * selectionPulse(tNowMs)
         const r = spriteCoreRadius(sb) * scaleR
 
         if (isSelected) {
-          // Brightness boost: redraw the cached sprite once more in additive mode so
-          // the whole halo + core gets +alpha without any solid-color overlay.
+          // F12 — brightness boost breathes on the same 1.5s sine as the scale pulse,
+          // so halo brightness oscillates with sprite size for a unified breathing effect.
           ctx.globalCompositeOperation = 'lighter'
-          ctx.globalAlpha = SPRITE_SELECTED_BOOST_ALPHA * exposure
+          ctx.globalAlpha = selectionBoostAlpha(tNowMs) * exposure
           ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
 
           ctx.globalCompositeOperation = 'source-over'
