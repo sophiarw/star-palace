@@ -94,11 +94,13 @@ function renderSprite(colorIndex: number, tempBucket: number, sizeBucket: number
   const tinted = blend(baseRgb, TEMP_TARGETS[tempBucket], TEMP_STRENGTH[tempBucket])
   const core = blend(tinted, [255, 255, 255], 0.6)
 
-  // Soft halo (broad falloff)
+  // Soft halo (broad falloff). Mid-stops bumped 0.5→0.85 / 0.12→0.40 so
+  // the disc body reads opaque at high zoom — previously stretched gradient
+  // looked translucent because most of the sprite area was below 0.5 alpha.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, half)
-  halo.addColorStop(0, rgbCss(core, 0.85))
-  halo.addColorStop(0.12, rgbCss(tinted, 0.5))
-  halo.addColorStop(0.45, rgbCss(tinted, 0.12))
+  halo.addColorStop(0, rgbCss(core, 1))
+  halo.addColorStop(0.12, rgbCss(tinted, 0.85))
+  halo.addColorStop(0.45, rgbCss(tinted, 0.40))
   halo.addColorStop(1, rgbCss(tinted, 0))
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, size, size)
