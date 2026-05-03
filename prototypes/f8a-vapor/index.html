@@ -1,0 +1,2198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Star Palace — F8a Vapor (Synthwave)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    /* Vapor palette — hot, posterized, retrofuturist */
+    --magenta: #ff2afc;
+    --cyan:    #00f5ff;
+    --lime:    #39ff14;
+    --yellow:  #fff200;
+    --purple:  #5a00ff;
+    --pink:    #ff007a;
+    --vwhite:  #fff;
+
+    --bg-top:    #1a0033;
+    --bg-mid:    #4a0066;
+    --bg-bot:    #1a0033;
+    --panel:     rgba(20, 0, 40, 0.78);
+    --panel-edge:#ff2afc;
+    --rule:      rgba(255, 42, 252, 0.35);
+    --ink:       #fff;
+    --ink-dim:   #c8a8ff;
+    --accent:    #ff007a; /* hot pink replaces gold */
+    --accent2:   #00f5ff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg-top);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Synthwave background — sunset gradient + Tron grid + horizon glow */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      /* horizon glow */
+      radial-gradient(900px 320px at 50% 78%, rgba(255, 42, 252, 0.45), transparent 70%),
+      radial-gradient(1200px 460px at 50% 95%, rgba(255, 0, 122, 0.35), transparent 70%),
+      /* sunset wash */
+      linear-gradient(180deg,
+        #1a0033 0%,
+        #2a0050 35%,
+        #5a0080 55%,
+        #ff2a8a 78%,
+        #ff7e1a 92%,
+        #1a0033 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  /* Tron grid overlay (perspective lines) */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      /* horizontal grid lines (1px every 28px, tinted cyan) */
+      repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        transparent 27px,
+        rgba(0, 245, 255, 0.10) 27px,
+        rgba(0, 245, 255, 0.10) 28px
+      ),
+      /* vertical grid lines (1px every 28px, tinted magenta) */
+      repeating-linear-gradient(
+        90deg,
+        transparent 0px,
+        transparent 27px,
+        rgba(255, 42, 252, 0.06) 27px,
+        rgba(255, 42, 252, 0.06) 28px
+      ),
+      /* scanlines (CRT, every 2px, 5% black) */
+      repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.05) 0px,
+        rgba(0, 0, 0, 0.05) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    pointer-events: none;
+    z-index: 1;
+    mix-blend-mode: screen;
+  }
+
+  #app {
+    position: relative;
+    z-index: 2;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .slide {
+    flex: 1 1 auto;
+    padding: 32px 48px 16px 48px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideIn 220ms ease-out;
+  }
+  .slide.active { display: flex; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  h1, h2 {
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+  }
+  h1 {
+    font-size: 38px;
+    margin: 0 0 6px 0;
+    color: var(--ink);
+    text-shadow:
+      -2px 0 0 var(--magenta),
+       2px 0 0 var(--cyan);
+  }
+  h2 {
+    font-size: 32px;
+    margin: 0 0 14px 0;
+    color: var(--ink);
+    text-shadow:
+      -1.5px 0 0 var(--magenta),
+       1.5px 0 0 var(--cyan);
+  }
+  h2 .accent { color: var(--accent); text-shadow: none; -webkit-text-stroke: 0.5px var(--cyan); }
+
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: 17px;
+    margin: 0 0 24px 0;
+    max-width: 880px;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+  }
+  .caption {
+    color: var(--ink);
+    font-size: 16px;
+    margin: 0 0 18px 0;
+    max-width: 980px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+  }
+  .caption strong { color: var(--cyan); font-weight: 600; }
+
+  /* Footer / nav */
+  footer {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+    border-top: 1px solid var(--magenta);
+    background: rgba(15, 0, 30, 0.85);
+    font-size: 13px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    box-shadow: 0 -8px 24px rgba(255, 42, 252, 0.25);
+  }
+  .nav-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .nav-btn {
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    padding: 7px 14px;
+    border-radius: 0;  /* hard edges */
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    box-shadow: 0 0 8px rgba(0, 245, 255, 0.4), inset 0 0 4px rgba(0, 245, 255, 0.1);
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+  .nav-btn:hover {
+    background: var(--cyan);
+    color: #00131a;
+    box-shadow: 0 0 14px rgba(0, 245, 255, 0.7);
+  }
+  .nav-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    box-shadow: none;
+  }
+
+  .counter { font-variant-numeric: tabular-nums; color: var(--magenta); }
+
+  .nav-hint {
+    position: fixed;
+    bottom: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    background: rgba(20, 0, 40, 0.85);
+    color: var(--ink);
+    padding: 8px 16px;
+    border-radius: 0;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    border: 1px solid var(--magenta);
+    box-shadow: 0 0 16px rgba(255, 42, 252, 0.5);
+    transition: opacity 400ms ease;
+  }
+  .nav-hint.hidden { opacity: 0; pointer-events: none; }
+
+  /* Layout helpers */
+  .row { display: flex; gap: 16px; align-items: stretch; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .grow { flex: 1 1 auto; min-height: 0; }
+
+  /* Sprite grid wrappers — sunset-gradient backgrounds with neon edges */
+  .grid-wrap {
+    background:
+      linear-gradient(180deg,
+        #0a0014 0%,
+        #1a0033 50%,
+        #3d0066 90%,
+        #6b0099 100%);
+    border: 1px solid var(--magenta);
+    border-radius: 0;
+    padding: 18px;
+    box-shadow:
+      0 0 16px rgba(255, 42, 252, 0.35),
+      inset 0 0 32px rgba(0, 245, 255, 0.08);
+    position: relative;
+  }
+  /* Scanline texture inside grid wrappers */
+  .grid-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.18) 0px,
+      rgba(0, 0, 0, 0.18) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+  .grid {
+    display: grid;
+    gap: 10px;
+    position: relative;
+    z-index: 2;
+  }
+  .grid-cell {
+    background: #08000f;
+    border-radius: 0;
+    border: 1px solid rgba(255, 42, 252, 0.25);
+    width: 100%;
+    aspect-ratio: 1;
+    display: block;
+    overflow: hidden;
+  }
+  .grid-cell canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: auto;
+  }
+  .row-label {
+    color: var(--cyan);
+    font-size: 11px;
+    margin: 4px 0 6px 4px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px rgba(0, 245, 255, 0.7);
+  }
+
+  .feature-panel {
+    flex: 0 0 320px;
+    background: var(--panel);
+    border: 1px solid var(--cyan);
+    border-radius: 0;
+    padding: 22px;
+    color: var(--ink);
+    box-shadow:
+      0 0 18px rgba(0, 245, 255, 0.4),
+      inset 0 0 24px rgba(255, 42, 252, 0.06);
+    position: relative;
+  }
+  .feature-panel::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.10) 0px,
+      rgba(0, 0, 0, 0.10) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
+  .feature-panel > * { position: relative; z-index: 1; }
+  .feature-panel h3 {
+    margin: 0 0 14px 0;
+    font-size: 16px;
+    color: var(--magenta);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 8px rgba(255, 42, 252, 0.7);
+  }
+  .feature-panel ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 18px 0;
+  }
+  .feature-panel li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .feature-panel li:last-child { border-bottom: none; }
+  .feature-panel .feat-name {
+    color: var(--cyan);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+  }
+  .feature-panel .feat-range {
+    color: var(--ink);
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .regen-btn {
+    background: linear-gradient(135deg, var(--magenta) 0%, var(--pink) 100%);
+    color: #150022;
+    border: 1px solid var(--cyan);
+    padding: 11px 18px;
+    border-radius: 0;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 12px;
+    font-family: inherit;
+    width: 100%;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    box-shadow:
+      0 0 12px rgba(255, 42, 252, 0.6),
+      inset 0 0 8px rgba(255, 255, 255, 0.3);
+    transition: filter 120ms ease, transform 80ms ease;
+  }
+  .regen-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+  .regen-btn:active { transform: translateY(0); }
+
+  /* Code blocks — neon CRT */
+  pre.code {
+    background: #0a0018;
+    border: 1px solid var(--magenta);
+    border-left: 3px solid var(--cyan);
+    border-radius: 0;
+    padding: 16px 20px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #e0d0ff;
+    margin: 0;
+    overflow: auto;
+    max-width: 900px;
+    box-shadow: 0 0 14px rgba(255, 42, 252, 0.3), inset 0 0 16px rgba(0, 245, 255, 0.05);
+  }
+  .code .kw { color: var(--magenta); }
+  .code .fn { color: var(--cyan); }
+  .code .num { color: var(--lime); }
+  .code .str { color: var(--yellow); }
+  .code .com { color: #8866cc; font-style: italic; }
+
+  /* Cost cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 980px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--magenta);
+    border-radius: 0;
+    padding: 28px 24px;
+    text-align: center;
+    box-shadow: 0 0 16px rgba(255, 42, 252, 0.35);
+    position: relative;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.12) 0px,
+      rgba(0, 0, 0, 0.12) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
+  .card > * { position: relative; z-index: 1; }
+  .card .card-num {
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--cyan);
+    line-height: 1;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+    text-shadow:
+      -1.5px 0 0 var(--magenta),
+       1.5px 0 0 var(--cyan);
+  }
+  .card .card-label {
+    font-size: 12px;
+    color: var(--magenta);
+    font-weight: 700;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+  }
+  .card .card-desc { font-size: 13px; color: var(--ink); line-height: 1.4; opacity: 0.9; }
+
+  /* Mini sky composite */
+  .sky-wrap {
+    background:
+      linear-gradient(180deg,
+        #1a0033 0%,
+        #2a0050 35%,
+        #5a0080 55%,
+        #ff2a8a 78%,
+        #ff7e1a 92%,
+        #1a0033 100%);
+    border: 1px solid var(--cyan);
+    border-radius: 0;
+    padding: 6px;
+    position: relative;
+    box-shadow: 0 0 18px rgba(0, 245, 255, 0.4);
+  }
+  .sky-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+  .sky-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    background: var(--panel);
+    border: 1px solid var(--magenta);
+    border-radius: 0;
+    overflow: hidden;
+    margin: 0 0 12px 0;
+    box-shadow: 0 0 10px rgba(255, 42, 252, 0.4);
+  }
+  .sky-toggle button {
+    background: transparent;
+    color: var(--ink-dim);
+    border: none;
+    padding: 8px 18px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .sky-toggle button.active {
+    background: var(--magenta);
+    color: #150022;
+    font-weight: 700;
+  }
+  .sky-label {
+    color: var(--cyan);
+    font-size: 11px;
+    margin-right: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  /* Type-bundle grids (slide 9, 10) */
+  .bundle { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .bundle-block { display: flex; flex-direction: column; }
+  .bundle-block h3 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    color: var(--cyan);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 6px rgba(0, 245, 255, 0.6);
+  }
+
+  /* Title slide special */
+  .title-block {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding-bottom: 80px;
+  }
+  .title-block h1 {
+    font-size: 64px;
+    margin-bottom: 14px;
+    text-shadow:
+      -3px 0 0 var(--magenta),
+       3px 0 0 var(--cyan),
+       0 0 24px rgba(255, 42, 252, 0.6);
+    line-height: 1.1;
+    color: var(--vwhite);
+  }
+  .title-block .sub-tag {
+    color: var(--cyan);
+    font-size: 14px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    text-shadow: 0 0 8px rgba(0, 245, 255, 0.7);
+  }
+  .title-block .subtitle {
+    font-size: 20px;
+    max-width: 760px;
+    color: var(--ink);
+    letter-spacing: 0.05em;
+  }
+  .title-block .nav-prompt {
+    margin-top: 56px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  /* Recommendation slide */
+  .rec-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0 24px 0;
+    max-width: 980px;
+  }
+  .rec-step {
+    background: var(--panel);
+    border: 1px solid var(--cyan);
+    border-radius: 0;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    box-shadow: 0 0 6px rgba(0, 245, 255, 0.3);
+  }
+  .rec-step.first {
+    border-color: var(--magenta);
+    color: var(--magenta);
+    box-shadow: 0 0 10px rgba(255, 42, 252, 0.5);
+  }
+  .rec-arrow { color: var(--cyan); align-self: center; font-size: 14px; }
+
+  .limit-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-width: 880px;
+  }
+  .limit-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .limit-list li::before {
+    content: '> ';
+    color: var(--cyan);
+    font-family: 'SF Mono', Menlo, monospace;
+  }
+  .limit-list strong { color: var(--magenta); font-weight: 700; }
+
+  /* Helpful labels above grids */
+  .grid-with-label {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <main id="slides"></main>
+  <div id="navHint" class="nav-hint">press <strong style="color:var(--cyan)">→</strong> for next</div>
+  <footer>
+    <div class="counter"><span id="counter">1 / 13</span></div>
+    <div class="nav-buttons">
+      <button class="nav-btn" id="prevBtn">&larr; Prev</button>
+      <button class="nav-btn" id="nextBtn">Next &rarr;</button>
+    </div>
+    <div style="opacity:0.6">F8a vapor &middot; alternate aesthetic</div>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+ * Star Palace F8a-VAPOR prototype — alternate aesthetic deck
+ * ----------------------------------------------------------------
+ *  Same framework as the JWST-realism deck:
+ *  - Mulberry32 PRNG seeded from FNV-1a hash of star id
+ *  - LRU sprite cache (cap 500)
+ *  - Per-type drawer with 2-3 hash-driven features
+ *
+ *  All drawers reimagined in vaporwave / synthwave / glitch style:
+ *  - Hot magenta / electric cyan / lime / hyper-yellow palette
+ *  - Chromatic aberration (R-channel left, B-channel right)
+ *  - Posterized colour bands instead of smooth gradients
+ *  - Hard neon outlines, scanlines, glitch displacement
+ *  - Tron-grid straight lines instead of soft curves where applicable
+ *
+ *  rng() call order inside each drawer is documented inline; reordering
+ *  reseeds downstream features.
+ * ============================================================ */
+
+/* ---------- PRNG + cache foundations (verbatim from first deck) ---------- */
+
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seedFromId(id) {
+  let s = hashStr(id) >>> 0;
+  return function rng() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rngRange = (rng, lo, hi) => lo + rng() * (hi - lo);
+const rngPick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+class LRUSpriteCache {
+  constructor(cap) { this.cap = cap; this.map = new Map(); }
+  get(k) {
+    const v = this.map.get(k);
+    if (!v) return null;
+    this.map.delete(k); this.map.set(k, v);
+    return v;
+  }
+  set(k, v) {
+    if (this.map.has(k)) this.map.delete(k);
+    this.map.set(k, v);
+    while (this.map.size > this.cap) {
+      const first = this.map.keys().next().value;
+      if (first === undefined) break;
+      this.map.delete(first);
+    }
+  }
+  size() { return this.map.size; }
+  clear() { this.map.clear(); }
+}
+
+const TYPED_CACHE = new LRUSpriteCache(500);
+
+/* ---------- Sprite rendering harness ---------- */
+
+const TYPED_SCALE = {
+  'red-giant': 1.7,
+  'blue-supergiant': 1.7,
+  'white-dwarf': 0.6,
+  'neutron-star': 0.45,
+  'pulsar': 0.7,
+  'binary': 1.2,
+  'quasar': 1.0,
+  'black-hole': 1.4,
+  'nebula': 2.4,
+};
+
+const HALO_FACTOR = 3.5;
+const SIZE_RADII = [3, 4.5, 6, 8, 11, 16, 22];
+function spriteCoreRadius(sb) {
+  const i = Math.max(0, Math.min(SIZE_RADII.length - 1, sb));
+  return SIZE_RADII[i];
+}
+
+/* ---------- Vapor utility helpers ---------- */
+
+/**
+ * Cross-cutting circular alpha fade — every drawer ends with this so the
+ * square sprite canvas reads as a round glowing object on the dark bg.
+ */
+function applyCircularFade(ctx, cx, cy, half, innerStop = 0.85) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-in';
+  const mask = ctx.createRadialGradient(cx, cy, 0, cx, cy, half);
+  mask.addColorStop(0,         'rgba(0,0,0,1)');
+  mask.addColorStop(innerStop, 'rgba(0,0,0,1)');
+  mask.addColorStop(Math.min(0.999, innerStop + (1 - innerStop) * 0.8), 'rgba(0,0,0,0.3)');
+  mask.addColorStop(1,         'rgba(0,0,0,0)');
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+}
+
+/**
+ * Posterized circular halo — N hard color bands instead of smooth gradient.
+ * `bands` is array of `[t, 'rgba(...)']` stops where colors are flat between t-values.
+ */
+function paintPosterizedDisc(ctx, cx, cy, radius, bands, blend) {
+  ctx.save();
+  if (blend) ctx.globalCompositeOperation = blend;
+  // Sort by t descending so we paint outer rings first; inner ones overdraw.
+  const ordered = [...bands].sort((a, b) => b[0] - a[0]);
+  for (const [t, col] of ordered) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * t, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * Apply a horizontal "glitch slice" displacement to the current canvas.
+ * Picks 1-3 random bands inside the bounding box and shifts them sideways.
+ * Idempotent: takes a snapshot, reblits with offset.
+ */
+function applyGlitchDisplacement(ctx, cx, cy, half, rng) {
+  const sliceCount = 1 + Math.floor(rng() * 3);
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  // snapshot
+  const snap = ctx.getImageData(0, 0, w, h);
+  ctx.save();
+  for (let i = 0; i < sliceCount; i++) {
+    const y0 = Math.max(0, Math.floor(cy - half + rng() * half * 2));
+    const sliceH = Math.max(1, Math.floor(rng() * (half * 0.18) + 1));
+    const dx = Math.floor((rng() * 2 - 1) * half * 0.18);
+    // create a temp canvas slice
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = sliceH;
+    const tctx = tmp.getContext('2d');
+    tctx.putImageData(snap, 0, -y0);
+    // erase original strip
+    ctx.clearRect(0, y0, w, sliceH);
+    ctx.drawImage(tmp, dx, y0);
+  }
+  ctx.restore();
+}
+
+/**
+ * Chromatic aberration: re-blit the current sprite once shifted left in red,
+ * once shifted right in blue, both onto the current canvas with `screen` blend.
+ * Subtle (1-3 px shift).
+ */
+function applyChromaticAberration(ctx, cx, cy, half, shift) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const snap = document.createElement('canvas');
+  snap.width = w; snap.height = h;
+  snap.getContext('2d').drawImage(ctx.canvas, 0, 0);
+
+  // Build red-only and blue-only versions of the snapshot via composite tricks.
+  const makeChannel = (rgbHex) => {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cc = c.getContext('2d');
+    cc.drawImage(snap, 0, 0);
+    cc.globalCompositeOperation = 'multiply';
+    cc.fillStyle = rgbHex;
+    cc.fillRect(0, 0, w, h);
+    // restore alpha with destination-in from snapshot
+    cc.globalCompositeOperation = 'destination-in';
+    cc.drawImage(snap, 0, 0);
+    return c;
+  };
+  const redCh  = makeChannel('#ff0000');
+  const blueCh = makeChannel('#0000ff');
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.drawImage(redCh,  -shift, 0);
+  ctx.drawImage(blueCh,  shift, 0);
+  ctx.restore();
+}
+
+/** Render a typed star sprite into its own offscreen canvas. */
+function renderTypedSprite(type, sizeBucket, starId, mode) {
+  const baseR = spriteCoreRadius(sizeBucket) * TYPED_SCALE[type];
+  const haloFactor = type === 'nebula' ? 1.6
+                   : type === 'quasar' ? 4.5
+                   : type === 'pulsar' ? 3.8
+                   : HALO_FACTOR;
+  const half = Math.ceil(baseR * haloFactor);
+  const size = half * 2;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const cx = half, cy = half;
+  const rng = mode === 'proc' ? seedFromId(starId) : null;
+
+  const drawer = (mode === 'proc' ? PROC_DRAWERS : CURRENT_DRAWERS)[type];
+  drawer(ctx, cx, cy, baseR, rng, sizeBucket);
+  return c;
+}
+
+/** Cache wrapper. Key uses a 12-bit hash bucket of the id. */
+function getTypedStarSprite(type, sizeBucket, starId, mode) {
+  const hashBucket = mode === 'proc' ? (hashStr(starId) & 0xFFF) : 0;
+  const key = `${mode}|${type}|${sizeBucket}|${hashBucket}`;
+  const cached = TYPED_CACHE.get(key);
+  if (cached) return cached;
+  const sprite = renderTypedSprite(type, sizeBucket, starId, mode);
+  TYPED_CACHE.set(key, sprite);
+  return sprite;
+}
+
+/* ============================================================
+ *  CURRENT (deterministic) drawers — vapor-aesthetic baseline.
+ *  Used for "before" comparisons. No rng. Same sprite per type.
+ *  These are intentionally still vaporwave-styled (so the deck
+ *  reads as one consistent aesthetic) but identical for any id.
+ * ============================================================ */
+
+const CURRENT_DRAWERS = {
+  'red-giant': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 3.0, [
+      [1.00, 'rgba(60, 0, 80, 0.0)'],
+      [0.85, 'rgba(140, 0, 100, 0.32)'],
+      [0.55, 'rgba(255, 42, 252, 0.55)'],
+      [0.35, 'rgba(255, 0, 122, 0.85)'],
+      [0.20, 'rgba(255, 200, 240, 1.00)'],
+    ]);
+    applyCircularFade(ctx, cx, cy, r * 3.5, 0.78);
+  },
+
+  'blue-supergiant': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 3.0, [
+      [1.00, 'rgba(0, 30, 80, 0.0)'],
+      [0.85, 'rgba(0, 80, 140, 0.32)'],
+      [0.55, 'rgba(0, 245, 255, 0.55)'],
+      [0.35, 'rgba(140, 255, 255, 0.9)'],
+      [0.20, 'rgba(255, 255, 255, 1.0)'],
+    ]);
+    // four hard X spikes, no rng
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = 'rgba(255, 242, 0, 0.9)';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(r * 3.0, 0);
+      ctx.stroke();
+    }
+    ctx.restore();
+    applyCircularFade(ctx, cx, cy, r * 3.5, 0.82);
+  },
+
+  'white-dwarf': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 1.6, [
+      [1.00, 'rgba(255, 0, 122, 0.0)'],
+      [0.75, 'rgba(255, 0, 122, 0.4)'],
+      [0.55, 'rgba(0, 245, 255, 0.55)'],
+      [0.35, 'rgba(57, 255, 20, 0.55)'],
+      [0.20, 'rgba(255, 255, 255, 1.0)'],
+    ]);
+    applyCircularFade(ctx, cx, cy, r * 1.8, 0.75);
+  },
+
+  'neutron-star': function(ctx, cx, cy, r) {
+    // a static dot cloud — same one always
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 42, 252, 0.95)';
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(i) * r * 0.6, cy + Math.sin(i) * r * 0.6, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(0, 245, 255, 1.0)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    applyCircularFade(ctx, cx, cy, r * 2.5, 0.7);
+  },
+
+  'pulsar': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 2.0, [
+      [1.00, 'rgba(0, 0, 80, 0.0)'],
+      [0.7,  'rgba(0, 245, 255, 0.4)'],
+      [0.4,  'rgba(255, 42, 252, 0.7)'],
+      [0.2,  'rgba(255, 255, 255, 1.0)'],
+    ]);
+    // symmetric cyan beam pair
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 245, 255, 0.85)';
+    ctx.lineWidth = r * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 4, cy);
+    ctx.lineTo(cx + r * 4, cy);
+    ctx.stroke();
+    ctx.restore();
+    applyCircularFade(ctx, cx, cy, r * 3.5, 0.8);
+  },
+
+  'binary': function(ctx, cx, cy, r) {
+    const off = r * 1.2;
+    paintPosterizedDisc(ctx, cx - off, cy, r * 1.4, [
+      [1.0, 'rgba(255,42,252,0.0)'], [0.55, 'rgba(255,42,252,0.7)'],
+      [0.30, 'rgba(255,255,255,1.0)']]);
+    paintPosterizedDisc(ctx, cx + off, cy, r * 1.4, [
+      [1.0, 'rgba(0,245,255,0.0)'], [0.55, 'rgba(0,245,255,0.7)'],
+      [0.30, 'rgba(255,255,255,1.0)']]);
+    applyCircularFade(ctx, cx, cy, r * 3.5, 0.78);
+  },
+
+  'quasar': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 2.4, [
+      [1.0, 'rgba(90,0,255,0.0)'],
+      [0.7, 'rgba(90,0,255,0.45)'],
+      [0.4, 'rgba(255,42,252,0.7)'],
+      [0.2, 'rgba(255,255,255,1.0)']]);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(57, 255, 20, 0.9)';
+    ctx.lineWidth = r * 0.35;
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * 4); ctx.lineTo(cx, cy + r * 4); ctx.stroke();
+    ctx.restore();
+    applyCircularFade(ctx, cx, cy, r * 4.5, 0.82);
+  },
+
+  'black-hole': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 3.0, [
+      [1.0, 'rgba(255,42,252,0.0)'],
+      [0.55, 'rgba(255,42,252,0.7)'],
+      [0.45, 'rgba(255,242,0,0.85)'],
+      [0.32, 'rgba(255,42,252,0.9)']
+    ]);
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.95, 0, Math.PI * 2); ctx.fill();
+    applyCircularFade(ctx, cx, cy, r * 3.5, 0.85);
+  },
+
+  'nebula': function(ctx, cx, cy, r) {
+    paintPosterizedDisc(ctx, cx, cy, r * 1.4, [
+      [1.0, 'rgba(57,255,20,0.0)'],
+      [0.85, 'rgba(57,255,20,0.4)'],
+      [0.6,  'rgba(0,245,255,0.45)'],
+      [0.35, 'rgba(255,42,252,0.55)']
+    ]);
+    applyCircularFade(ctx, cx, cy, r * 1.6, 0.7);
+  },
+};
+
+/* ============================================================
+ *  PROCEDURAL drawers — F8a per-type variation, vapor aesthetic
+ *
+ *  Each drawer pulls rng() in a fixed order; reordering reseeds
+ *  downstream features. Comments tag the call order.
+ *
+ *  Common motifs:
+ *  - posterized colour bands (3-4 hard stops, no smooth gradients)
+ *  - 1px neon outlines in contrasting hues
+ *  - chromatic aberration via 'screen' offset draws
+ *  - ~10% of sprites get glitch slice displacement (last-roll hash)
+ * ============================================================ */
+
+/** Roll once per sprite; 10% of sprites get glitch displacement. */
+function rollGlitch(rng) { return rng() < 0.10; }
+
+const PROC_DRAWERS = {
+
+  /* 1. RED GIANT — pulsing magenta sphere with cyan chromatic ghost
+   *    + quantized hot-pink mottling blocks + cyan electric arc prominences
+   */
+  'red-giant': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) blob count, B..) per-blob {angle, radial, size, hue-pick}
+    //            C) prominence count, D..) per-prom {angle, length, jaggedness}
+    //            E) glitch roll
+
+    // Posterized magenta sphere — 4 hard bands
+    paintPosterizedDisc(ctx, cx, cy, r * 3.0, [
+      [1.00, 'rgba(40, 0, 60, 0.0)'],
+      [0.85, 'rgba(120, 0, 100, 0.40)'],
+      [0.60, 'rgba(255, 0, 122, 0.65)'],
+      [0.40, 'rgba(255, 42, 252, 0.90)'],
+      [0.22, 'rgba(255, 200, 240, 1.0)'],
+    ]);
+
+    // Quantized mottling — 8..14 hot-pink/magenta blocks (square cells, hard edges)
+    const blobCount = 8 + Math.floor(rng() * 7); // 8..14
+    const blockHues = ['rgba(255, 0, 122, 0.85)', 'rgba(255, 42, 252, 0.95)', 'rgba(255, 242, 0, 0.7)'];
+    ctx.save();
+    for (let i = 0; i < blobCount; i++) {
+      const ang = rng() * Math.PI * 2;
+      const radial = rng() * 0.7;
+      const sz = rngRange(rng, 0.10, 0.24) * r;
+      const px = cx + Math.cos(ang) * radial * r;
+      const py = cy + Math.sin(ang) * radial * r;
+      const hue = rngPick(rng, blockHues);
+      // hard-edged square block, not gradient
+      ctx.fillStyle = hue;
+      ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+    }
+    ctx.restore();
+
+    // Cyan electric arc prominences — jagged lightning, not smooth bezier
+    const promCount = 2 + Math.floor(rng() * 3); // 2..4
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (let i = 0; i < promCount; i++) {
+      const ang = rng() * Math.PI * 2;
+      const length = rngRange(rng, 1.20, 1.80);
+      const jag = rngRange(rng, 0.08, 0.18);
+      const sx = cx + Math.cos(ang) * r * 0.95;
+      const sy = cy + Math.sin(ang) * r * 0.95;
+      const ex = cx + Math.cos(ang) * r * length;
+      const ey = cy + Math.sin(ang) * r * length;
+      // 6-segment jagged polyline
+      const STEPS = 6;
+      ctx.strokeStyle = 'rgba(0, 245, 255, 0.95)';
+      ctx.lineWidth = 1.6;
+      ctx.shadowColor = 'rgba(0, 245, 255, 0.9)';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      let prevX = sx, prevY = sy;
+      for (let k = 1; k <= STEPS; k++) {
+        const t = k / STEPS;
+        const lx = sx + (ex - sx) * t;
+        const ly = sy + (ey - sy) * t;
+        // perpendicular jitter
+        const px = -(ey - sy);
+        const py =  (ex - sx);
+        const plen = Math.hypot(px, py) || 1;
+        const jx = (px / plen) * (rng() * 2 - 1) * jag * r;
+        const jy = (py / plen) * (rng() * 2 - 1) * jag * r;
+        const nx = lx + jx;
+        const ny = ly + jy;
+        ctx.lineTo(nx, ny);
+        prevX = nx; prevY = ny;
+      }
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // Chromatic aberration ghost on the disc
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.78);
+  },
+
+  /* 2. BLUE SUPERGIANT — hot cyan core with hyper-yellow X-spikes
+   *    Hard edges, halo squish, base angle. Spike count {4,6,8}.
+   */
+  'blue-supergiant': function(ctx, cx, cy, r, rng, sizeBucket) {
+    // rng() ord: A) spike count, B) halo squish, C) halo tilt, D) spike base angle, E) glitch
+    const spikeWeights = [
+      { n: 4, w: 0.55 },
+      { n: 6, w: 0.30 },
+      { n: 8, w: 0.15 },
+    ];
+    const u = rng();
+    let acc = 0, spikeCount = 4;
+    for (const { n, w } of spikeWeights) { acc += w; if (u <= acc) { spikeCount = n; break; } }
+
+    const squish = rngRange(rng, 0.75, 1.25);
+    const tilt   = rng() * Math.PI;
+    const base   = rng() * (Math.PI / spikeCount);
+
+    // Posterized halo, eccentric
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.scale(squish, 1 / squish);
+    paintPosterizedDisc(ctx, 0, 0, r * 3.0, [
+      [1.00, 'rgba(0, 30, 80, 0.0)'],
+      [0.85, 'rgba(0, 60, 160, 0.35)'],
+      [0.55, 'rgba(0, 245, 255, 0.65)'],
+      [0.35, 'rgba(140, 255, 255, 0.9)'],
+      [0.20, 'rgba(255, 255, 255, 1.0)'],
+    ]);
+    ctx.restore();
+
+    // Hard hyper-yellow X-spikes (no soft falloff)
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt + base);
+    const reach = r * 3.0;
+    const lineWidth = sizeBucket >= 4 ? 2.2 : 1.6;
+    for (let i = 0; i < spikeCount; i++) {
+      const ang = (i / spikeCount) * Math.PI;
+      const dx = Math.cos(ang) * reach;
+      const dy = Math.sin(ang) * reach;
+      // outer hyper-yellow with hard edge
+      ctx.strokeStyle = 'rgba(255, 242, 0, 0.95)';
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      ctx.moveTo(-dx, -dy); ctx.lineTo(dx, dy);
+      ctx.stroke();
+      // thin pure-white core overlay
+      ctx.strokeStyle = 'rgba(255, 255, 255, 1.0)';
+      ctx.lineWidth = Math.max(1, lineWidth - 1);
+      ctx.beginPath();
+      ctx.moveTo(-dx, -dy); ctx.lineTo(dx, dy);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Hot cyan core with magenta outline
+    ctx.fillStyle = 'rgba(0, 245, 255, 1.0)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 42, 252, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2); ctx.stroke();
+    // bright nucleus
+    ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.32, 0, Math.PI * 2); ctx.fill();
+
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.82);
+  },
+
+  /* 3. WHITE DWARF — tiny vapor-white core, posterized rainbow halo,
+   *    Tron-grid 90° straight wisp lines.
+   */
+  'white-dwarf': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) size jitter, B) wisp count, C..) per-wisp {dir-pick, length}, D) glitch
+    const jitter = rngRange(rng, 0.9, 1.1);
+    r = r * jitter;
+
+    // Posterized rainbow halo — 3 hard bands: magenta / cyan / lime
+    paintPosterizedDisc(ctx, cx, cy, r * 1.7, [
+      [1.00, 'rgba(255, 0, 122, 0.0)'],
+      [0.78, 'rgba(255, 0, 122, 0.55)'],   // magenta outer band
+      [0.62, 'rgba(0, 245, 255, 0.65)'],   // cyan middle band
+      [0.46, 'rgba(57, 255, 20, 0.75)'],   // lime inner band
+      [0.28, 'rgba(255, 255, 255, 1.0)'],  // vapor white core
+    ]);
+
+    // Tron-grid wisps — strict 90° (N/S/E/W only) with neon glow
+    const wispCount = 4 + Math.floor(rng() * 4); // 4..7
+    const dirs = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [1, 1], [-1, 1], [1, -1], [-1, -1], // diagonals occasionally
+    ];
+    ctx.save();
+    ctx.lineWidth = 0.9;
+    ctx.shadowColor = 'rgba(0, 245, 255, 0.7)';
+    ctx.shadowBlur = 4;
+    for (let i = 0; i < wispCount; i++) {
+      const dir = rngPick(rng, dirs);
+      const len = rngRange(rng, 1.6, 2.6) * r;
+      const norm = Math.hypot(dir[0], dir[1]);
+      const dx = (dir[0] / norm) * len;
+      const dy = (dir[1] / norm) * len;
+      const innerR = r * 1.05;
+      const ix = cx + (dir[0] / norm) * innerR;
+      const iy = cy + (dir[1] / norm) * innerR;
+      const ox = cx + dx;
+      const oy = cy + dy;
+      ctx.strokeStyle = 'rgba(0, 245, 255, 0.85)';
+      ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ox, oy); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.78);
+  },
+
+  /* 4. NEUTRON STAR — 25..50 vapor-palette dots, hard outlines, no soft glow
+   *    (per the user's nucleus suggestion)
+   */
+  'neutron-star': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) dot count, B..) per-dot {pos, hue, size}, C) glitch
+    const dotCount = 25 + Math.floor(rng() * 26); // 25..50
+    const dotHues = [
+      'rgba(255, 42, 252, 1.0)',
+      'rgba(0, 245, 255, 1.0)',
+      'rgba(255, 242, 0, 1.0)',
+    ];
+
+    // Subtle posterized backdrop for context
+    paintPosterizedDisc(ctx, cx, cy, r * 1.6, [
+      [1.0, 'rgba(20, 0, 40, 0.0)'],
+      [0.85, 'rgba(40, 0, 60, 0.5)'],
+    ]);
+
+    ctx.save();
+    for (let i = 0; i < dotCount; i++) {
+      // packed inside disc
+      let bx = 0, by = 0;
+      for (let t = 0; t < 6; t++) {
+        const u = rng() * 2 - 1, v = rng() * 2 - 1;
+        if (u * u + v * v < 0.85) { bx = u; by = v; break; }
+      }
+      const px = cx + bx * r * 1.0;
+      const py = cy + by * r * 1.0;
+      const sz = rngRange(rng, 1.0, 2.4);
+      const hue = rngPick(rng, dotHues);
+      // hard dot
+      ctx.fillStyle = hue;
+      ctx.beginPath();
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
+      ctx.fill();
+      // contrasting 1px outline
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.arc(px, py, sz + 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.85);
+  },
+
+  /* 5. PULSAR — dual-color beams (cyan + magenta) with chromatic split
+   *    visible RGB overlap, scanline interference pattern
+   */
+  'pulsar': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) tilt, B) beam misalignment, C) intensity ratio, D) glitch
+    const tilt = rng() * Math.PI;
+    const drift = rngRange(rng, -Math.PI / 12, Math.PI / 12);
+    const ratio = rngRange(rng, 0.7, 1.3);
+
+    // Posterized halo — purple → cyan → white
+    paintPosterizedDisc(ctx, cx, cy, r * 2.5, [
+      [1.00, 'rgba(0, 0, 60, 0.0)'],
+      [0.80, 'rgba(90, 0, 255, 0.40)'],
+      [0.55, 'rgba(0, 245, 255, 0.55)'],
+      [0.35, 'rgba(255, 42, 252, 0.65)'],
+      [0.18, 'rgba(255, 255, 255, 1.0)'],
+    ]);
+
+    // Two beams, each rendered with chromatic split
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const beamLen = r * 4.5;
+
+    const drawBeamPair = (angle, intensity) => {
+      const tx = cx + Math.cos(angle) * beamLen;
+      const ty = cy + Math.sin(angle) * beamLen;
+      const w = r * 0.55 * intensity;
+      const px = -Math.sin(angle), py = Math.cos(angle);
+      const a = Math.min(1, intensity);
+
+      // CYAN beam, shifted slightly perpendicular (chromatic offset along the beam axis)
+      ctx.fillStyle = `rgba(0, 245, 255, ${a * 0.85})`;
+      ctx.beginPath();
+      const sh = r * 0.10;
+      ctx.moveTo(cx + px * w * 0.25 - Math.cos(angle) * sh, cy + py * w * 0.25 - Math.sin(angle) * sh);
+      ctx.lineTo(tx + px * w - Math.cos(angle) * sh, ty + py * w - Math.sin(angle) * sh);
+      ctx.lineTo(tx - px * w - Math.cos(angle) * sh, ty - py * w - Math.sin(angle) * sh);
+      ctx.lineTo(cx - px * w * 0.25 - Math.cos(angle) * sh, cy - py * w * 0.25 - Math.sin(angle) * sh);
+      ctx.closePath(); ctx.fill();
+
+      // MAGENTA beam, shifted opposite
+      ctx.fillStyle = `rgba(255, 42, 252, ${a * 0.85})`;
+      ctx.beginPath();
+      ctx.moveTo(cx + px * w * 0.25 + Math.cos(angle) * sh, cy + py * w * 0.25 + Math.sin(angle) * sh);
+      ctx.lineTo(tx + px * w + Math.cos(angle) * sh, ty + py * w + Math.sin(angle) * sh);
+      ctx.lineTo(tx - px * w + Math.cos(angle) * sh, ty - py * w + Math.sin(angle) * sh);
+      ctx.lineTo(cx - px * w * 0.25 + Math.cos(angle) * sh, cy - py * w * 0.25 + Math.sin(angle) * sh);
+      ctx.closePath(); ctx.fill();
+
+      // bright white centerline
+      ctx.strokeStyle = `rgba(255, 255, 255, ${a})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(tx, ty);
+      ctx.stroke();
+    };
+    drawBeamPair(tilt, ratio);
+    drawBeamPair(tilt + Math.PI + drift, 2 - ratio);
+    ctx.restore();
+
+    // Scanline interference pattern over the halo (every 4 px, semi-transparent)
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    const half = ctx.canvas.width / 2;
+    for (let y = Math.floor(cy - half); y < cy + half; y += 4) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+      ctx.fillRect(cx - half, y, half * 2, 1);
+    }
+    ctx.restore();
+
+    // Bright tight core
+    ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 245, 255, 1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2); ctx.stroke();
+
+    const half2 = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half2, rng);
+    applyCircularFade(ctx, cx, cy, half2, 0.82);
+  },
+
+  /* 6. BINARY — magenta core + cyan core, doppler-tinted inner rings
+   *    (yellow on magenta, lime on cyan)
+   */
+  'binary': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) separation, B) size ratio, C) orbit angle, D) glitch
+    const sep = rngRange(rng, 0.8, 1.6) * r;
+    const ratio = rngRange(rng, 0.5, 1.5);
+    const ax = rng() * Math.PI;
+
+    const ux = Math.cos(ax), uy = Math.sin(ax);
+    const r1 = r * 1.0;
+    const r2 = r * ratio;
+    const x1 = cx - ux * sep, y1 = cy - uy * sep;
+    const x2 = cx + ux * sep, y2 = cy + uy * sep;
+
+    // Shared halo, eccentric along the orbit axis — purple sunset
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(ax);
+    ctx.scale(1.4, 0.85);
+    paintPosterizedDisc(ctx, 0, 0, (r + sep) * 1.5, [
+      [1.0, 'rgba(0, 0, 80, 0.0)'],
+      [0.85, 'rgba(90, 0, 255, 0.30)'],
+      [0.55, 'rgba(255, 0, 122, 0.45)'],
+    ]);
+    ctx.restore();
+
+    // Star A — magenta core with yellow doppler ring (blueshifted-feeling color shift)
+    paintPosterizedDisc(ctx, x1, y1, r1 * 1.5, [
+      [1.00, 'rgba(255, 0, 122, 0.0)'],
+      [0.80, 'rgba(255, 0, 122, 0.55)'],
+      [0.50, 'rgba(255, 42, 252, 0.85)'],
+      [0.25, 'rgba(255, 242, 0, 1.0)'], // yellow doppler inner
+    ]);
+    // 1px cyan outline on magenta core for contrast
+    ctx.strokeStyle = 'rgba(0, 245, 255, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x1, y1, r1 * 1.2, 0, Math.PI * 2); ctx.stroke();
+
+    // Star B — cyan core with lime doppler ring
+    paintPosterizedDisc(ctx, x2, y2, r2 * 1.5, [
+      [1.00, 'rgba(0, 60, 160, 0.0)'],
+      [0.80, 'rgba(0, 245, 255, 0.55)'],
+      [0.50, 'rgba(140, 255, 255, 0.85)'],
+      [0.25, 'rgba(57, 255, 20, 1.0)'], // lime doppler inner
+    ]);
+    // 1px magenta outline on cyan core
+    ctx.strokeStyle = 'rgba(255, 42, 252, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x2, y2, r2 * 1.2, 0, Math.PI * 2); ctx.stroke();
+
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.78);
+  },
+
+  /* 7. QUASAR — long polar jets in pure neon, accent hue from {lime, yellow, pink}
+   *    asymmetric jets, glitch displacement applied
+   */
+  'quasar': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) jet asymmetry, B) accent pick, C) disc tilt, D) glitch
+    const asym = rngRange(rng, 1.5, 3.0);
+    const accents = [
+      { core: 'rgba(57, 255, 20, 1.0)',   edge: 'rgba(57, 255, 20, 0.8)'   }, // lime
+      { core: 'rgba(255, 242, 0, 1.0)',   edge: 'rgba(255, 242, 0, 0.8)'   }, // hyper-yellow
+      { core: 'rgba(255, 0, 122, 1.0)',   edge: 'rgba(255, 0, 122, 0.8)'   }, // hot pink
+    ];
+    const accent = rngPick(rng, accents);
+    const tilt = rng() * Math.PI;
+
+    // Posterized halo — purple/magenta sunset
+    paintPosterizedDisc(ctx, cx, cy, r * 2.4, [
+      [1.00, 'rgba(20, 0, 60, 0.0)'],
+      [0.80, 'rgba(90, 0, 255, 0.40)'],
+      [0.55, 'rgba(255, 42, 252, 0.55)'],
+      [0.30, 'rgba(255, 200, 240, 0.85)'],
+    ]);
+
+    // Tilted accretion disc — posterized ellipse
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.scale(1, 0.32);
+    paintPosterizedDisc(ctx, 0, 0, r * 1.9, [
+      [1.00, 'rgba(255, 42, 252, 0.0)'],
+      [0.80, 'rgba(255, 0, 122, 0.55)'],
+      [0.55, 'rgba(255, 242, 0, 0.75)'],
+      [0.30, 'rgba(255, 255, 255, 1.0)'],
+    ]);
+    ctx.restore();
+
+    // Polar jets — long pure-neon rectangles in accent hue
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt + Math.PI / 2);
+    const baseLen = r * 4.2;
+    const lens = [baseLen * Math.sqrt(asym), baseLen / Math.sqrt(asym)];
+    for (let i = 0; i < 2; i++) {
+      const sign = i === 0 ? 1 : -1;
+      const ty = sign * lens[i];
+      const w = r * 0.5;
+      // outer accent hue rectangle (hard edge)
+      ctx.fillStyle = accent.edge;
+      ctx.fillRect(-w, 0, w * 2, ty);
+      // inner brighter neon stripe
+      ctx.fillStyle = accent.core;
+      ctx.fillRect(-w * 0.4, 0, w * 0.8, ty);
+      // bright white centerline
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillRect(-w * 0.12, 0, w * 0.24, ty);
+    }
+    ctx.restore();
+
+    // Bright AGN core — vapor-white with magenta + cyan chromatic outlines
+    ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.85, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 42, 252, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx - 1.5, cy, r * 0.85, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0, 245, 255, 0.9)';
+    ctx.beginPath(); ctx.arc(cx + 1.5, cy, r * 0.85, 0, Math.PI * 2); ctx.stroke();
+
+    const half = ctx.canvas.width / 2;
+    // Quasars get glitch more often (signature trick) — 25% chance
+    if (rng() < 0.25) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    else if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.82);
+  },
+
+  /* 8. BLACK HOLE — vortex of concentric posterized bands (magenta → purple → black)
+   *    asymmetry side gets chromatic-aberration ghost. Photon sphere thickness varies.
+   *    Pure black event horizon.
+   */
+  'black-hole': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) ring tilt, B) asymmetry phase, C) inner radius, D) ring width, E) glitch
+    const tilt = rng() * Math.PI;
+    const asymPhase = rng() * Math.PI * 2;
+    const innerR = rngRange(rng, 0.92, 1.00) * r;
+    const ringW  = rngRange(rng, 0.4, 0.6) * r;
+
+    // Outer warp halo — purple sunset bands
+    paintPosterizedDisc(ctx, cx, cy, r * 3.2, [
+      [1.00, 'rgba(0, 0, 0, 0.0)'],
+      [0.85, 'rgba(40, 0, 80, 0.35)'],
+      [0.55, 'rgba(90, 0, 255, 0.45)'],
+      [0.40, 'rgba(255, 0, 122, 0.55)'],
+    ]);
+
+    // Concentric vortex ring bands — 5 hard bands from magenta to purple
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.scale(1, 0.55); // perspective squish
+
+    const outerR = innerR + ringW;
+    const ringBands = [
+      { t: outerR * 1.00, col: 'rgba(255, 42, 252, 0.0)' },
+      { t: outerR * 0.95, col: 'rgba(255, 42, 252, 0.85)' },
+      { t: outerR * 0.78, col: 'rgba(255, 0, 122, 0.95)' },
+      { t: outerR * 0.62, col: 'rgba(90, 0, 255, 0.85)' },
+      { t: outerR * 0.50, col: 'rgba(40, 0, 60, 0.6)' },
+    ];
+    for (const band of ringBands) {
+      ctx.fillStyle = band.col;
+      ctx.beginPath();
+      ctx.arc(0, 0, band.t, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Doppler-bright half (asymmetry) — yellow-white arc on one side
+    const halfStart = asymPhase - Math.PI / 2;
+    const ARC_SEGS = 14;
+    for (let i = 0; i < ARC_SEGS; i++) {
+      const t0 = halfStart + (i / ARC_SEGS) * Math.PI;
+      const t1 = halfStart + ((i + 1) / ARC_SEGS) * Math.PI;
+      const mid = (i + 0.5) / ARC_SEGS;
+      const k = Math.sin(mid * Math.PI);
+      const a = 0.85 * k;
+      ctx.fillStyle = `rgba(255, 242, 0, ${a})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, t0, t1);
+      ctx.arc(0, 0, innerR, t1, t0, true);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = `rgba(255, 255, 255, ${a * 0.7})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR * 0.95, t0, t1);
+      ctx.arc(0, 0, innerR * 1.05, t1, t0, true);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    // Pure black event horizon — drawn last
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    ctx.beginPath(); ctx.arc(cx, cy, innerR * 0.92, 0, Math.PI * 2); ctx.fill();
+
+    // Chromatic ghost on asymmetry side — single offset draw of the bright half
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.scale(1, 0.55);
+    ctx.fillStyle = 'rgba(0, 245, 255, 0.45)';
+    const ghostShift = 4;
+    ctx.translate(Math.cos(asymPhase) * ghostShift, Math.sin(asymPhase) * ghostShift);
+    for (let i = 0; i < ARC_SEGS; i++) {
+      const t0 = halfStart + (i / ARC_SEGS) * Math.PI;
+      const t1 = halfStart + ((i + 1) / ARC_SEGS) * Math.PI;
+      const mid = (i + 0.5) / ARC_SEGS;
+      const k = Math.sin(mid * Math.PI);
+      const a = 0.45 * k;
+      ctx.fillStyle = `rgba(0, 245, 255, ${a})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, t0, t1);
+      ctx.arc(0, 0, innerR, t1, t0, true);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.85);
+  },
+
+  /* 9. NEBULA — wild bezier silhouette filled with posterized cellular noise
+   *    palette = 3 from vapor set, deliberately clashing
+   *    12-18 mottling blobs in contrasting bright stops
+   *    heavy edge fade
+   */
+  'nebula': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) palette pick (3 indices), B) silhouette tilt + 6 perturbations,
+    //            C) cell count, D..) per-cell {pos, hue, size}, E) glitch
+
+    // Pick 3 of 5 vapor hues, deliberately clashing
+    const vapors = [
+      [255, 42, 252],   // magenta
+      [0, 245, 255],    // cyan
+      [57, 255, 20],    // lime
+      [255, 242, 0],    // yellow
+      [255, 0, 122],    // pink
+    ];
+    // pick 3 distinct
+    const picks = new Set();
+    while (picks.size < 3) picks.add(Math.floor(rng() * vapors.length));
+    const colors = [...picks].map(i => vapors[i]);
+
+    // 6 control points for the bezier silhouette
+    const N_CTRL = 6;
+    const ctrlPts = [];
+    for (let i = 0; i < N_CTRL; i++) {
+      const ang = (i / N_CTRL) * Math.PI * 2;
+      const radPert = rngRange(rng, 0.6, 1.4) * r * 1.3;
+      ctrlPts.push({ ang, rad: radPert });
+    }
+    const silTilt = rng() * Math.PI * 2;
+
+    // Build the bezier path & clip to it
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(silTilt);
+    ctx.beginPath();
+    const pts = ctrlPts.map(p => ({
+      x: Math.cos(p.ang) * p.rad,
+      y: Math.sin(p.ang) * p.rad,
+    }));
+    const startMid = {
+      x: (pts[pts.length - 1].x + pts[0].x) / 2,
+      y: (pts[pts.length - 1].y + pts[0].y) / 2,
+    };
+    ctx.moveTo(startMid.x, startMid.y);
+    for (let i = 0; i < pts.length; i++) {
+      const cur = pts[i];
+      const next = pts[(i + 1) % pts.length];
+      const mid = { x: (cur.x + next.x) / 2, y: (cur.y + next.y) / 2 };
+      ctx.quadraticCurveTo(cur.x, cur.y, mid.x, mid.y);
+    }
+    ctx.closePath();
+    ctx.clip();
+
+    // Background fill — first colour as a solid posterized backdrop
+    const [r0, g0, b0] = colors[0];
+    ctx.fillStyle = `rgba(${r0},${g0},${b0},0.55)`;
+    ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+
+    // Posterized cellular noise — 12..18 hard-edged colored cells (Worley-ish)
+    const cellCount = 12 + Math.floor(rng() * 7); // 12..18
+    for (let i = 0; i < cellCount; i++) {
+      const ang = rng() * Math.PI * 2;
+      const radial = rng() * 0.85;
+      const px = Math.cos(ang) * radial * r * 1.1;
+      const py = Math.sin(ang) * radial * r * 1.1;
+      const sz = rngRange(rng, 0.18, 0.40) * r;
+      const c = colors[1 + Math.floor(rng() * (colors.length - 1))];
+      const a = rngRange(rng, 0.55, 0.95);
+      ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+      // hard-edged irregular blob — circle for now (cellular vibe via clashing palette)
+      ctx.beginPath();
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Bright contrasting "hot spots" — pure-white nuclei
+    const hotCount = 3 + Math.floor(rng() * 3); // 3..5
+    for (let i = 0; i < hotCount; i++) {
+      const ang = rng() * Math.PI * 2;
+      const radial = rng() * 0.5;
+      const px = Math.cos(ang) * radial * r;
+      const py = Math.sin(ang) * radial * r;
+      const sz = rngRange(rng, 0.08, 0.16) * r;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Heavy edge fade applied via the global circular fade
+    const half = ctx.canvas.width / 2;
+    if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cx, cy, half, rng);
+    applyCircularFade(ctx, cx, cy, half, 0.65); // smaller innerStop = heavier fade
+  },
+};
+
+/* ============================================================
+ *  Slide rendering (framework copied verbatim from first deck)
+ * ============================================================ */
+
+const TYPES_ALL = ['red-giant', 'blue-supergiant', 'white-dwarf', 'neutron-star',
+                   'pulsar', 'binary', 'quasar', 'black-hole', 'nebula'];
+
+const TYPE_LABELS = {
+  'red-giant': 'Red Giant',
+  'blue-supergiant': 'Blue Supergiant',
+  'white-dwarf': 'White Dwarf',
+  'neutron-star': 'Neutron Star',
+  'pulsar': 'Pulsar',
+  'binary': 'Binary',
+  'quasar': 'Quasar',
+  'black-hole': 'Black Hole',
+  'nebula': 'Nebula',
+};
+
+/** Draw one sprite into a fresh display canvas at `displaySize` px (CSS+DPR). */
+function paintSprite(displaySize, type, sizeBucket, starId, mode) {
+  const dpr = window.devicePixelRatio || 1;
+  const sprite = getTypedStarSprite(type, sizeBucket, starId, mode);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(displaySize * dpr);
+  canvas.height = Math.round(displaySize * dpr);
+  const ctx = canvas.getContext('2d');
+  // dark-purple cell bg matches deck aesthetic
+  ctx.fillStyle = '#08000f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // centre the sprite, scale to fit the cell with padding
+  const pad = 0.92;
+  const scale = (canvas.width / sprite.width) * pad;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.scale(scale, scale);
+  ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+  return canvas;
+}
+
+/** Build a 12-cell sprite grid for one type. */
+function buildGrid(parent, type, sizeBucket, mode, idPrefix, count, cols) {
+  parent.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  for (let i = 0; i < count; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell';
+    grid.appendChild(cell);
+  }
+  parent.appendChild(grid);
+
+  requestAnimationFrame(() => {
+    const cells = grid.children;
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const rect = cell.getBoundingClientRect();
+      const px = Math.max(48, Math.floor(rect.width));
+      const id = `${idPrefix}-${i}`;
+      const c = paintSprite(px, type, sizeBucket, id, mode);
+      c.style.width = '100%';
+      c.style.height = '100%';
+      cell.appendChild(c);
+    }
+  });
+}
+
+function buildRow(parent, type, sizeBucket, mode, idPrefix, count) {
+  buildGrid(parent, type, sizeBucket, mode, idPrefix, count, count);
+}
+
+/* ---------- Mini sky composite ---------- */
+
+const SKY_W = 1100;
+const SKY_H = 540;
+const SKY_STAR_COUNT = 80;
+
+function generateSky() {
+  const stars = [];
+  const rng = seedFromId('mini-sky-vapor-v1');
+  for (let i = 0; i < SKY_STAR_COUNT; i++) {
+    const type = rngPick(rng, TYPES_ALL);
+    const sb = Math.floor(rngRange(rng, 1, 5));
+    const x = rngRange(rng, 60, SKY_W - 60);
+    const y = rngRange(rng, 50, SKY_H - 50);
+    const id = `sky-vapor-${i}`;
+    stars.push({ type, sb, x, y, id });
+  }
+  return stars;
+}
+
+const SKY_STARS = generateSky();
+
+function paintSky(canvas, mode) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || SKY_W;
+  const cssH = canvas.clientHeight || SKY_H;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Synthwave sunset background
+  const bg = ctx.createLinearGradient(0, 0, 0, cssH);
+  bg.addColorStop(0,    '#1a0033');
+  bg.addColorStop(0.35, '#2a0050');
+  bg.addColorStop(0.55, '#5a0080');
+  bg.addColorStop(0.78, '#ff2a8a');
+  bg.addColorStop(0.92, '#ff7e1a');
+  bg.addColorStop(1,    '#1a0033');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  // Tron-grid horizon lines (fading toward distance)
+  ctx.strokeStyle = 'rgba(0, 245, 255, 0.32)';
+  ctx.lineWidth = 1;
+  // horizontal grid lines
+  for (let y = cssH * 0.6; y < cssH; y += 14) {
+    const t = (y - cssH * 0.6) / (cssH * 0.4);
+    ctx.globalAlpha = 0.15 + t * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(cssW, y);
+    ctx.stroke();
+  }
+  // vanishing-point vertical lines
+  const vpx = cssW / 2;
+  const vpy = cssH * 0.6;
+  for (let i = -10; i <= 10; i++) {
+    const x = vpx + i * (cssW / 20);
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = 'rgba(255, 42, 252, 0.45)';
+    ctx.beginPath();
+    ctx.moveTo(vpx, vpy);
+    ctx.lineTo(x, cssH);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Tiny background pixel stars
+  const bgRng = seedFromId('mini-sky-vapor-bg-v1');
+  for (let i = 0; i < 220; i++) {
+    const x = bgRng() * cssW;
+    const y = bgRng() * cssH * 0.6; // only above horizon
+    const a = bgRng() * 0.7 + 0.2;
+    ctx.globalAlpha = a;
+    const c = bgRng();
+    ctx.fillStyle = c < 0.33 ? '#ff2afc' : (c < 0.66 ? '#00f5ff' : '#ffffff');
+    ctx.fillRect(x, y, 1, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // Typed stars
+  const sxScale = cssW / SKY_W;
+  const syScale = cssH / SKY_H;
+  for (const s of SKY_STARS) {
+    const sprite = getTypedStarSprite(s.type, s.sb, s.id, mode);
+    const baseDisp = 20 + s.sb * 14;
+    const dispW = baseDisp * sxScale;
+    const dispH = baseDisp * syScale;
+    ctx.drawImage(
+      sprite,
+      s.x * sxScale - dispW / 2,
+      s.y * syScale - dispH / 2,
+      dispW, dispH
+    );
+  }
+
+  // Final scanline overlay across the whole sky
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  for (let y = 0; y < cssH; y += 3) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.fillRect(0, y, cssW, 1);
+  }
+  ctx.restore();
+}
+
+/* ============================================================
+ *  Slide definitions
+ * ============================================================ */
+
+const SLIDES = [];
+
+/* Slide 1 — Title */
+SLIDES.push(function renderSlide1(root) {
+  const block = document.createElement('div');
+  block.className = 'title-block';
+  block.innerHTML = `
+    <p class="sub-tag">Alternate Aesthetic Branch</p>
+    <h1>Procedural Star Variation<br><span style="font-size:0.5em;letter-spacing:0.3em">F8a // Vapor</span></h1>
+    <p class="subtitle">Same hash-driven feature plan. New visual vocabulary: vaporwave / synthwave / chromatic-aberration. A second pitch deck, alternate branch.</p>
+    <p class="nav-prompt">use <strong style="color:var(--cyan)">&larr;  &rarr;</strong> arrows or the buttons below to step through</p>
+  `;
+  root.appendChild(block);
+});
+
+/* Slide 2 — The problem */
+SLIDES.push(function renderSlide2(root) {
+  root.innerHTML = `
+    <h2>The problem<span class="accent">.</span></h2>
+    <p class="caption">Today, same type + same size renders a <strong>byte-identical sprite</strong>. The sky reads as repeated stamps. Twelve red giants from twelve different files all look like the same red giant.</p>
+    <div class="grid-with-label">
+      <div class="row-label">Current — 12 pulsars</div>
+      <div class="grid-wrap" id="problem-pulsars" style="margin-bottom:14px"></div>
+      <div class="row-label">Current — 12 red giants</div>
+      <div class="grid-wrap" id="problem-reds"></div>
+    </div>
+  `;
+  buildRow(root.querySelector('#problem-pulsars'), 'pulsar', 4, 'current', 'p', 12);
+  buildRow(root.querySelector('#problem-reds'), 'red-giant', 4, 'current', 'r', 12);
+});
+
+/* Slide 3 — The fix */
+SLIDES.push(function renderSlide3(root) {
+  root.innerHTML = `
+    <h2>The fix<span class="accent">.</span></h2>
+    <p class="caption">Hash the star's <code style="color:var(--cyan)">id</code> into a deterministic seed. Each drawer pulls a few <code style="color:var(--cyan)">rng()</code> values to pick angle, count, asymmetry, glitch slice. <strong>Same id &rarr; same star, every time.</strong></p>
+    <div class="row" style="gap: 24px; margin-bottom: 12px;">
+      <pre class="code">
+<span class="com">// FNV-1a hash &rarr; mulberry32 PRNG, cheap + deterministic</span>
+<span class="kw">function</span> <span class="fn">seedFromId</span>(id) {
+  <span class="kw">let</span> s = <span class="fn">hashStr</span>(id) >>> <span class="num">0</span>
+  <span class="kw">return function</span> <span class="fn">rng</span>() {
+    s = (s + <span class="num">0x6D2B79F5</span>) >>> <span class="num">0</span>
+    <span class="kw">let</span> t = s
+    t = <span class="fn">Math.imul</span>(t ^ (t >>> <span class="num">15</span>), t | <span class="num">1</span>)
+    t ^= t + <span class="fn">Math.imul</span>(t ^ (t >>> <span class="num">7</span>), t | <span class="num">61</span>)
+    <span class="kw">return</span> ((t ^ (t >>> <span class="num">14</span>)) >>> <span class="num">0</span>) / <span class="num">4294967296</span>
+  }
+}</pre>
+    </div>
+    <div class="grid-with-label">
+      <div class="row-label">Procedural — 12 pulsars (each unique)</div>
+      <div class="grid-wrap" id="fix-pulsars" style="margin-bottom:12px"></div>
+      <div class="row-label">Procedural — 12 red giants (each unique)</div>
+      <div class="grid-wrap" id="fix-reds"></div>
+    </div>
+  `;
+  buildRow(root.querySelector('#fix-pulsars'), 'pulsar', 4, 'proc', 'fp', 12);
+  buildRow(root.querySelector('#fix-reds'), 'red-giant', 4, 'proc', 'fr', 12);
+});
+
+/* Slides 4..8 — Per-type interactive grids */
+
+const TYPE_PANELS = {
+  'red-giant': {
+    title: 'Red Giant',
+    blurb: 'Pulsing magenta sphere with cyan electric-arc prominences. Mottling = quantized hot-pink/magenta blocks instead of soft blobs.',
+    features: [
+      ['Quantized mottling',     '8–14 hard-edged hot-pink/magenta blocks'],
+      ['Cyan electric arcs',     '2–4 jagged 6-segment polylines (lightning, not bezier)'],
+      ['Posterized halo',        '4 hard color bands (no smooth gradient)'],
+    ],
+    cool: 'Lightning-style arcs replace soft prominences — pure neon, hard edges.',
+  },
+  'nebula': {
+    title: 'Nebula',
+    blurb: 'Bezier silhouette filled with posterized cellular noise. Palette = 3 of 5 vapor hues, deliberately clashing. Heavy edge fade so the silhouette reads.',
+    features: [
+      ['Bezier silhouette',      '6 control points, radius 0.6r–1.4r'],
+      ['Cellular noise',         '12–18 hard-edged colored cells (Worley-ish)'],
+      ['Clashing palette',       'pick 3 of 5 from {magenta, cyan, lime, yellow, pink}'],
+    ],
+    cool: 'Only non-circular shape in the type set. Clashing vapor palette amplifies the silhouette.',
+  },
+  'pulsar': {
+    title: 'Pulsar',
+    blurb: 'Dual-color beams (cyan + magenta) with chromatic split overlap. Scanline interference pattern over the halo.',
+    features: [
+      ['Beam tilt',              'rotation 0–π'],
+      ['Beam misalignment',      '±π/12 drift on second beam'],
+      ['Intensity ratio + chroma','beam-A vs beam-B 0.7–1.3 with cyan/magenta split'],
+    ],
+    cool: 'RGB-split beams + scanline interference = CRT pulsar. Reads as transmission, not glow.',
+  },
+  'black-hole': {
+    title: 'Black Hole',
+    blurb: 'Vortex of concentric posterized bands (magenta → purple → black). Asymmetry side gets a cyan chromatic-aberration ghost. Pure black event horizon stays.',
+    features: [
+      ['Ring tilt',              'rotation 0–π plus 0.55× squish (perspective)'],
+      ['Asymmetry + chroma ghost', 'Doppler-bright half + offset cyan ghost'],
+      ['Photon-sphere',          'inner radius 0.92r–1.0r, ring width 0.4r–0.6r'],
+    ],
+    cool: 'Posterized vortex + cyan ghost = neon Interstellar. Hard bands instead of smooth glow.',
+  },
+  'blue-supergiant': {
+    title: 'Blue Supergiant',
+    blurb: 'Hot cyan core with hyper-yellow X-shaped spikes. Hard edges, no soft falloff. Halo squish + spike rotation as before.',
+    features: [
+      ['Spike count',            '{4, 6, 8} weighted (4 most common, 8 rarest)'],
+      ['Halo eccentricity',      'squish 0.75–1.25, tilt 0–π'],
+      ['Spike base angle',       'rotate by 0 to π/N'],
+    ],
+    cool: 'Yellow spikes through cyan core read as pure synth — no naturalistic blending.',
+  },
+};
+
+function renderTypeSlide(slideNum, type) {
+  return function(root) {
+    const cfg = TYPE_PANELS[type];
+    let regenSeed = 0;
+    const liItems = cfg.features.map(([n, range]) => `
+      <li><span class="feat-name">${n}</span><span class="feat-range">${range}</span></li>
+    `).join('');
+    root.innerHTML = `
+      <h2>${cfg.title}<span class="accent">.</span></h2>
+      <p class="caption">${cfg.blurb}</p>
+      <div class="row grow" style="gap:18px; min-height:0;">
+        <div class="grid-wrap grow" id="type-grid-${type}" style="display:flex;flex-direction:column;justify-content:center"></div>
+        <div class="feature-panel">
+          <h3>${cfg.title} — variation</h3>
+          <ul>${liItems}</ul>
+          <button class="regen-btn" id="regen-${type}">Regenerate (new seeds)</button>
+          <p style="font-size:12px;color:var(--ink-dim);margin-top:14px;line-height:1.5;">
+            <strong style="color:var(--cyan);font-weight:600;text-transform:uppercase;letter-spacing:0.12em">Cool factor:</strong><br>${cfg.cool}
+          </p>
+        </div>
+      </div>
+    `;
+    const gridHost = root.querySelector(`#type-grid-${type}`);
+    const paint = () => {
+      buildGrid(gridHost, type, 4, 'proc', `${type}-r${regenSeed}`, 12, 4);
+    };
+    paint();
+    root.querySelector(`#regen-${type}`).addEventListener('click', () => {
+      regenSeed++;
+      paint();
+    });
+  };
+}
+
+SLIDES.push(renderTypeSlide(4, 'red-giant'));
+SLIDES.push(renderTypeSlide(5, 'nebula'));
+SLIDES.push(renderTypeSlide(6, 'pulsar'));
+SLIDES.push(renderTypeSlide(7, 'black-hole'));
+SLIDES.push(renderTypeSlide(8, 'blue-supergiant'));
+
+/* Slide 9 — Neutron star + white dwarf bundle */
+SLIDES.push(function renderSlide9(root) {
+  root.innerHTML = `
+    <h2>Neutron star + white dwarf<span class="accent">.</span></h2>
+    <p class="caption">Smaller types, bundled. Neutron stars become 25–50 vapor-palette dots with hard outlines. White dwarfs get Tron-grid wisps.</p>
+    <div class="bundle grow" style="min-height:0">
+      <div class="bundle-block">
+        <h3>Neutron star</h3>
+        <p style="color:var(--ink-dim);font-size:12px;margin:0 0 8px 0;letter-spacing:0.05em;">25–50 dots in {magenta, cyan, yellow}, each with white outline</p>
+        <div class="grid-wrap grow" id="bundle-neutron"></div>
+      </div>
+      <div class="bundle-block">
+        <h3>White dwarf</h3>
+        <p style="color:var(--ink-dim);font-size:12px;margin:0 0 8px 0;letter-spacing:0.05em;">Posterized rainbow halo + 4–7 Tron-grid 90° wisps</p>
+        <div class="grid-wrap grow" id="bundle-dwarf"></div>
+      </div>
+    </div>
+  `;
+  buildGrid(root.querySelector('#bundle-neutron'), 'neutron-star', 4, 'proc', 'ns', 12, 4);
+  buildGrid(root.querySelector('#bundle-dwarf'),   'white-dwarf',  4, 'proc', 'wd', 12, 4);
+});
+
+/* Slide 10 — Binary + quasar bundle */
+SLIDES.push(function renderSlide10(root) {
+  root.innerHTML = `
+    <h2>Binary + quasar<span class="accent">.</span></h2>
+    <p class="caption">Magenta+cyan binaries with yellow/lime doppler rings. Quasar jets become long pure-neon rectangles in lime/yellow/pink, with glitch displacement applied more often.</p>
+    <div class="bundle grow" style="min-height:0">
+      <div class="bundle-block">
+        <h3>Binary</h3>
+        <p style="color:var(--ink-dim);font-size:12px;margin:0 0 8px 0;letter-spacing:0.05em;">Magenta+yellow doppler · cyan+lime doppler · separation/ratio/orbit</p>
+        <div class="grid-wrap grow" id="bundle-binary"></div>
+      </div>
+      <div class="bundle-block">
+        <h3>Quasar</h3>
+        <p style="color:var(--ink-dim);font-size:12px;margin:0 0 8px 0;letter-spacing:0.05em;">Jet asymmetry 1.5–3× · accent {lime, yellow, pink} · glitch slice</p>
+        <div class="grid-wrap grow" id="bundle-quasar"></div>
+      </div>
+    </div>
+  `;
+  buildGrid(root.querySelector('#bundle-binary'), 'binary', 4, 'proc', 'bn', 12, 4);
+  buildGrid(root.querySelector('#bundle-quasar'), 'quasar', 4, 'proc', 'qs', 12, 4);
+});
+
+/* Slide 11 — Mini sky composite (toggle) */
+SLIDES.push(function renderSlide11(root) {
+  root.innerHTML = `
+    <h2>Cumulative effect<span class="accent">.</span></h2>
+    <p class="caption">A patch of sky with ~80 mixed-type stars. Toggle to feel the difference cumulatively, not just per-sprite. Synthwave sunset background with Tron horizon grid.</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span class="sky-label">Show:</span>
+      <div class="sky-toggle" id="sky-toggle">
+        <button data-mode="current" class="active">Current</button>
+        <button data-mode="proc">Procedural</button>
+      </div>
+      <span style="font-size:11px;color:var(--ink-dim);letter-spacing:0.18em;text-transform:uppercase" id="sky-mode-label">current — repeated stamps</span>
+    </div>
+    <div class="sky-wrap grow"><canvas id="sky-canvas"></canvas></div>
+  `;
+  const canvas = root.querySelector('#sky-canvas');
+  const label = root.querySelector('#sky-mode-label');
+  let mode = 'current';
+
+  const paint = () => paintSky(canvas, mode);
+
+  const toggle = root.querySelector('#sky-toggle');
+  toggle.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    mode = btn.dataset.mode;
+    [...toggle.children].forEach(b => b.classList.toggle('active', b === btn));
+    label.textContent = mode === 'current' ? 'current — repeated stamps' : 'procedural — every star unique';
+    paint();
+  });
+
+  requestAnimationFrame(() => paint());
+});
+
+/* Slide 12 — Cost */
+SLIDES.push(function renderSlide12(root) {
+  root.innerHTML = `
+    <h2>Cost<span class="accent">.</span></h2>
+    <p class="caption">Bounded cache, deterministic re-render, no animation cost change. Within renderer memory budget. Vapor effects (chromatic ghost, glitch displacement) baked into the cached sprite — zero runtime cost.</p>
+    <div class="cards">
+      <div class="card">
+        <div class="card-num">500</div>
+        <div class="card-label">LRU cap</div>
+        <div class="card-desc">Working set across all 9 typed sprites. Eviction = next render rebuilds.</div>
+      </div>
+      <div class="card">
+        <div class="card-num">~25 MB</div>
+        <div class="card-label">Memory ceiling</div>
+        <div class="card-desc">500 sprites × ~50 KB each. Well under the 200 MB renderer budget.</div>
+      </div>
+      <div class="card">
+        <div class="card-num">0 ms</div>
+        <div class="card-label">Same-id reroll</div>
+        <div class="card-desc">A star's look is fixed forever by its id. No drift on rename or re-embed.</div>
+      </div>
+    </div>
+    <p class="caption" style="margin-top:24px;font-size:14px;">
+      Animation paths (pulsar rotation, quasar shimmer) keep their existing per-frame layer over the cached static sprite — F8a doesn't add per-frame work. Glitch displacement is baked once into the sprite, not recomputed.
+    </p>
+  `;
+});
+
+/* Slide 13 — Recommendation */
+SLIDES.push(function renderSlide13(root) {
+  const steps = [
+    'foundation', 'red giant', 'nebula', 'pulsar', 'black hole',
+    'blue supergiant', 'neutron + white dwarf', 'binary + quasar', 'docs',
+  ];
+  const stepHtml = steps.map((s, i) =>
+    `<div class="rec-step${i === 0 ? ' first' : ''}">${i+1}. ${s}</div>` +
+    (i < steps.length - 1 ? '<div class="rec-arrow">&rarr;</div>' : '')
+  ).join('');
+  root.innerHTML = `
+    <h2>Ship it<span class="accent">?</span></h2>
+    <p class="caption"><strong>Recommendation: ship F8a in 9 commits</strong> per the plan. Each commit is its own visual review gate; if any looks wrong, revert that commit and continue. Aesthetic decision (realism vs. vapor) made up-front; no mid-flight pivots.</p>
+    <div class="rec-flow">${stepHtml}</div>
+    <h3 style="margin:18px 0 8px 0;font-size:16px;color:var(--magenta);font-weight:700;text-transform:uppercase;letter-spacing:0.18em;text-shadow:0 0 8px rgba(255,42,252,0.6)">Known limitations</h3>
+    <ul class="limit-list">
+      <li><strong>PRNG order coupling:</strong> reordering rng() calls inside a drawer reseeds downstream features. Drawers must keep call order stable across edits.</li>
+      <li><strong>No reroll:</strong> a star's look is fixed by its id forever. Out of scope per spec.</li>
+      <li><strong>Cache thrash on extreme zoom:</strong> if the user pans across many stars in a short window, LRU cap of 500 may evict + re-render. Bump to 1000 if profiling shows churn.</li>
+      <li><strong>Canvas2D only:</strong> no GPU compositing path. Animation stays in the existing per-frame layer over cached static sprites.</li>
+      <li><strong>Glitch slice cost:</strong> the 10% of sprites that get glitch displacement use one getImageData / putImageData round-trip during sprite render. One-time cost; result cached.</li>
+    </ul>
+    <p class="caption" style="margin-top:30px;font-size:15px;color:var(--cyan);text-shadow:0 0 8px rgba(0,245,255,0.5)">
+      Estimated cost: ~1 day of focused work. Visual quality bar: this deck.
+    </p>
+  `;
+});
+
+/* ============================================================
+ *  Slide controller (verbatim from first deck)
+ * ============================================================ */
+
+const slidesHost = document.getElementById('slides');
+const counterEl = document.getElementById('counter');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const navHint = document.getElementById('navHint');
+
+let current = 0;
+const cache = new Map();
+
+function renderSlide(idx) {
+  if (idx < 0 || idx >= SLIDES.length) return;
+  current = idx;
+
+  [...slidesHost.children].forEach(c => c.classList.remove('active'));
+
+  let slideEl = cache.get(idx);
+  if (!slideEl) {
+    slideEl = document.createElement('section');
+    slideEl.className = 'slide';
+    SLIDES[idx](slideEl);
+    slidesHost.appendChild(slideEl);
+    cache.set(idx, slideEl);
+  } else {
+    slideEl.style.animation = 'none';
+    void slideEl.offsetWidth;
+    slideEl.style.animation = '';
+  }
+  slideEl.classList.add('active');
+
+  counterEl.textContent = `${idx + 1} / ${SLIDES.length}`;
+  prevBtn.disabled = idx === 0;
+  nextBtn.disabled = idx === SLIDES.length - 1;
+}
+
+function go(delta) {
+  const next = Math.min(SLIDES.length - 1, Math.max(0, current + delta));
+  if (next === current) return;
+  hideHint();
+  renderSlide(next);
+}
+
+function hideHint() {
+  if (!navHint.classList.contains('hidden')) {
+    navHint.classList.add('hidden');
+  }
+}
+
+prevBtn.addEventListener('click', () => go(-1));
+nextBtn.addEventListener('click', () => go(1));
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+    e.preventDefault(); go(1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault(); go(-1);
+  } else if (e.key === 'Home') {
+    e.preventDefault(); renderSlide(0);
+  } else if (e.key === 'End') {
+    e.preventDefault(); renderSlide(SLIDES.length - 1);
+  }
+});
+
+// boot
+renderSlide(0);
+</script>
+</body>
+</html>
