@@ -9,6 +9,7 @@ import type { Theme, ThemeSummary } from './types'
 import { jwstTheme } from './jwst'
 import { vaporTheme } from './vapor'
 import { atariTheme } from './atari'
+import { lostTheme } from './lost'
 
 export const defaultThemeId = 'jwst'
 
@@ -16,6 +17,7 @@ const themes: Record<string, Theme> = {
   [jwstTheme.id]: jwstTheme,
   [vaporTheme.id]: vaporTheme,
   [atariTheme.id]: atariTheme,
+  [lostTheme.id]: lostTheme,
 }
 
 export function getTheme(id: string): Theme | null {
