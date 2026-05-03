@@ -27,11 +27,12 @@ import {
  * -------------------------------------------------------------------------- */
 
 const drawRedGiant: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  // F15 — outer halo alphas reduced ~30% (×0.7) so convection mottling reads.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2)
-  halo.addColorStop(0,    'rgba(255,210,160,0.85)')
-  halo.addColorStop(0.18, 'rgba(255,150,90,0.55)')
-  halo.addColorStop(0.40, 'rgba(220,90,50,0.30)')
-  halo.addColorStop(0.65, 'rgba(160,40,30,0.14)')
+  halo.addColorStop(0,    'rgba(255,210,160,0.6)')
+  halo.addColorStop(0.18, 'rgba(255,150,90,0.39)')
+  halo.addColorStop(0.40, 'rgba(220,90,50,0.21)')
+  halo.addColorStop(0.65, 'rgba(160,40,30,0.10)')
   halo.addColorStop(1,    'rgba(110,20,10,0)')
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -141,15 +142,16 @@ const drawBlueSupergiant: ThemedDrawer = (ctx, cx, cy, r, rng, sizeBucket) => {
   const base   = rng() * (Math.PI / spikeCount)
 
   // Eccentric halo
+  // F15 — outer halo alphas reduced ~30% (×0.7) so spike + core interior reads.
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(tilt)
   ctx.scale(squish, 1 / squish)
   const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 3.2)
-  halo.addColorStop(0,    'rgba(230,240,255,0.95)')
-  halo.addColorStop(0.15, 'rgba(160,190,255,0.6)')
-  halo.addColorStop(0.40, 'rgba(80,120,230,0.35)')
-  halo.addColorStop(0.70, 'rgba(40,70,180,0.15)')
+  halo.addColorStop(0,    'rgba(230,240,255,0.67)')
+  halo.addColorStop(0.15, 'rgba(160,190,255,0.42)')
+  halo.addColorStop(0.40, 'rgba(80,120,230,0.25)')
+  halo.addColorStop(0.70, 'rgba(40,70,180,0.11)')
   halo.addColorStop(1,    'rgba(0,10,80,0)')
   ctx.fillStyle = halo
   ctx.beginPath(); ctx.arc(0, 0, r * 3.2, 0, Math.PI * 2); ctx.fill()
@@ -247,10 +249,12 @@ const drawWhiteDwarf: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const jitter = rngRange(rng, 0.9, 1.1)
   r = r * jitter
 
+  // F15 — outer halo stops (0.65 onward) reduced ~30% so wisps read against
+  // the disc; core (0, 0.35) untouched to keep the bright nucleus.
   const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.6)
   grad.addColorStop(0,    'rgba(255,255,255,1)')
   grad.addColorStop(0.35, 'rgba(240,245,255,0.85)')
-  grad.addColorStop(0.65, 'rgba(200,220,255,0.4)')
+  grad.addColorStop(0.65, 'rgba(200,220,255,0.28)')
   grad.addColorStop(1,    'rgba(160,190,240,0)')
   ctx.fillStyle = grad
   ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.fill()
@@ -285,10 +289,11 @@ const drawWhiteDwarf: ThemedDrawer = (ctx, cx, cy, r, rng) => {
 
 const drawNeutronStar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   // Soft outer halo
+  // F15 — outer halo alphas reduced ~30% (×0.7) so the nucleus dot field reads.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4)
-  halo.addColorStop(0,    'rgba(255,180,170,0.30)')
-  halo.addColorStop(0.35, 'rgba(220,140,150,0.18)')
-  halo.addColorStop(0.7,  'rgba(160,90,110,0.07)')
+  halo.addColorStop(0,    'rgba(255,180,170,0.21)')
+  halo.addColorStop(0.35, 'rgba(220,140,150,0.13)')
+  halo.addColorStop(0.7,  'rgba(160,90,110,0.05)')
   halo.addColorStop(1,    'rgba(80,40,60,0)')
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -367,12 +372,13 @@ const drawPulsar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const drift = rngRange(rng, -Math.PI / 12, Math.PI / 12)
   const ratio = rngRange(rng, 0.7, 1.3)
 
+  // F15 — outer halo alphas reduced ~30% (×0.7) so plasma mottling pops.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.5)
-  halo.addColorStop(0,    'rgba(210,235,255,0.78)')
-  halo.addColorStop(0.18, 'rgba(170,215,255,0.50)')
-  halo.addColorStop(0.38, 'rgba(130,185,250,0.28)')
-  halo.addColorStop(0.58, 'rgba(95,155,235,0.14)')
-  halo.addColorStop(0.80, 'rgba(60,115,205,0.05)')
+  halo.addColorStop(0,    'rgba(210,235,255,0.55)')
+  halo.addColorStop(0.18, 'rgba(170,215,255,0.35)')
+  halo.addColorStop(0.38, 'rgba(130,185,250,0.20)')
+  halo.addColorStop(0.58, 'rgba(95,155,235,0.10)')
+  halo.addColorStop(0.80, 'rgba(60,115,205,0.04)')
   halo.addColorStop(1,    'rgba(40,80,170,0)')
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -504,10 +510,11 @@ const drawBinary: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(ax)
+  // F15 — outer halo alphas reduced ~30% (×0.7) so the two cores read distinctly.
   const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, (r + sep) * 1.6)
-  halo.addColorStop(0,    'rgba(255,220,180,0.55)')
-  halo.addColorStop(0.35, 'rgba(255,180,130,0.22)')
-  halo.addColorStop(0.7,  'rgba(220,90,60,0.08)')
+  halo.addColorStop(0,    'rgba(255,220,180,0.39)')
+  halo.addColorStop(0.35, 'rgba(255,180,130,0.15)')
+  halo.addColorStop(0.7,  'rgba(220,90,60,0.06)')
   halo.addColorStop(1,    'rgba(120,40,30,0)')
   ctx.scale(1.4, 0.85)
   ctx.fillStyle = halo
@@ -553,10 +560,11 @@ const drawQuasar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const accent = rngPick(rng, accents)
   const tilt = rng() * Math.PI
 
+  // F15 — outer halo alphas reduced ~30% (×0.7) so accretion disc + jets read.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4)
-  halo.addColorStop(0,    'rgba(255,220,255,0.85)')
-  halo.addColorStop(0.25, 'rgba(220,150,240,0.45)')
-  halo.addColorStop(0.6,  'rgba(160,80,220,0.18)')
+  halo.addColorStop(0,    'rgba(255,220,255,0.6)')
+  halo.addColorStop(0.25, 'rgba(220,150,240,0.32)')
+  halo.addColorStop(0.6,  'rgba(160,80,220,0.13)')
   halo.addColorStop(1,    'rgba(80,30,160,0)')
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -632,10 +640,12 @@ const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const innerR = rngRange(rng, 0.92, 1.00) * r
   const ringW  = rngRange(rng, 0.4, 0.6) * r
 
+  // F15 — outer warp gradient alphas reduced ~30% (×0.7) so the accretion ring
+  // + asymmetric Doppler arc read sharply against the void.
   const warp = ctx.createRadialGradient(cx, cy, r * 1.3, cx, cy, r * 3.5)
-  warp.addColorStop(0,    'rgba(80,40,100,0.55)')
-  warp.addColorStop(0.45, 'rgba(50,25,80,0.30)')
-  warp.addColorStop(0.8,  'rgba(20,10,50,0.10)')
+  warp.addColorStop(0,    'rgba(80,40,100,0.39)')
+  warp.addColorStop(0.45, 'rgba(50,25,80,0.21)')
+  warp.addColorStop(0.8,  'rgba(20,10,50,0.07)')
   warp.addColorStop(1,    'rgba(0,0,0,0)')
   ctx.fillStyle = warp
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -697,6 +707,10 @@ const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
 
 /* --------------------------------------------------------------------------
  * 9. NEBULA — FBM density field + colour ramp + hot-spot pinpoints (v5)
+ *
+ * F15 note: nebula does not have a separate outer "halo" gradient — the FBM
+ * density field IS the procedural detail. Reducing its alphas would gut the
+ * very artwork F15 aims to expose. Skipped intentionally.
  * -------------------------------------------------------------------------- */
 
 const drawNebula: ThemedDrawer = (ctx, cx, cy, _r, rng) => {
@@ -819,9 +833,10 @@ const drawNebula: ThemedDrawer = (ctx, cx, cy, _r, rng) => {
  * call site routes through `getTypedStarSprite` with no type.
  */
 const drawDefault: ThemedDrawer = (ctx, cx, cy, r) => {
+  // F15 — outer halo alphas reduced ~30% (×0.7) for parity with typed drawers.
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.0)
-  halo.addColorStop(0,    'rgba(220,235,255,0.7)')
-  halo.addColorStop(0.4,  'rgba(120,160,220,0.25)')
+  halo.addColorStop(0,    'rgba(220,235,255,0.49)')
+  halo.addColorStop(0.4,  'rgba(120,160,220,0.18)')
   halo.addColorStop(1,    'rgba(40,60,120,0)')
   ctx.fillStyle = halo
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
