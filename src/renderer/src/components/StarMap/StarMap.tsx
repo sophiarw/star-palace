@@ -641,7 +641,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (!isNeighbor && !isSelected && star.id !== hoveredId) continue
       }
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
-      ctx.globalAlpha = dimAlpha * exposure
+      // Selected stars bypass the zoom-driven exposure curve so they read
+      // punchy at every zoom level. Otherwise the 1.4× selection scale +
+      // exposure dim makes the disc look diluted at default zoom and only
+      // recovers when the user zooms in enough for exposure to ramp up.
+      ctx.globalAlpha = dimAlpha * (isSelected ? 1 : exposure)
 
       // F10: in usage mode, size scales with importance_score (replaces
       // the view-count-only bucket). Type mode keeps the existing F2 path.
@@ -755,8 +759,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (isSelected) {
           // F12 — brightness boost breathes on the same 1.5s sine as the scale pulse,
           // so halo brightness oscillates with sprite size for a unified breathing effect.
+          // Boost ignores the global exposure curve (same reason as the main-pass
+          // bypass above): selection should feel solid regardless of zoom.
           ctx.globalCompositeOperation = 'lighter'
-          ctx.globalAlpha = selectionBoostAlpha(tNowMs) * exposure
+          ctx.globalAlpha = selectionBoostAlpha(tNowMs)
           ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
 
           ctx.globalCompositeOperation = 'source-over'
