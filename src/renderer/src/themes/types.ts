@@ -35,8 +35,30 @@ export type ThemedDrawer = (
 ) => void
 
 export interface ThemeBackground {
-  /** Solid CSS colour or CSS gradient string applied to the StarMap clear pass. */
+  /**
+   * Solid CSS colour applied to the StarMap clear pass. Always painted so
+   * resize / DPR transitions don't reveal stale pixels even when `paint`
+   * is provided. Themes that ship a full-canvas `paint` painter still
+   * supply a sensible fallback colour in case the painter no-ops (e.g.
+   * cache miss during the very first frame).
+   */
   canvasFill: string
+  /**
+   * F-NEXT-C — optional far-background painter sitting between the canvas
+   * clear and the prerendered backdrop. JWST uses this for the deep-field
+   * teal+pink wash + 180 colour-temp pinpoints; vapor uses it for the
+   * synthwave gradient + Tron-grid horizon. The painter owns its own
+   * offscreen-canvas cache (see `backgroundNebula.ts`); the call site
+   * doesn't need to memoise. `seedKey` is a stable identifier (typically
+   * the theme id) folded into the cache key + per-cloud PRNG seeds.
+   */
+  paint?: (
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    dpr: number,
+    seedKey: string,
+  ) => void
   /**
    * Optional per-frame overlay drawn after the sky and before HUD. Use for
    * scanlines, Tron grids, vignettes, etc. Receives canvas-pixel size.

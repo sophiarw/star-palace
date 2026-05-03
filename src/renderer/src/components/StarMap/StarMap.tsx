@@ -710,6 +710,19 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.fillStyle = activeTheme.background.canvasFill
     ctx.fillRect(0, 0, w, h)
     markEnd('01.clear')
+
+    // F-NEXT-C — per-theme background-nebula layer (Stage C). JWST paints
+    // a deep-field teal+pink wash + 180 colour-temp pinpoints; vapor paints
+    // a synthwave gradient + Tron-grid horizon. The painter caches its
+    // output to an offscreen canvas keyed on (theme, viewport, dpr) and
+    // re-blits per frame, so steady-state cost is one drawImage call.
+    // Sits under the prerendered backdrop so the existing parallax pass
+    // composites on top.
+    markStart()
+    if (activeTheme.background.paint) {
+      activeTheme.background.paint(ctx, w, h, dpr, activeTheme.id)
+    }
+    markEnd('01b.bgNebula')
     const cam = camRef.current
     const currentClusters = clustersRef.current
     const currentEdges = edgesRef.current
