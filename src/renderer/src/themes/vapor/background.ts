@@ -1,7 +1,9 @@
 /**
- * Vapor background — synthwave sunset gradient + Tron-grid horizon overlay
- * + CRT scanlines. Rebuilt per draw because the canvas size changes with
- * the viewport; cheap (a handful of fills + ~30 stroked lines).
+ * Vapor background — synthwave sunset gradient + Tron-grid horizon overlay.
+ * Rebuilt per draw because the canvas size changes with the viewport;
+ * cheap (a handful of fills + ~30 stroked lines). CRT scanlines live in
+ * the theme `postPass` (see `vaporCrt.drawScanlines`) so they sit above
+ * the HUD layer like a real CRT screen rather than under the chevrons.
  */
 
 import type { ThemeBackground } from '../types'
@@ -15,7 +17,7 @@ const SUNSET_STOPS: ReadonlyArray<[number, string]> = [
   [1.00, '#1a0033'],
 ]
 
-function paintGridAndScanlines(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+function paintGrid(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   // Tron-grid horizon — horizontal lines fading inward toward the horizon
   ctx.save()
   ctx.strokeStyle = 'rgba(0, 245, 255, 0.32)'
@@ -41,22 +43,14 @@ function paintGridAndScanlines(ctx: CanvasRenderingContext2D, w: number, h: numb
     ctx.stroke()
   }
   ctx.restore()
-
-  // CRT scanlines across the whole sky
-  ctx.save()
-  ctx.globalCompositeOperation = 'multiply'
-  for (let y = 0; y < h; y += 3) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
-    ctx.fillRect(0, y, w, 1)
-  }
-  ctx.restore()
 }
 
 /**
  * `canvasFill` is sampled by StarMap as a solid CSS colour for the opaque
- * clear pass. The full sunset gradient + grid + scanlines are painted in
- * the per-frame `overlay`. The clear-pass colour is the gradient mid-tone
- * so any sliver that escapes the overlay still reads as vapor purple.
+ * clear pass. The full sunset gradient + grid are painted in the per-frame
+ * `overlay`. The clear-pass colour is the gradient mid-tone so any sliver
+ * that escapes the overlay still reads as vapor purple. CRT scanlines now
+ * live in the theme `postPass` so they sit above the HUD chevrons / labels.
  */
 export const vaporBackground: ThemeBackground = {
   canvasFill: '#2a0050',
@@ -72,8 +66,8 @@ export const vaporBackground: ThemeBackground = {
     ctx.fillRect(0, 0, w, h)
     ctx.restore()
 
-    // Grid + scanlines overlay sit ON TOP of the existing scene so they
-    // read as a CRT screen effect, not a backdrop. Source-over by default.
-    paintGridAndScanlines(ctx, w, h)
+    // Tron-grid horizon overlay sits ON TOP of the existing scene so it
+    // reads as a CRT screen effect, not a backdrop. Source-over by default.
+    paintGrid(ctx, w, h)
   },
 }

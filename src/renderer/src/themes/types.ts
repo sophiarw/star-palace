@@ -77,6 +77,14 @@ export interface Theme {
   background: ThemeBackground
   /** Image smoothing mode applied to the main canvas ctx each frame. */
   smoothing: ThemeSmoothing
+  /**
+   * F-NEXT-D — optional final-frame post-pass. Runs after every other draw
+   * pass (sprites, decorations, theme overlay, HUD chevrons, lock glyphs,
+   * pin-drag preview, labels). Use for screen-space CRT scanlines, bloom,
+   * vignette darken, etc. Receives canvas size in CSS pixels and the
+   * effective DPR — most callers need only the size.
+   */
+  postPass?: (ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number) => void
   ui: ThemeUi
 }
 
