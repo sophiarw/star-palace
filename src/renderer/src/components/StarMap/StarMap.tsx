@@ -1050,10 +1050,15 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     markStart()
     // Quality-driven skip: when the on-screen sprite is tiny, the beam is
     // invisible anyway and re-running the per-frame gradient is pure cost.
+    // Below this on-screen radius the animation beam is sub-perceivable;
+    // skip drawing AND skip counting toward the rAF gate so a far-zoomed-
+    // out scene with PDFs/PPTXs in view doesn't pin the gate open at 60 fps
+    // for animations the user can't see anyway.
     const animSkipPx =
       activeQuality === 'low' ? 12 :
       activeQuality === 'medium' ? 8 :
-      0
+      activeQuality === 'high' ? 4 :
+      2  // ultra still wants idle skip when truly invisible
     const tNow = performance.now() / 1000
     // Count animated stars actually inside the viewport. The rAF gate uses
     // this (not the corpus-total) so a single PDF (→quasar) at the far end
@@ -1064,13 +1069,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
-      visibleAnimated++
 
       const sb = activeMode === 'usage'
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
       const r = spriteCoreRadius(sb)
-      if (animSkipPx > 0 && r * drawScale < animSkipPx) continue
+      // Skip-and-don't-count if the on-screen beam would be sub-perceivable.
+      // The rAF gate reads visibleAnimatedCountRef so this also lets idle
+      // skip when animations are present but invisibly small.
+      if (r * drawScale < animSkipPx) continue
+      visibleAnimated++
+
       const phaseOffset = (hashStr(star.id) % 1000) / 1000
 
       ctx.save()
