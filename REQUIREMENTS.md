@@ -32,6 +32,7 @@ Locked decisions:
 | F13 | Search-match explainability (literal hits + AI insight) | M | Two complementary surfaces in DetailPanel for understanding *why* a file ranked for a query. (a) **Literal**: highlight every occurrence of the query string inside the file content viewer (case-insensitive, scrolls to first hit). (b) **AI insight**: new daemon endpoint calls an LLM with the query + the embedded text + neighborhood snippet → returns a 1-2 sentence explanation of the semantic association. Renderer-only for (a); new daemon endpoint + LLM dependency for (b). | |
 | F14 | Reveal in OS file explorer (capital O) | XS | Vim `O` (capital) opens the selected file's containing folder in the OS file explorer with the file selected. New daemon endpoint + DetailPanel button. macOS `open -R`, Windows `explorer /select,`, Linux `xdg-open <dirname>`. Lowercase `o` keeps existing "open file in default app" behaviour. | |
 | F15 | Reduce glow / expose procedural detail | XS | Bright additive halos drown out the per-instance procedural detail (red giant mottling, nebula FBM, neutron-star nucleus dots). Lower exposure curve + sprite halo alpha so the artwork reads. | |
+| F16 | Galaxy visibility toggle (hide / show) | S | Renderer-only filter on indexed galaxies. Per-galaxy show/hide checkbox in GalaxyPanel. Hidden galaxies still indexed in DB; just absent from the StarMap, search results, and stats counts. Persisted in `localStorage`. | |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -813,6 +814,37 @@ After F11 procedural sprites + F8a per-id variation shipped, the bright additive
 **Out of scope:**
 - Per-type independent exposure profiles.
 - User-facing exposure slider (F1c notes a slider as a future option).
+
+### F16 — Galaxy visibility toggle (hide / show)
+
+User has 3 indexed galaxies (e.g. `~/code`, `~/Documents`, `~/scratch`). Sometimes wants to focus on just one or two without re-indexing or losing data. Add per-galaxy show/hide that's purely a renderer filter.
+
+**Behaviour:**
+- GalaxyPanel adds a checkbox / eye-icon per galaxy row. Toggle switches the galaxy's visibility.
+- Hidden galaxies:
+  - Their stars are excluded from `projectedStars` in App.tsx.
+  - Excluded from search highlight resolution (search results pointing at hidden-galaxy files are dropped).
+  - Excluded from F2/F10 percentile bucketing (don't influence others' classification).
+  - Their galaxy origin marker (if any HUD shows them) hides too.
+  - StatsBar count "N stars" reflects visible only; show a smaller "(M hidden)" suffix when any hidden.
+- Visibility persisted in `localStorage` under `starpalace.galaxyVisibility.v1` as `Record<galaxyId, boolean>`. Default: all visible.
+- DB schema unchanged. Daemon endpoints unchanged. Hidden galaxies stay indexed and re-indexable.
+
+**Files:**
+- `src/renderer/src/hooks/useGalaxyVisibility.ts` (NEW) — `{ visibleSet: Set<number>, isVisible(id), toggle(id), setVisible(id, v) }`. Persists.
+- `src/renderer/src/components/GalaxyPanel/GalaxyPanel.tsx` — add eye toggle button per row.
+- `src/renderer/src/App.tsx` — filter `projectedStars` and `projectedHighlights` by visibility set.
+- `src/renderer/src/components/StatsBar/StatsBar.tsx` — show "(M hidden)" when applicable.
+
+**Edge cases:**
+- All galaxies hidden: show empty sky + a polite "All galaxies hidden — toggle visibility in the panel" overlay.
+- Default galaxy (`__default__:default`): can be hidden too. Show with a special label "default (legacy)".
+- A galaxy is removed from the indexer between sessions: drop its stale visibility entry on next read.
+
+**Out of scope (v1):**
+- Per-cluster or per-collection hide.
+- "Solo" mode (hide all but one) — derived from the existing toggle in two clicks.
+- Daemon-side filter (search still scans all stars; renderer drops the hidden ones from results — cheaper than rewriting `/api/search`).
 
 ### F14 — Reveal in OS file explorer (capital O)
 
