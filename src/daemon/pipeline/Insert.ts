@@ -15,22 +15,31 @@ export interface InsertPipelineOptions {
   embedEngine: EmbeddingEngine
   relayouter: Relayouter
   walkOpts?: WalkOptions
+  // F9: when set, every file inserted by this run is assigned to this galaxy
+  // and its file ID is salted with the galaxy id (see fileIdFromPath).
+  galaxyId?: number
 }
 
 export async function indexPath(
   rootPath: string,
   opts: InsertPipelineOptions
 ): Promise<WalkStats> {
-  const { db, hnsw, embedEngine, relayouter } = opts
+  const { db, hnsw, embedEngine, relayouter, galaxyId } = opts
   const start = Date.now()
   const stats: WalkStats = { scanned: 0, indexed: 0, skipped: 0, errors: 0, durationMs: 0 }
 
-  const walker = await walkDirectory(rootPath, opts.walkOpts)
+  // Thread galaxyId into both the walker (so file IDs are scoped) and the
+  // per-file insertOne call (so the row gets galaxy_id).
+  const walkOpts: WalkOptions = {
+    ...opts.walkOpts,
+    galaxyScope: galaxyId ?? opts.walkOpts?.galaxyScope,
+  }
+  const walker = await walkDirectory(rootPath, walkOpts)
 
   for await (const { node, content } of walker) {
     stats.scanned++
     try {
-      await insertOne(node, content, { db, hnsw, embedEngine, relayouter })
+      await insertOne(node, content, { db, hnsw, embedEngine, relayouter, galaxyId })
       stats.indexed++
     } catch (err) {
       stats.errors++
@@ -48,9 +57,9 @@ export async function indexPath(
 export async function insertOne(
   node: FileNode,
   content: Buffer,
-  opts: Pick<InsertPipelineOptions, 'db' | 'hnsw' | 'embedEngine' | 'relayouter'>
+  opts: Pick<InsertPipelineOptions, 'db' | 'hnsw' | 'embedEngine' | 'relayouter' | 'galaxyId'>
 ): Promise<void> {
-  const { db, hnsw, embedEngine, relayouter } = opts
+  const { db, hnsw, embedEngine, relayouter, galaxyId } = opts
   const now = Date.now()
 
   const existing = db.get(node.id)
@@ -93,10 +102,10 @@ export async function insertOne(
       y: null,
       z: null,
       clusterId: null,
-      // F9: galaxy assignment is wired in by indexPath; default null preserves
-      // legacy behavior (back-compat) and keeps tests that drive insertOne()
-      // directly working without per-call boilerplate.
-      galaxyId: existing?.galaxyId ?? null,
+      // F9: prefer the explicit per-insert galaxy. Fall back to whatever the
+      // row already had (re-index path) so we never silently shift a star to
+      // a different galaxy by passing through a null.
+      galaxyId: galaxyId ?? existing?.galaxyId ?? null,
       layoutVersion: 0,
       firstSeen: existing?.firstSeen ?? now,
       viewCount: existing?.viewCount ?? 0,

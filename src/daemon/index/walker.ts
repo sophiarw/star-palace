@@ -13,6 +13,10 @@ const DEFAULT_IGNORE = new Set([
 export interface WalkOptions {
   ignore?: Set<string>
   maxBytes?: number
+  // F9 — galaxy scope mixed into the file ID hash so the same path indexed
+  // under two different galaxies produces two distinct stars. When undefined
+  // the legacy path-only ID is used.
+  galaxyScope?: string | number
 }
 
 export interface FileWithContent {
@@ -20,8 +24,9 @@ export interface FileWithContent {
   content: Buffer
 }
 
-export function fileIdFromPath(path: string): string {
-  return createHash('sha1').update(path).digest('hex').slice(0, 16)
+export function fileIdFromPath(path: string, galaxyScope?: string | number): string {
+  const seed = galaxyScope === undefined ? path : `${galaxyScope}\0${path}`
+  return createHash('sha1').update(seed).digest('hex').slice(0, 16)
 }
 
 export async function walkDirectory(
@@ -30,9 +35,10 @@ export async function walkDirectory(
 ): Promise<AsyncGenerator<FileWithContent>> {
   const ignore = opts.ignore ?? DEFAULT_IGNORE
   const maxBytes = opts.maxBytes ?? MAX_FILE_BYTES
+  const galaxyScope = opts.galaxyScope
 
   async function* gen(): AsyncGenerator<FileWithContent> {
-    yield* walkDir(root, ignore, maxBytes)
+    yield* walkDir(root, ignore, maxBytes, galaxyScope)
   }
   return gen()
 }
@@ -40,7 +46,8 @@ export async function walkDirectory(
 async function* walkDir(
   dir: string,
   ignore: Set<string>,
-  maxBytes: number
+  maxBytes: number,
+  galaxyScope: string | number | undefined,
 ): AsyncGenerator<FileWithContent> {
   let entries
   try {
@@ -52,7 +59,7 @@ async function* walkDir(
     if (ignore.has(entry.name) || entry.name.startsWith('.')) continue
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
-      yield* walkDir(full, ignore, maxBytes)
+      yield* walkDir(full, ignore, maxBytes, galaxyScope)
     } else if (entry.isFile()) {
       try {
         const s = await stat(full)
@@ -61,7 +68,7 @@ async function* walkDir(
         if (category === 'unknown') continue
         const content = category === 'media' ? Buffer.alloc(0) : await readFile(full)
         const node: FileNode = {
-          id: fileIdFromPath(full),
+          id: fileIdFromPath(full, galaxyScope),
           name: basename(full),
           path: full,
           platform: 'local',
