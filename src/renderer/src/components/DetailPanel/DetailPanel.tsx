@@ -10,6 +10,7 @@ const STAR_TYPE_LABELS: Record<StarType, string> = {
   'red-giant': 'Red giant',
   'blue-supergiant': 'Blue supergiant',
   'white-dwarf': 'White dwarf',
+  'main-sequence': 'Main sequence',
   'neutron-star': 'Neutron star',
   'pulsar': 'Pulsar',
   'binary': 'Binary',

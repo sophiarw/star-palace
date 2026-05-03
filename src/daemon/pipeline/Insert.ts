@@ -8,6 +8,8 @@ import type { FileNode, WalkStats } from '../../shared/types'
 import { K_NEAREST, ISOLATION_THRESHOLD } from '../../shared/types'
 import { walkDirectory } from '../index/walker'
 import type { WalkOptions } from '../index/walker'
+import type { UsageMetadata } from '../index/usageMetadata'
+import { computeImportanceScore } from './importanceScore'
 
 export interface InsertPipelineOptions {
   db: FileIndex
@@ -36,10 +38,10 @@ export async function indexPath(
   }
   const walker = await walkDirectory(rootPath, walkOpts)
 
-  for await (const { node, content } of walker) {
+  for await (const { node, content, usage } of walker) {
     stats.scanned++
     try {
-      await insertOne(node, content, { db, hnsw, embedEngine, relayouter, galaxyId })
+      await insertOne(node, content, { db, hnsw, embedEngine, relayouter, galaxyId, usage })
       stats.indexed++
     } catch (err) {
       stats.errors++
@@ -57,9 +59,14 @@ export async function indexPath(
 export async function insertOne(
   node: FileNode,
   content: Buffer,
-  opts: Pick<InsertPipelineOptions, 'db' | 'hnsw' | 'embedEngine' | 'relayouter' | 'galaxyId'>
+  opts: Pick<InsertPipelineOptions, 'db' | 'hnsw' | 'embedEngine' | 'relayouter' | 'galaxyId'> & {
+    // F10 — usage signals from the walker. Optional so direct insertOne()
+    // callers (tests, single-file API endpoints) can omit them; commit 4
+    // computes importance_score from this payload.
+    usage?: UsageMetadata
+  }
 ): Promise<void> {
-  const { db, hnsw, embedEngine, relayouter, galaxyId } = opts
+  const { db, hnsw, embedEngine, relayouter, galaxyId, usage } = opts
   const now = Date.now()
 
   const existing = db.get(node.id)
@@ -84,6 +91,14 @@ export async function insertOne(
     : []
 
   const pos = embedResult ? relayouter.projectOne(embedResult.embedding, node.id) : null
+
+  // F10 — resolve the usage signals once outside the tx so the same values
+  // feed both the upsert columns and the importance-score computation.
+  // Carry-forward when the walker didn't provide any (direct insertOne()
+  // callers like single-file API endpoints) so a re-index doesn't wipe a
+  // previously-recorded signal. Use ?? not || so 0 is preserved.
+  const effectiveOsUseCount = usage?.osUseCount ?? existing?.osUseCount ?? null
+  const effectiveOsLastUsed = usage?.osLastUsed ?? existing?.osLastUsed ?? null
 
   const writeAll = db.db.transaction(() => {
     db.upsert({
@@ -119,6 +134,22 @@ export async function insertOne(
       pinAxisA: existing?.pinAxisA ?? null,
       pinAxisB: existing?.pinAxisB ?? null,
       pinnedAt: existing?.pinnedAt ?? null,
+      // F10 — usage signals from the walker (Spotlight on macOS, atime
+      // elsewhere). When the caller didn't provide any (e.g. test paths
+      // that build a node by hand), carry forward whatever the existing
+      // row had so a re-index doesn't wipe a previously-recorded signal.
+      osUseCount: effectiveOsUseCount,
+      osLastUsed: effectiveOsLastUsed,
+      // F10 — denormalised composite. Recomputed every walker pass (cheap;
+      // no embed call) so percentile buckets in the renderer stay current.
+      // Cloud-platform stars with no Spotlight + no atime degenerate to
+      // viewCount alone.
+      importanceScore: computeImportanceScore({
+        viewCount: existing?.viewCount ?? 0,
+        osUseCount: effectiveOsUseCount,
+        osLastUsed: effectiveOsLastUsed,
+        now,
+      }),
     })
 
     if (!embedResult) return

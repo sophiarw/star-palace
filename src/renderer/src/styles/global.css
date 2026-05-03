@@ -610,6 +610,54 @@ body {
   color: var(--starpalace-accent);
 }
 
+/* F10 — classification mode segmented toggle. Two pills inline next to the
+   theme picker. Active pill picks up the theme accent so it reads at a
+   glance which mode is live. */
+
+.stats-bar-classmode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-bar-classmode-prefix {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.stats-bar-classmode-pills {
+  display: inline-flex;
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 35%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.classification-toggle-pill {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 11px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-family: inherit;
+  text-transform: var(--starpalace-title-transform);
+  letter-spacing: var(--starpalace-title-letter-spacing);
+}
+
+.classification-toggle-pill + .classification-toggle-pill {
+  border-left: 1px solid color-mix(in srgb, var(--starpalace-accent) 35%, transparent);
+}
+
+.classification-toggle-pill:hover {
+  background: color-mix(in srgb, var(--starpalace-accent) 14%, transparent);
+}
+
+.classification-toggle-pill--active {
+  background: color-mix(in srgb, var(--starpalace-accent) 22%, transparent);
+  color: var(--starpalace-accent);
+  font-weight: 600;
+}
+
 /* F11 — theme picker dropdown inside the stats bar. Inline so the bar stays
    bottom-left. Menu pops upward (bar sits at the bottom of the viewport). */
 

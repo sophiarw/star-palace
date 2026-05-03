@@ -30,6 +30,9 @@ function makeFile(overrides: Partial<IndexedFile> = {}): Omit<IndexedFile, 'isSt
     pinAxisA: null,
     pinAxisB: null,
     pinnedAt: null,
+    osUseCount: null,
+    osLastUsed: null,
+    importanceScore: null,
     ...overrides,
   }
 }
@@ -269,5 +272,33 @@ describe('FileIndex', () => {
     expect(f.pinAxisB).toBe(1)
     expect(f.pinnedAt).toBe(99)
     expect(f.size).toBe(999)
+  })
+
+  it('round-trips F10 usage signals (os_use_count, os_last_used, importance_score)', () => {
+    idx.upsert(makeFile({ id: 'u1', path: '/u1' }))
+    const empty = idx.get('u1')!
+    expect(empty.osUseCount).toBeNull()
+    expect(empty.osLastUsed).toBeNull()
+    expect(empty.importanceScore).toBeNull()
+
+    idx.upsert(makeFile({
+      id: 'u1',
+      path: '/u1',
+      osUseCount: 42,
+      osLastUsed: 1_700_000_000_000,
+      importanceScore: 12.5,
+    }))
+    const populated = idx.get('u1')!
+    expect(populated.osUseCount).toBe(42)
+    expect(populated.osLastUsed).toBe(1_700_000_000_000)
+    expect(populated.importanceScore).toBeCloseTo(12.5)
+
+    // Re-upsert with all-NULL signals overwrites (recomputed on every walker
+    // pass — NULL means "still no signal").
+    idx.upsert(makeFile({ id: 'u1', path: '/u1' }))
+    const cleared = idx.get('u1')!
+    expect(cleared.osUseCount).toBeNull()
+    expect(cleared.osLastUsed).toBeNull()
+    expect(cleared.importanceScore).toBeNull()
   })
 })

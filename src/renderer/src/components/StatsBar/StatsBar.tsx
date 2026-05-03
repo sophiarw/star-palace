@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MapStats } from '@shared/types'
 import type { VimMode } from '../../hooks/useVimMode'
 import type { ThemeSummary } from '../../themes/types'
+import type { ClassificationMode } from '../../hooks/useClassificationMode'
 
 interface Props {
   stats: MapStats | null
@@ -13,6 +14,11 @@ interface Props {
   themes?: ThemeSummary[]
   currentThemeId?: string
   onThemeChange?: (id: string) => void
+  // F10 — classification mode toggle. Two pills (Type / Usage) right next
+  // to the theme picker. Optional during rollout so existing call sites
+  // still compile.
+  classMode?: ClassificationMode
+  onClassModeChange?: (m: ClassificationMode) => void
 }
 
 const VIM_MODE_LABELS: Record<VimMode, string> = {
@@ -20,7 +26,14 @@ const VIM_MODE_LABELS: Record<VimMode, string> = {
   search: '-- SEARCH --',
 }
 
-export default function StatsBar({ stats, starCount, vimMode, themes, currentThemeId, onThemeChange }: Props) {
+const CLASS_MODE_LABELS: Record<ClassificationMode, string> = {
+  type: 'Type',
+  usage: 'Usage',
+}
+
+const CLASS_MODE_ORDER: ClassificationMode[] = ['type', 'usage']
+
+export default function StatsBar({ stats, starCount, vimMode, themes, currentThemeId, onThemeChange, classMode, onClassModeChange }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -53,6 +66,27 @@ export default function StatsBar({ stats, starCount, vimMode, themes, currentThe
         <span className={`stats-bar-mode stats-bar-mode--${vimMode}`}>
           {VIM_MODE_LABELS[vimMode]}
         </span>
+      )}
+      {classMode && onClassModeChange && (
+        // F10 — segmented control. Sits next to the theme picker. Two pills
+        // total; one-click flip; whole sky re-renders via the consumer's
+        // mode-change handler.
+        <div className="stats-bar-classmode" role="group" aria-label="Classification mode">
+          <span className="stats-bar-classmode-prefix">Color by</span>
+          <div className="stats-bar-classmode-pills">
+            {CLASS_MODE_ORDER.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`classification-toggle-pill${m === classMode ? ' classification-toggle-pill--active' : ''}`}
+                onClick={() => onClassModeChange(m)}
+                aria-pressed={m === classMode}
+              >
+                {CLASS_MODE_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {themes && themes.length > 0 && current && onThemeChange && (
         <div className="stats-bar-theme" ref={pickerRef}>

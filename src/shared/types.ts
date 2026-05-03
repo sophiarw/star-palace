@@ -45,12 +45,21 @@ export interface Star extends FileNode {
   pinAxisA: number | null  // PC index 0..7 active at pin time (X)
   pinAxisB: number | null  // PC index 0..7 active at pin time (Y)
   pinnedAt: number | null
+  // F10 — usage signals + denormalised composite. NULL until walker pass
+  // populates them (Spotlight on macOS, fs.stat atime elsewhere). The
+  // renderer reads importanceScore for the usage-mode classifier.
+  osUseCount: number | null
+  osLastUsed: number | null
+  importanceScore: number | null
 }
 
 export const STAR_TYPES = [
   'red-giant',
   'blue-supergiant',
   'white-dwarf',
+  // F10 — sun-like middle-of-the-lifecycle star, sits between white-dwarf
+  // (small/cool) and red-giant (large/warm) in the usage-mode classifier.
+  'main-sequence',
   'neutron-star',
   'pulsar',
   'binary',

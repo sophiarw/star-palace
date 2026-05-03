@@ -157,6 +157,7 @@ const TYPED_SCALE: Record<StarType, number> = {
   'red-giant': 1.7,
   'blue-supergiant': 1.7,
   'white-dwarf': 0.6,
+  'main-sequence': 1.0,    // F10: between white-dwarf (0.6) and red-giant (1.7)
   'neutron-star': 0.85,    // F8a v4: bumped from 0.45 — was dwarfed by red dots
   'pulsar': 1.15,          // F8a v4: bumped from 0.7 for telescope-quality detail
   'binary': 1.2,

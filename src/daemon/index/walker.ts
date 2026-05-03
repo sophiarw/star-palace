@@ -4,6 +4,7 @@ import { createHash } from 'crypto'
 import type { FileNode, WalkStats } from '../../shared/types'
 import { categoryFromPath, mimeFromPath } from './extractors/category'
 import { MAX_FILE_BYTES } from '../../shared/types'
+import { readUsageMetadata, type UsageMetadata } from './usageMetadata'
 
 const DEFAULT_IGNORE = new Set([
   'node_modules', '.git', '.DS_Store', 'dist', 'dist-electron', 'dist-web',
@@ -22,6 +23,9 @@ export interface WalkOptions {
 export interface FileWithContent {
   node: FileNode
   content: Buffer
+  // F10 — OS-derived usage signals attached at walk time so the Insert
+  // pipeline can compute importance_score without a second per-file fork.
+  usage: UsageMetadata
 }
 
 export function fileIdFromPath(path: string, galaxyScope?: string | number): string {
@@ -78,7 +82,10 @@ async function* walkDir(
           createdAt: s.birthtimeMs,
           modifiedAt: s.mtimeMs,
         }
-        yield { node, content }
+        // F10 — read Spotlight (macOS) or atime (other OS) usage signals.
+        // Always resolves; per-file fork ~1ms on local FS per spec.
+        const usage = await readUsageMetadata(full)
+        yield { node, content, usage }
       } catch {
         // skip unreadable files
       }

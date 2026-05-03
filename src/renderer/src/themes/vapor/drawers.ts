@@ -227,6 +227,42 @@ const drawBlueSupergiant: ThemedDrawer = (ctx, cx, cy, r, rng, sizeBucket) => {
 }
 
 /* --------------------------------------------------------------------------
+ * 3a. MAIN SEQUENCE — F10: yellow neon, posterized like other vapor drawers
+ *
+ * Vapor counterpart of the JWST sun-like main-sequence. Posterized hyper
+ * -yellow disc with a magenta outer ring (signature vapor clash) and a
+ * white-hot core. No spikes; sits between white-dwarf and red-giant in
+ * the usage-mode lifecycle.
+ * -------------------------------------------------------------------------- */
+
+const drawMainSequence: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  // rng() ord: A) size jitter (sun-like uniformity).
+  const jitter = rngRange(rng, 0.95, 1.08)
+  r = r * jitter
+
+  // Posterized warm disc — magenta outer band, hyper-yellow mid, white core.
+  paintPosterizedDisc(ctx, cx, cy, r * 1.9, [
+    [1.00, 'rgba(120, 0, 100, 0.0)'],
+    [0.82, 'rgba(255, 0, 122, 0.55)'],
+    [0.62, 'rgba(255, 140, 40, 0.75)'],
+    [0.42, 'rgba(255, 242, 0, 0.95)'],
+    [0.22, 'rgba(255, 255, 255, 1.0)'],
+  ])
+
+  // Single neon ring outline at the limb so the disc reads cleanly against
+  // the canvas backdrop without bleeding into halo.
+  ctx.save()
+  ctx.strokeStyle = 'rgba(0, 245, 255, 0.65)'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2); ctx.stroke()
+  ctx.restore()
+
+  const half = ctx.canvas.width / 2
+  if (rollGlitch(rng)) applyGlitchDisplacement(ctx, cy, half, rng)
+  applyCircularFade(ctx, cx, cy, half, 0.80)
+}
+
+/* --------------------------------------------------------------------------
  * 3. WHITE DWARF — vapor-white core + posterized rainbow halo + Tron wisps
  * -------------------------------------------------------------------------- */
 
@@ -705,6 +741,7 @@ export const vaporDrawers = {
   'red-giant': drawRedGiant,
   'blue-supergiant': drawBlueSupergiant,
   'white-dwarf': drawWhiteDwarf,
+  'main-sequence': drawMainSequence,
   'neutron-star': drawNeutronStar,
   'pulsar': drawPulsar,
   'binary': drawBinary,

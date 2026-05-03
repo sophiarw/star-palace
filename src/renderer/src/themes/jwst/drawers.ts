@@ -190,6 +190,55 @@ const drawBlueSupergiant: ThemedDrawer = (ctx, cx, cy, r, rng, sizeBucket) => {
 }
 
 /* --------------------------------------------------------------------------
+ * 3a. MAIN SEQUENCE — F10: warm yellow Sun-like core, modest halo, no spikes
+ *
+ * Sits between white-dwarf (small/cool/white) and red-giant (large/warm
+ * /orange) on the usage-mode lifecycle scale. Slightly bigger and warmer
+ * than the white-dwarf so the bucket reads "settled, frequently touched."
+ * Stylistically a quieter, smaller relative of red-giant — same warmth
+ * family but no convection mottling, no prominences, no diffraction
+ * spikes. Procedural variation deferred to F8a follow-up.
+ * -------------------------------------------------------------------------- */
+
+const drawMainSequence: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  // rng() ord: A) size jitter (kept tiny so Sun-like uniformity wins).
+  const jitter = rngRange(rng, 0.95, 1.08)
+  r = r * jitter
+
+  // Soft warm halo — sun-yellow/amber falloff, no spikes baked.
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4)
+  halo.addColorStop(0,    'rgba(255, 240, 200, 0.85)')
+  halo.addColorStop(0.20, 'rgba(255, 215, 130, 0.55)')
+  halo.addColorStop(0.45, 'rgba(255, 175, 80, 0.28)')
+  halo.addColorStop(0.75, 'rgba(220, 130, 50, 0.10)')
+  halo.addColorStop(1,    'rgba(160, 80, 30, 0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  // Limb darkening — thin warm ring near the disc edge for spherical solidity.
+  const limb = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.05)
+  limb.addColorStop(0,    'rgba(0, 0, 0, 0)')
+  limb.addColorStop(0.92, 'rgba(180, 100, 40, 0.30)')
+  limb.addColorStop(1,    'rgba(60, 30, 10, 0)')
+  ctx.fillStyle = limb
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2); ctx.fill()
+
+  // Bright Sun-yellow core, slightly hot at the very center.
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.0)
+  core.addColorStop(0,    'rgba(255, 250, 220, 1)')
+  core.addColorStop(0.35, 'rgba(255, 230, 160, 0.95)')
+  core.addColorStop(0.70, 'rgba(255, 195, 110, 0.55)')
+  core.addColorStop(1,    'rgba(240, 150, 60, 0)')
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.0, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.80)
+}
+
+/* --------------------------------------------------------------------------
  * 3. WHITE DWARF — corona wisps + size jitter
  * -------------------------------------------------------------------------- */
 
@@ -789,6 +838,7 @@ export const jwstDrawers = {
   'red-giant': drawRedGiant,
   'blue-supergiant': drawBlueSupergiant,
   'white-dwarf': drawWhiteDwarf,
+  'main-sequence': drawMainSequence,
   'neutron-star': drawNeutronStar,
   'pulsar': drawPulsar,
   'binary': drawBinary,
