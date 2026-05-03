@@ -26,7 +26,7 @@ Locked decisions:
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. | |
 | F8 | Procedural per-file graphics | L | Bigger graphics push: every file's visual is hash-derived. F8a foundation (`proc.ts`) and per-id variation shipped via F11 across both themes. F8b/F8c/F8d remain. | F8a **DONE** |
 | F9 | Galaxies (multi-root indexing) | M | New table + galaxy_id column; spiral origin offsets; renderer panel. | **DONE** |
-| F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | |
+| F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | **DONE** |
 | F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks archived under `prototypes/f8a` + `prototypes/f8a-vapor`. | **DONE** |
 | F12 | Selection animation (pulse / breathe) | XS | Renderer-only; replaces SPRITE_SELECTED_BOOST_ALPHA static treatment with a time-varying pulse. | **DONE** |
 | F13 | Search-match explainability (literal hits + AI insight) | M | Two complementary surfaces in DetailPanel for understanding *why* a file ranked for a query. (a) **Literal**: highlight every occurrence of the query string inside the file content viewer (case-insensitive, scrolls to first hit). (b) **AI insight**: new daemon endpoint calls an LLM with the query + the embedded text + neighborhood snippet → returns a 1-2 sentence explanation of the semantic association. Renderer-only for (a); new daemon endpoint + LLM dependency for (b). | |
@@ -604,6 +604,21 @@ All NULL on existing rows; first walker pass after upgrade backfills.
 3. Toggle back → "Type". All `.pdfs` become `quasar` (existing F2 behaviour).
 4. Manually set one `.pdf` to `nebula`. Both modes show `nebula` for that file.
 
+#### Shipped (F10 v1)
+
+- Schema: `os_use_count`, `os_last_used`, `importance_score` columns added via additive `hasColumn` ALTER pattern; `IndexedFile` and `Star` extended with `osUseCount`, `osLastUsed`, `importanceScore`.
+- Walker: `mdls -raw -name kMDItemUseCount -name kMDItemUseDate` per-file on macOS; `fs.stat().atimeMs` fallback elsewhere. Per-file fork ~1ms (acceptable on local FS scale per spec). Spotlight unreachable → atime fallback, logs once per session.
+- Score: `computeImportanceScore({ viewCount, osUseCount, osLastUsed, now })` in `src/daemon/pipeline/importanceScore.ts`. Recomputed at every walker pass.
+- New `STAR_TYPE` member `'main-sequence'` with warm yellow Sun-like sprite (jwst) + posterized hyper-yellow disc (vapor). `TYPED_SCALE['main-sequence'] = 1.0`.
+- Renderer: `useClassificationMode` hook (localStorage key `starpalace.classMode.v1`, default `'type'`); `usageStarType` + `computePercentileBuckets` helper in `src/renderer/src/components/StarMap/usageStarType.ts`; segmented "Color by: [Type] [Usage]" toggle in StatsBar; mode-aware `effectiveStarType` resolves manual override → type-mode (F2) → usage-mode (percentile). Usage mode also drives star size from `importance_score`.
+
+#### Known limitations / follow-up
+
+- F8a per-id procedural variation for `main-sequence` is deferred — the new drawer renders deterministically. Other types still get the F8a per-star variation pulled in via F11.
+- Percentile classifier runs across the entire corpus, not per-galaxy. A galaxy of frequently-touched files reads mostly red-giant; a galaxy of unread files reads mostly white-dwarf. Out of scope for v1; revisit if it looks washed-out per galaxy.
+- No background re-walk: `os_use_count` only refreshes when the user re-indexes. Spec out-of-scope.
+- `effectiveStarType` test coverage stays at the helper level (`usageStarType.test.ts`); the StarMap draw loop is exercised manually by the user (no canvas/jsdom in test env).
+
 ### F11 — Theme selector
 
 Same sky, totally different look. The user picks a visual theme; every typed-star sprite, the canvas backdrop, and the UI accent shift in one swap. Two initial themes ship; more can land later as drop-in modules.
@@ -1170,7 +1185,7 @@ Every commit gates on `npm run typecheck && npm run lint && npm run test`. Conve
 5. **F6** — independent; nice once F1–F5 land so there's enough surface to bind keys to. **DONE**
 6. **F9** — galaxies; multi-root indexing. Independent. **DONE**
 7. **F11** — theme selector. Renderer-only; landed the F8a foundation (`proc.ts` + per-id variation) for both `jwst` and `vapor`. **DONE**
-8. **F10** — usage-driven classification. Independent. Pairs naturally with F8a (procedural variation gives the new `main-sequence` sprite its visual identity).
+8. **F10** — usage-driven classification. Independent. Pairs naturally with F8a (procedural variation gives the new `main-sequence` sprite its visual identity). **DONE**
 9. **F7** — biggest scope; benefits from the tree visualization making the rest of the UI more useful.
 10. **F8** — F8a foundation + per-type variation shipped via F11 (both themes). Remaining work: F8b (default cluster-hue jitter, ½d), F8c (procedural cluster nebulae, 1d), F8d (deep-zoom planet view, 2–3d).
 
