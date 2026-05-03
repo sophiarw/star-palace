@@ -750,7 +750,10 @@ function paintNebulaCloud(
   }
 
   ctx.save()
-  // Soft circular clip so the cloud has no rectangular sprite-tile edge.
+  // Hard circular clip prevents blob overflow into the rectangular sprite
+  // tile (blobs near the boundary can extend beyond R + R*0.9). The
+  // destination-out feather pass at the end softens this clip so the
+  // boundary itself isn't visible at deep zoom.
   ctx.beginPath(); ctx.arc(cx, cy, R * 1.05, 0, Math.PI * 2); ctx.clip()
 
   // Pass 1: large dim diffuse base in band[0] (the cool base colour).
@@ -860,24 +863,39 @@ function paintNebulaCloud(
     }
   }
 
+  // Final pass: feathered radial alpha mask. Smoothly erases blob density
+  // toward the clip boundary so the boundary itself isn't visible at deep
+  // zoom — without this, the hard ctx.arc clip showed as a hard ring once
+  // the renderer scaled the sprite by ~4×. The mask starts erasing at
+  // R*0.55 and reaches full erasure at the clip boundary R*1.05.
+  ctx.globalCompositeOperation = 'destination-out'
+  const feather = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, R * 1.05)
+  feather.addColorStop(0.00, 'rgba(0,0,0,0)')
+  feather.addColorStop(0.50, 'rgba(0,0,0,0.45)')
+  feather.addColorStop(1.00, 'rgba(0,0,0,1)')
+  ctx.fillStyle = feather
+  ctx.fillRect(cx - R * 1.1, cy - R * 1.1, R * 2.2, R * 2.2)
+
   ctx.restore()
 }
 
 const drawNebula: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   paintNebulaCloud(ctx, cx, cy, r * 2.4, rng, {
-    // Carina-inspired: deep teal base + warm tan + gold + dusty magenta +
-    // teal highlights. Hot knots: warm peach + blue-white + warm pink.
+    // Carina-inspired but pushed +25% saturation per visual review feedback.
+    // Cool teal base, brighter warm tan, saturated gold, deeper magenta,
+    // brighter teal highlight. Hot knots: warm peach + blue-white + warm pink.
     bands: [
-      [55, 90, 120],     // deep teal/blue (cool base)
-      [180, 130, 90],    // warm tan
-      [230, 170, 110],   // gold
-      [200, 100, 130],   // dusty magenta
-      [120, 200, 200],   // teal highlight
+      [40, 100, 145],    // deep teal/blue (cool base, more saturated)
+      [210, 140, 80],    // warm tan (brighter)
+      [255, 175, 95],    // gold (more saturated)
+      [225, 90, 145],    // dusty magenta (deeper)
+      [110, 220, 220],   // teal highlight (brighter)
     ],
     hot: [[255, 220, 180], [220, 240, 255], [255, 180, 140]],
     dustAlpha: 0.55,
     filaments: 9,
     shape: { ax: 1.0, ay: 0.78, rot: rng() * Math.PI },
+    intensity: 1.3,
   })
 }
 
