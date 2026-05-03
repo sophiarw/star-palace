@@ -627,7 +627,15 @@ All NULL on existing rows; first walker pass after upgrade backfills.
 
 ### F11 — Theme selector
 
-Same sky, totally different look. The user picks a visual theme; every typed-star sprite, the canvas backdrop, and the UI accent shift in one swap. Two initial themes ship; more can land later as drop-in modules.
+Same sky, totally different look. The user picks a visual theme; every typed-star sprite, the canvas backdrop, and the UI accent shift in one swap. Five themes ship now (originally Two; F-NEXT added Atari low-res, Lost in space, Bioluminescent); more can land later as drop-in modules.
+
+#### Five themes (post-F-NEXT)
+
+- **`jwst`** (default) — deep-space realism (see "Two themes at launch" below for details).
+- **`vapor`** — synthwave / chromatic-aberration with CRT scanlines via `Theme.postPass`.
+- **`atari`** — chunky 8-bit aesthetic. Sets `dprCap: 1.0` (low-res by design) + `smoothing: 'off'` (nearest-neighbour).
+- **`lost`** — illustrated stranded-cosmonaut world. Astronauts, ships, wormholes replace stars. Sets `flatLighting: true` (no zoom-driven exposure dim, no vignette).
+- **`bio`** — organic / scenic. Anemones, jellyfish, glowing flora. Also `flatLighting: true`.
 
 #### Two themes at launch
 
@@ -669,9 +677,21 @@ type ThemedDrawer = (
 Themes live as ES modules in `src/renderer/src/themes/`:
 - `src/renderer/src/themes/jwst/index.ts` (drawers + background + ui)
 - `src/renderer/src/themes/vapor/index.ts`
+- `src/renderer/src/themes/atari/index.ts`, `lost/index.ts`, `bio/index.ts` (added post-F-NEXT)
 - `src/renderer/src/themes/registry.ts` exports a `Map<ThemeId, Theme>` and a `defaultThemeId`.
 
 Adding a new theme = add a new directory + register it. No daemon changes, no schema migration.
+
+**Post-F-NEXT contract additions** — the `Theme` interface above gained five optional fields. Source of truth: `src/renderer/src/themes/types.ts`.
+
+| Field | Type | Purpose | Themes that set it |
+|---|---|---|---|
+| `smoothing` | `'high' \| 'off'` | Main canvas `imageSmoothingQuality` per frame. | All themes (required). JWST/Lost/Bio = `'high'`; Vapor/Atari = `'off'`. |
+| `dprCap?` | `number` | Backing-store DPR cap. `effectiveDpr = min(window.devicePixelRatio, dprCap ?? Infinity)`. Replaces the global Low/Med/High/Ultra dropdown. | Atari = `1.0`; others undefined. |
+| `flatLighting?` | `boolean` | Disables zoom-driven exposure dim AND radial vignette. For organic / scenic worlds where stars should always read at full opacity and corners shouldn't darken. | Bio + Lost. |
+| `postPass?` | `(ctx, w, h, dpr) => void` | Final-frame post-pass after all sprites + HUD + labels. | Vapor (CRT scanlines, see F-NEXT-D). |
+| `background.paint?` | `(ctx, w, h, dpr, seedKey) => void` | Per-theme background renderer (Stage C). Cached offscreen via `backgroundNebula.ts` keyed on `(seedKey, w, h, dpr)`. | JWST (Carina deep-field wash) + Vapor (synthwave gradient + Tron grid). |
+| `background.replacesBackdrop?` | `boolean` | When true, StarMap skips the prerendered backdrop layer. | JWST + Vapor. |
 
 #### Picker UI
 
@@ -876,6 +896,102 @@ User has 3 indexed galaxies (e.g. `~/code`, `~/Documents`, `~/scratch`). Sometim
 - `src/renderer/src/hooks/useIndexProgress.ts` (NEW) — EventSource wrapper.
 - `src/renderer/src/components/GalaxyPanel/GalaxyPanel.tsx` — progress row.
 - `src/renderer/src/styles/global.css` — `.galaxy-panel-progress*` styles.
+
+### F18 — Per-file user tags (DONE)
+
+User can add freeform tags to any file via the DetailPanel chip-list. Tags persist across re-index and feed the `tags+metadata+content` embedding strategy when active.
+
+**Schema:** `files.tags TEXT` (JSON-encoded `string[]` or NULL). Survives re-index via COALESCE in the upsert (same pattern as `is_pinned` / `star_type` / pin coefficients).
+
+**Endpoints:**
+- `GET /api/file/:id/tags` → `{ tags: string[] }`.
+- `POST /api/file/:id/tags` body `{ tags: string[] }` — trims, drops empties, persists as JSON or NULL.
+
+**UI:** `DetailPanel.tsx` chip-list below the star-type selector. Type a tag, press Enter to add. Click `×` on a chip to remove. Empty list clears the column to NULL.
+
+**On tag edit:** the renderer triggers `POST /api/file/:id/reindex` so the file's embedding regenerates under the current default strategy (which may be `tags+metadata+content`).
+
+**Files:**
+- `src/daemon/db/FileIndex.ts` — `setTags`, `getTags`; column added in `migrate()`.
+- `src/daemon/index.ts` — endpoints (~line 484).
+- `src/renderer/src/components/DetailPanel/DetailPanel.tsx` — chip-list editor.
+- `src/renderer/src/api.ts` — `getTags` / `setTags` wrappers.
+
+### F19 — Embedding strategies + experiment lab (DONE)
+
+Configurable per-file embedding prompt composition. The default-strategy choice + an in-app lab for testing strategies on a subset before adopting one globally.
+
+#### Strategies
+
+`src/daemon/embedding/strategies.ts` — pure module exporting `STRATEGIES: Record<StrategyId, Strategy>`. Five registered strategies:
+
+| Id | Prompt shape | Use case |
+|---|---|---|
+| `content-only` | Raw UTF-8 file content | Legacy default; long prose. Returns `null` for media. |
+| `metadata-only` | `filename + parent + ext + mime + size + modified` header (no content) | Tiny files where content alone is too short to embed usefully (e.g. `data_subjectX_DayY.txt` with 5 numbers). |
+| `metadata+content` | Metadata header **first** + truncated content | Recommended new default; metadata stays even when 8 KB tail-truncation kicks in. |
+| `tags+metadata+content` | User tags first, then metadata + content | When curated tags should dominate similarity. |
+| `sampled-stats+metadata` | Numeric summary (`n`, `min`, `max`, `mean`, `std`) + raw values + metadata for tiny numeric files; falls through to `metadata+content` otherwise | Sensor / measurement data. |
+
+**Default strategy** lives in `app_settings.default_strategy` (single-row k/v table). Initial value `'content-only'`. Flip via the EmbeddingLab promote flow or directly via `POST /api/embedding/default`.
+
+**Strategy is recorded per file** in `files.embedding_strategy TEXT` (NULL for legacy pre-B1 rows). `Insert.insertOne` reads the current default at index time, builds the prompt, and writes the strategy on the row. The content-hash short-circuit is strategy-aware: re-embed fires when `(promptHash, strategy)` differs from `(existing.contentHash, existing.embeddingStrategy)` — so flipping the default forces a re-embed on next walk.
+
+#### Experiment lab
+
+User picks a subdir + strategy in the EmbeddingLab UI panel (Shift+E to toggle). Daemon:
+1. Captures a snapshot of the current `(embedding, content_hash, x, y, layout_version, prior_strategy)` per file in scope.
+2. Re-embeds each scope file under the new strategy (preserves the HNSW invariant: KNN search before SQL tx, `addPoint` after commit).
+3. Fits subset PCA via `Relayouter.trainSubset(fileIds)` (hard floor 10 files; uses one-shot PCA on just the subset, does NOT persist the model — global axes would visually compress the subset into a tiny region).
+4. Writes the experimental positions back to `files.x`/`files.y` with a synthetic negative `layout_version` (FNV-1a hash of snapshot id, mapped negative) so the renderer's `since=N` delta query always picks them up.
+
+User reviews the new layout in-app. Then:
+
+- **Promote** — adopt the snapshot's strategy as the new default. Drops the snapshot. Kicks a background re-embed of the rest of the corpus (rest = files NOT in the snapshot AND `embedding_strategy != newDefault`) via `progressStore`.
+- **Revert** — restore each per-file `(embedding, embedding_strategy from prior_strategy, x, y, layout_version)` from the snapshot. Re-add restored vectors to HNSW (label-reuse; no orphans). Drop the snapshot. Run a global `relayouter.train()` to re-coherence the corpus.
+
+**Auto-prune:** snapshots are kept to the 10 most recent on every snapshot create.
+
+#### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/embedding/strategies` | List strategies + active default. |
+| `POST` | `/api/embedding/default` | Set default. No re-embed. |
+| `POST` | `/api/embedding/experiment` | Run experiment. 400 if scope < 10 files. |
+| `GET` | `/api/embedding/experiment/:id/positions` | Subset-PCA positions. |
+| `POST` | `/api/embedding/experiment/:id/promote` | Adopt + background re-embed. |
+| `POST` | `/api/embedding/experiment/:id/revert` | Restore from snapshot. |
+| `GET` | `/api/embedding/snapshots` | History list. |
+| `POST` | `/api/file/:id/reindex` | Re-embed a single file under the current default (used after tag edits). |
+
+#### Schema additions
+
+- `files.embedding_strategy TEXT` (NULL = legacy).
+- `app_settings (key TEXT PK, value TEXT)` — single-row default.
+- `embedding_snapshots (snapshot_id, created_at, strategy, scope_path, note)`.
+- `embedding_snapshot_files (snapshot_id, file_id, embedding, content_hash, x, y, layout_version, prior_strategy)`.
+
+#### Renderer (B3)
+
+- `src/renderer/src/components/EmbeddingLab/EmbeddingLab.tsx` — panel toggled via Shift+E. Subdir picker (depth-3 tree from in-app star paths), strategy dropdown (sourced from `GET /api/embedding/strategies`), optional note, run-experiment button (disabled below 10 files), snapshot history with Preview/Promote/Revert buttons, mini-canvas (300×160) showing the affected files' isolated cluster shape, promote-job progress bar via `useIndexProgress`.
+- Preview overlay: when previewing a snapshot, StarMap overrides those stars' (x, y) with the snapshot positions and tints them with an accent ring (decoration pass). "Back to production" clears.
+- `src/renderer/src/api.ts` — wrappers for all 8 new endpoints + `getTags`/`setTags`/`reindexFile`.
+
+### F-NEXT-A..D — Crisp graphics rework (DONE)
+
+Four-stage visual overhaul to close the gap between in-app rendering and the deck's visual target (`docs/gui-update/index.html`).
+
+- **A — DPR-aware sprite cache.** Sprites bake at the effective DPR matching the main canvas backing store, so `drawImage` doesn't upsample at retina (browser default smoothing produced visible blur). Cache key includes a DPR bucket. Cap 4000 entries / 512 MB. (`src/renderer/src/components/StarMap/sprites.ts`.)
+- **B — Crisp halo grading + per-theme smoothing + tone tuning.** Default-path halo gradient swapped to deck's 7-stop curve (tight bright nucleus, thin glow tail). Per-theme `imageSmoothingQuality` config. `EXPOSURE_MIN` 0.45→0.6; vignette outer alpha 0.55→0.35.
+- **C — Background nebula layer.** Per-theme `Theme.background.paint?(ctx, w, h, dpr, seedKey)` callback runs between canvas clear and sprite blit. Cached offscreen via `backgroundNebula.ts`. JWST = Carina deep-field wash at 6% alpha + 180 background pinpoints. Vapor = synthwave gradient + Tron-grid horizon. Themes can set `replacesBackdrop: true` to skip the legacy prerendered backdrop.
+- **D — Vapor CRT post-pass.** `Theme.postPass?(ctx, w, h, dpr)` runs after every other pass. Vapor: 1px scanlines every 3px under `multiply` (α=0.30) + chromatic aberration (magenta/cyan ±2px arcs) on each focused star.
+
+**Cheap-LOD sprite swap retired** — the prior behaviour swapped to a 2-stop halo+core fallback below 6 px on-screen, which hid every theme's procedural detail when zoomed out (defeating the multi-theme point). Sprites now render full-quality at every zoom.
+
+**Quality dropdown retired** (Low/Med/High/Ultra). Themes own resolution via `dprCap`.
+
+**MAX_TEXT_BYTES** dropped 30 KB → 8 KB after a Documents reindex showed ~29% Ollama context-length 500s. Dense / binary content tokenises at 1-2 bytes/token, not the assumed ~4. 8 KB ≈ 2k tokens, safely under `num_ctx=8192`. Real PDF/DOCX text extractors are open follow-up work; until they land, the cap stays low.
 
 **Edge cases:**
 - Browser disconnects mid-stream (tab close): walker continues to completion; cleanup removes the Map entry on next GC.
