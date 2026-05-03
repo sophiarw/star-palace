@@ -13,13 +13,8 @@ import {
 } from './sprites'
 import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
+import { worldToScreen, screenToWorld, type Camera } from './coords'
 import type { VimAction } from '../../hooks/useVimMode'
-
-interface Camera {
-  cx: number  // world x at canvas center
-  cy: number  // world y at canvas center
-  zoom: number
-}
 
 interface Props {
   stars: Star[]
@@ -81,14 +76,6 @@ function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3)
 }
 
-function worldToScreen(wx: number, wy: number, cam: Camera, w: number, h: number): [number, number] {
-  return [(wx - cam.cx) * cam.zoom + w / 2, (wy - cam.cy) * cam.zoom + h / 2]
-}
-
-function screenToWorld(sx: number, sy: number, cam: Camera, w: number, h: number): [number, number] {
-  return [(sx - w / 2) / cam.zoom + cam.cx, (sy - h / 2) / cam.zoom + cam.cy]
-}
-
 // Intersection of the segment from (cx, cy) toward (tx, ty) with the canvas
 // rectangle, inset by `inset` pixels on every side. Used to project an
 // off-screen point onto the visible boundary.
@@ -141,6 +128,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   const isDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
   const searchPulseStart = useRef<number>(0)
+  const dprRef = useRef<number>(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
 
   // Keep refs in sync
   useEffect(() => { starsRef.current = stars }, [stars])
@@ -285,13 +273,21 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stars.length > 0])
 
-  // Resize canvas to window
+  // Resize canvas to window — backing store is sized in device pixels so the
+  // image stays crisp on high-DPR displays. All draw code below operates in
+  // CSS-pixel coordinates after we apply the dpr transform per frame.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const resize = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
+      const dpr = window.devicePixelRatio || 1
+      dprRef.current = dpr
+      const w = window.innerWidth
+      const h = window.innerHeight
+      canvas.width = Math.round(w * dpr)
+      canvas.height = Math.round(h * dpr)
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
     }
     resize()
     window.addEventListener('resize', resize)
@@ -303,7 +299,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
-    const w = canvas.width, h = canvas.height
+    // Reset transform each frame so the dpr scale doesn't accumulate, then
+    // operate everywhere below in CSS-pixel coordinates.
+    const dpr = dprRef.current
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    const w = canvas.width / dpr, h = canvas.height / dpr
     const cam = camRef.current
     const currentStars = starsRef.current
     const currentClusters = clustersRef.current
