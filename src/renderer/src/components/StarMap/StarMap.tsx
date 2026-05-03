@@ -18,6 +18,7 @@ import { usageStarType, type PercentileBuckets } from './usageStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
 import { buildSpatialGrid, forEachStarInBounds, type SpatialGrid } from './spatialGrid'
 import { convexHull, type Pt } from './convexHull'
+import { frameMetrics } from '../../lib/frameMetrics'
 import type { Lod } from './sprites'
 import type { VimAction } from '../../hooks/useVimMode'
 import type { Theme } from '../../themes/types'
@@ -284,6 +285,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // velocity) bypass the gate via `needsContinuousRedraw()` below.
   const dirtyRef = useRef<boolean>(true)
   const lastCamSnapRef = useRef<Camera>({ cx: NaN, cy: NaN, zoom: NaN })
+  // Frame-metrics support: visible-star count from the most recent draw and
+  // the wheel-event timestamp (so the metric loop can mark a frame as
+  // "interacting" for ~200 ms after a wheel scroll).
+  const lastVisibleCountRef = useRef<number>(0)
+  const lastWheelTsRef = useRef<number>(0)
   // F4 — drag-to-pin state: pinDrag.current holds the live target world
   // coords. The main draw loop runs each frame via rAF, so we don't need to
   // trigger a React re-render on each cursor move; the next frame picks up
@@ -1302,6 +1308,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     dirtyRef.current = false
     lastCamSnapRef.current = cam
+    // Number of stars actually drawn this frame (main pass + forced-draw
+    // set). Read by the rAF loop's metric tick to give the perf overlay a
+    // "are we drawing too much?" signal that ties cost to load.
+    lastVisibleCountRef.current = drawnIds.size
   }, [hoveredId, selectedId])
 
   // Animate. Also integrates hjkl pan velocity into camRef each frame and
@@ -1312,6 +1322,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // pulsar/quasar beams, pin-drag, vim pan velocity) bypass the gate.
   useEffect(() => {
     let lastT = performance.now()
+    let lastTickMs = performance.now()
     let prevHadVel = false
     const loop = (tNow: number) => {
       const dt = Math.min(0.1, (tNow - lastT) / 1000)  // clamp dt to avoid jumps after a long tab-away
@@ -1349,9 +1360,23 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         hasVel ||                                      // vim pan velocity
         pinDrag.current !== null                       // pin-drag preview
 
+      // User-driven gestures, distinct from animation. The metric overlay
+      // breaks out an interacting-only avg/p99 so the user can see whether
+      // pan/zoom feels worse than idle even when overall avg looks fine.
+      const interacting =
+        isDragging.current ||
+        hasVel ||
+        pinDrag.current !== null ||
+        (tNow - lastWheelTsRef.current) < 200
+
       if (dirtyRef.current || continuous) {
         draw()
+        const deltaMs = tNow - lastTickMs
+        frameMetrics.record(deltaMs, interacting, lastVisibleCountRef.current)
+      } else {
+        frameMetrics.recordSkipped()
       }
+      lastTickMs = tNow
       animRef.current = requestAnimationFrame(loop)
     }
     animRef.current = requestAnimationFrame(loop)
@@ -1540,6 +1565,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
     camRef.current = newCam
     setCam(newCam)
+    lastWheelTsRef.current = performance.now()
   }, [])
 
   useEffect(() => {

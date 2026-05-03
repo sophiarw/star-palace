@@ -19,6 +19,7 @@ import { computePercentileBuckets } from './components/StarMap/usageStarType'
 import CollectionsPanel from './components/CollectionsPanel/CollectionsPanel'
 import { useCollections } from './hooks/useCollections'
 import { useGalaxyVisibility } from './hooks/useGalaxyVisibility'
+import PerfOverlay from './components/PerfOverlay/PerfOverlay'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -47,6 +48,7 @@ export default function App() {
   const [galaxies, setGalaxies] = useState<GalaxySummary[]>([])
   const [showSearch, setShowSearch] = useState(false)
   const [showCollectionsPanel, setShowCollectionsPanel] = useState(true)
+  const [showPerf, setShowPerf] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const layoutVersionRef = useRef<number>(-1)
 
@@ -111,6 +113,21 @@ export default function App() {
       layoutVersionRef.current = s.layoutVersion
     } catch { /* daemon may not be running */ }
   }, [loadMap])
+
+  // Shift+P toggles the perf overlay. Capture phase + key='P' (uppercase
+  // implies Shift held). Skipped when an input/textarea has focus so typing
+  // a capital 'P' in the search box doesn't open the overlay.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'P' || !e.shiftKey) return
+      const target = e.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      setShowPerf(v => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     loadMap()
@@ -492,6 +509,8 @@ export default function App() {
       {showCheatsheet && (
         <Cheatsheet onClose={() => setShowCheatsheet(false)} />
       )}
+
+      <PerfOverlay visible={showPerf} onClose={() => setShowPerf(false)} />
 
       {showEmpty && (
         <div className="empty-state">
