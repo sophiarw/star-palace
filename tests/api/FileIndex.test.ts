@@ -301,4 +301,89 @@ describe('FileIndex', () => {
     expect(cleared.osLastUsed).toBeNull()
     expect(cleared.importanceScore).toBeNull()
   })
+
+  // F5 — Collections
+
+  it('creates and lists a static collection with members', () => {
+    idx.upsert(makeFile({ id: 'c1', path: '/c1' }))
+    idx.upsert(makeFile({ id: 'c2', path: '/c2' }))
+    const coll = idx.createCollection({
+      name: 'Magnets',
+      kind: 'static',
+      fileIds: ['c1', 'c2'],
+    })
+    expect(coll.id).toBeGreaterThan(0)
+    expect(coll.name).toBe('Magnets')
+    expect(coll.kind).toBe('static')
+    expect(coll.query).toBeNull()
+    expect(coll.similarityFloor).toBeNull()
+    expect(coll.evaluatedAt).toBeNull()
+
+    const list = idx.listCollections()
+    const found = list.find(c => c.id === coll.id)
+    expect(found).toBeDefined()
+    expect(found!.memberCount).toBe(2)
+    expect(idx.getCollectionMembers(coll.id).sort()).toEqual(['c1', 'c2'])
+  })
+
+  it('creates a dynamic collection with query + similarity floor default', () => {
+    const coll = idx.createCollection({ name: 'Pitch decks', kind: 'dynamic', query: 'pitch deck' })
+    expect(coll.kind).toBe('dynamic')
+    expect(coll.query).toBe('pitch deck')
+    expect(coll.similarityFloor).toBeCloseTo(0.6)  // COLLECTION_DEFAULT_SIMILARITY_FLOOR
+  })
+
+  it('rejects duplicate collection names with a SqliteError', () => {
+    idx.createCollection({ name: 'Dup', kind: 'static' })
+    expect(() => idx.createCollection({ name: 'Dup', kind: 'static' })).toThrow(/UNIQUE/)
+  })
+
+  it('add and remove static members', () => {
+    idx.upsert(makeFile({ id: 'm1', path: '/m1' }))
+    idx.upsert(makeFile({ id: 'm2', path: '/m2' }))
+    idx.upsert(makeFile({ id: 'm3', path: '/m3' }))
+    const c = idx.createCollection({ name: 'Bag', kind: 'static', fileIds: ['m1'] })
+    idx.addCollectionMembers(c.id, ['m2', 'm3'])
+    expect(idx.getCollectionMembers(c.id).sort()).toEqual(['m1', 'm2', 'm3'])
+
+    idx.removeCollectionMember(c.id, 'm2')
+    expect(idx.getCollectionMembers(c.id).sort()).toEqual(['m1', 'm3'])
+  })
+
+  it('addCollectionMembers is idempotent on duplicate ids', () => {
+    idx.upsert(makeFile({ id: 'd1', path: '/d1' }))
+    const c = idx.createCollection({ name: 'IdemBag', kind: 'static', fileIds: ['d1'] })
+    idx.addCollectionMembers(c.id, ['d1', 'd1'])
+    expect(idx.getCollectionMembers(c.id)).toEqual(['d1'])
+  })
+
+  it('setCollectionMembership atomically replaces membership and reports diff', () => {
+    const c = idx.createCollection({ name: 'DynBag', kind: 'dynamic', query: 'q', fileIds: ['a', 'b'] })
+    const diff = idx.setCollectionMembership(c.id, ['b', 'c', 'd'])
+    expect(diff.added.sort()).toEqual(['c', 'd'])
+    expect(diff.removed).toEqual(['a'])
+    expect(idx.getCollectionMembers(c.id).sort()).toEqual(['b', 'c', 'd'])
+
+    const after = idx.getCollection(c.id)!
+    expect(after.evaluatedAt).not.toBeNull()
+  })
+
+  it('deleteCollection cascades members', () => {
+    const c = idx.createCollection({ name: 'Del', kind: 'static', fileIds: ['x', 'y'] })
+    expect(idx.getCollectionMembers(c.id)).toHaveLength(2)
+    idx.deleteCollection(c.id)
+    expect(idx.getCollection(c.id)).toBeNull()
+    expect(idx.getCollectionMembers(c.id)).toEqual([])
+  })
+
+  it('assigns distinct color indices to successive collections (modulo palette)', () => {
+    const a = idx.createCollection({ name: 'C0', kind: 'static' })
+    const b = idx.createCollection({ name: 'C1', kind: 'static' })
+    expect(b.colorIndex).not.toBe(a.colorIndex)
+  })
+
+  it('respects an explicit colorIndex override on create', () => {
+    const c = idx.createCollection({ name: 'Override', kind: 'static', colorIndex: 4 })
+    expect(c.colorIndex).toBe(4)
+  })
 })

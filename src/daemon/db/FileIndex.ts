@@ -1,6 +1,9 @@
 import Database from 'better-sqlite3'
-import type { FileNode, FileCategory, Star, StarType, Edge, Cluster, Galaxy, GalaxySummary } from '../../shared/types'
-import { DEFAULT_GALAXY_NAME } from '../../shared/types'
+import type {
+  FileNode, FileCategory, Star, StarType, Edge, Cluster, Galaxy, GalaxySummary,
+  Collection, CollectionKind, CollectionSummary,
+} from '../../shared/types'
+import { DEFAULT_GALAXY_NAME, COLLECTION_DEFAULT_SIMILARITY_FLOOR, CONSTELLATION_PALETTE } from '../../shared/types'
 import { galaxySpiralOffset } from './galaxySpiral'
 
 export interface IndexedFile extends FileNode {
@@ -157,6 +160,31 @@ export class FileIndex {
     if (!this.hasColumn('files', 'importance_score')) {
       this.db.exec(`ALTER TABLE files ADD COLUMN importance_score REAL;`)
     }
+
+    // F5 — virtual collections. `collections` holds the named group; `members`
+    // is a join table from collection → file id. UNIQUE(name) lets the
+    // endpoint return 409 on rename conflicts. CHECK constraint enforces the
+    // 'static' / 'dynamic' kind union at insert time (matches CollectionKind).
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS collections (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        name             TEXT NOT NULL UNIQUE,
+        kind             TEXT NOT NULL CHECK (kind IN ('static','dynamic')),
+        query            TEXT,
+        similarity_floor REAL,
+        color_index      INTEGER NOT NULL,
+        created_at       INTEGER NOT NULL,
+        updated_at       INTEGER NOT NULL,
+        evaluated_at     INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS collection_members (
+        collection_id INTEGER NOT NULL,
+        file_id       TEXT NOT NULL,
+        added_at      INTEGER NOT NULL,
+        PRIMARY KEY (collection_id, file_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_cm_file ON collection_members(file_id);
+    `)
 
     // Backfill: ensure a "default" galaxy at the spiral origin, then assign any
     // legacy file rows (galaxy_id IS NULL) to it. Idempotent.
@@ -495,6 +523,139 @@ export class FileIndex {
     return rows.map(r => ({ ...rowToGalaxy(r), memberCount: r.member_count }))
   }
 
+  // F5 — Collections (virtual groupings of files).
+  //
+  // createCollection rolls the row + initial members into a single transaction
+  // so partial inserts don't leave a named collection with no members. The
+  // unique-name constraint at the SQLite level surfaces as a thrown
+  // SqliteError; the API layer catches it and returns 409.
+  createCollection(opts: {
+    name: string
+    kind: CollectionKind
+    query?: string | null
+    similarityFloor?: number | null
+    fileIds?: string[]
+    colorIndex?: number
+  }): Collection {
+    const now = Date.now()
+    const colorIndex = opts.colorIndex ?? this.nextCollectionColorIndex()
+    const query = opts.kind === 'dynamic' ? (opts.query ?? null) : null
+    const floor = opts.kind === 'dynamic'
+      ? (opts.similarityFloor ?? COLLECTION_DEFAULT_SIMILARITY_FLOOR)
+      : null
+
+    const tx = this.db.transaction(() => {
+      const result = this.db.prepare(
+        `INSERT INTO collections (name, kind, query, similarity_floor, color_index, created_at, updated_at, evaluated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`
+      ).run(opts.name, opts.kind, query, floor, colorIndex, now, now)
+      const id = result.lastInsertRowid as number
+
+      const ids = opts.fileIds ?? []
+      if (ids.length > 0) {
+        const insertMember = this.db.prepare(
+          `INSERT OR IGNORE INTO collection_members (collection_id, file_id, added_at) VALUES (?, ?, ?)`
+        )
+        for (const fid of ids) insertMember.run(id, fid, now)
+      }
+      return id
+    })
+    const id = tx()
+    return this.getCollection(id)!
+  }
+
+  // Cycle through the constellation palette modulo its length so distinct
+  // collections look visually different on the map. Caller may also pass an
+  // explicit colorIndex into createCollection to override.
+  private nextCollectionColorIndex(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS c FROM collections`).get() as { c: number }
+    return row.c % CONSTELLATION_PALETTE.length
+  }
+
+  listCollections(): CollectionSummary[] {
+    const rows = this.db.prepare(`
+      SELECT c.*, COALESCE(COUNT(m.file_id), 0) AS member_count
+      FROM collections c
+      LEFT JOIN collection_members m ON m.collection_id = c.id
+      GROUP BY c.id
+      ORDER BY c.id
+    `).all() as (CollectionRow & { member_count: number })[]
+    return rows.map(r => ({ ...rowToCollection(r), memberCount: r.member_count }))
+  }
+
+  getCollection(id: number): Collection | null {
+    const row = this.db.prepare(`SELECT * FROM collections WHERE id = ?`).get(id) as CollectionRow | undefined
+    return row ? rowToCollection(row) : null
+  }
+
+  getCollectionMembers(id: number): string[] {
+    const rows = this.db.prepare(
+      `SELECT file_id FROM collection_members WHERE collection_id = ? ORDER BY added_at ASC`
+    ).all(id) as { file_id: string }[]
+    return rows.map(r => r.file_id)
+  }
+
+  // INSERT OR IGNORE makes this idempotent across duplicate calls — the
+  // PRIMARY KEY (collection_id, file_id) prevents dupes and the IGNORE
+  // suppresses the conflict error.
+  addCollectionMembers(id: number, fileIds: string[]): void {
+    if (fileIds.length === 0) return
+    const now = Date.now()
+    const stmt = this.db.prepare(
+      `INSERT OR IGNORE INTO collection_members (collection_id, file_id, added_at) VALUES (?, ?, ?)`
+    )
+    const tx = this.db.transaction(() => {
+      for (const fid of fileIds) stmt.run(id, fid, now)
+      this.db.prepare(`UPDATE collections SET updated_at = ? WHERE id = ?`).run(now, id)
+    })
+    tx()
+  }
+
+  removeCollectionMember(id: number, fileId: string): void {
+    const now = Date.now()
+    const tx = this.db.transaction(() => {
+      this.db.prepare(
+        `DELETE FROM collection_members WHERE collection_id = ? AND file_id = ?`
+      ).run(id, fileId)
+      this.db.prepare(`UPDATE collections SET updated_at = ? WHERE id = ?`).run(now, id)
+    })
+    tx()
+  }
+
+  // Atomic replace: delete-all + insert-all in one transaction so a refresh
+  // never exposes a half-applied membership set to readers. Used by the
+  // dynamic-refresh endpoint after re-running the query.
+  setCollectionMembership(id: number, fileIds: string[]): { added: string[]; removed: string[] } {
+    const now = Date.now()
+    const before = new Set(this.getCollectionMembers(id))
+    const after = new Set(fileIds)
+    const added: string[] = []
+    const removed: string[] = []
+    for (const fid of after) if (!before.has(fid)) added.push(fid)
+    for (const fid of before) if (!after.has(fid)) removed.push(fid)
+
+    const insertStmt = this.db.prepare(
+      `INSERT OR IGNORE INTO collection_members (collection_id, file_id, added_at) VALUES (?, ?, ?)`
+    )
+    const tx = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM collection_members WHERE collection_id = ?`).run(id)
+      for (const fid of fileIds) insertStmt.run(id, fid, now)
+      this.db.prepare(
+        `UPDATE collections SET updated_at = ?, evaluated_at = ? WHERE id = ?`
+      ).run(now, now, id)
+    })
+    tx()
+    return { added, removed }
+  }
+
+  deleteCollection(id: number): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM collection_members WHERE collection_id = ?`).run(id)
+      this.db.prepare(`DELETE FROM collections WHERE id = ?`).run(id)
+    })
+    tx()
+  }
+
   // Layout meta
   saveLayoutMeta(version: number, algorithm: string, model: Buffer, nodeCount: number): void {
     this.db.prepare(`
@@ -578,6 +739,18 @@ interface ClusterRow {
   centroid_y: number | null
   member_count: number
   label: string | null
+}
+
+interface CollectionRow {
+  id: number
+  name: string
+  kind: string
+  query: string | null
+  similarity_floor: number | null
+  color_index: number
+  created_at: number
+  updated_at: number
+  evaluated_at: number | null
 }
 
 export interface LayoutMetaRow {
@@ -689,5 +862,19 @@ function rowToCluster(row: ClusterRow): Cluster {
     centroidY: row.centroid_y,
     memberCount: row.member_count,
     label: row.label,
+  }
+}
+
+function rowToCollection(row: CollectionRow): Collection {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind as CollectionKind,
+    query: row.query,
+    similarityFloor: row.similarity_floor,
+    colorIndex: row.color_index,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    evaluatedAt: row.evaluated_at,
   }
 }
