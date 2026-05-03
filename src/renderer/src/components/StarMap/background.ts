@@ -1,22 +1,31 @@
 // Prerendered deep-field backdrop. Generated once per viewport size.
 // Encodes: base color, distant nebula clouds, faint background stars, far galaxies.
 // All deterministic per size so the same window dimensions yield the same backdrop.
+//
+// The internal canvas is rendered at BACKDROP_MULTIPLIER × the requested viewport
+// size so callers can scale + pan the backdrop with the camera (parallax) without
+// exposing the canvas edge.
 
 const BASE = '#020611'
+const BACKDROP_MULTIPLIER = 2
 
 interface Backdrop {
   canvas: HTMLCanvasElement
-  width: number
-  height: number
+  width: number   // viewport width that produced this backdrop
+  height: number  // viewport height
 }
 
 let cached: Backdrop | null = null
 
 export function getBackdrop(width: number, height: number): HTMLCanvasElement {
   if (cached && cached.width === width && cached.height === height) return cached.canvas
-  const canvas = renderBackdrop(width, height)
+  const canvas = renderBackdrop(width * BACKDROP_MULTIPLIER, height * BACKDROP_MULTIPLIER)
   cached = { canvas, width, height }
   return canvas
+}
+
+export function getBackdropMultiplier(): number {
+  return BACKDROP_MULTIPLIER
 }
 
 export function clearBackdropCache(): void {
@@ -51,7 +60,7 @@ function renderBackdrop(width: number, height: number): HTMLCanvasElement {
     [50, 90, 100],    // dim teal
     [90, 60, 30],     // deep amber
   ]
-  const nebulaCount = 4 + Math.floor(rng() * 3)
+  const nebulaCount = (4 + Math.floor(rng() * 3)) * BACKDROP_MULTIPLIER * BACKDROP_MULTIPLIER
   for (let i = 0; i < nebulaCount; i++) {
     const cx = rng() * width
     const cy = rng() * height
@@ -65,10 +74,11 @@ function renderBackdrop(width: number, height: number): HTMLCanvasElement {
     ctx.fillRect(0, 0, width, height)
   }
 
-  // Faint background stars — tiny hued points
+  // Faint background stars — tiny hued points. Cap scaled with multiplier so the
+  // visible density per viewport pixel stays roughly the same as before.
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
-  const starCount = Math.min(900, Math.floor((width * height) / 2400))
+  const starCount = Math.min(900 * BACKDROP_MULTIPLIER * BACKDROP_MULTIPLIER, Math.floor((width * height) / 2400))
   for (let i = 0; i < starCount; i++) {
     const x = rng() * width
     const y = rng() * height
@@ -87,7 +97,7 @@ function renderBackdrop(width: number, height: number): HTMLCanvasElement {
   ctx.restore()
 
   // Faraway galaxies — fuzzy ellipses with elongated radial gradients
-  const galaxyCount = 30 + Math.floor(rng() * 20)
+  const galaxyCount = (30 + Math.floor(rng() * 20)) * BACKDROP_MULTIPLIER * BACKDROP_MULTIPLIER
   for (let i = 0; i < galaxyCount; i++) {
     const cx = rng() * width
     const cy = rng() * height
