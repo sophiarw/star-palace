@@ -1673,3 +1673,343 @@ body {
 .detail-panel-collection-action button:hover {
   background: rgba(255, 153, 68, 0.22);
 }
+
+/* B3 — EmbeddingLab. Mirrors GalaxyPanel's chrome (rgba surface, rounded
+   corners, accent-tinted controls) so the panel reads as a sibling rather
+   than a foreign overlay. Sits top-right at fixed width; user can dismiss
+   via Shift+E or the close button. */
+.embedding-lab {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 360px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  z-index: 90;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.embedding-lab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.embedding-lab-title h3 {
+  font-size: 14px;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.embedding-lab-default {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.embedding-lab-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.embedding-lab-close:hover {
+  color: var(--text);
+}
+
+.embedding-lab-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.embedding-lab-section-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.embedding-lab-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.embedding-lab-loading {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.embedding-lab-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(2, 11, 24, 0.6);
+}
+
+.embedding-lab-tree li + li {
+  border-top: 1px solid rgba(30, 58, 95, 0.4);
+}
+
+.embedding-lab-tree-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.embedding-lab-tree-row:hover {
+  background: rgba(74, 158, 255, 0.12);
+}
+
+.embedding-lab-tree-row--selected {
+  background: rgba(74, 158, 255, 0.22);
+  color: #fff;
+}
+
+.embedding-lab-tree-row--ineligible {
+  color: var(--text-muted);
+}
+
+.embedding-lab-tree-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+.embedding-lab-tree-count {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.embedding-lab-scope-info {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.embedding-lab-scope-floor {
+  color: #e07a7a;
+}
+
+.embedding-lab-select,
+.embedding-lab-input {
+  width: 100%;
+  background: rgba(2, 11, 24, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 10px;
+  font-family: inherit;
+}
+
+.embedding-lab-select:focus,
+.embedding-lab-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.embedding-lab-select[disabled],
+.embedding-lab-input[disabled] {
+  opacity: 0.6;
+}
+
+.embedding-lab-strategy-desc {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.embedding-lab-run {
+  background: color-mix(in srgb, var(--starpalace-accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 50%, transparent);
+  border-radius: 6px;
+  color: var(--starpalace-accent);
+  font-size: 12px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.embedding-lab-run:hover:not([disabled]) {
+  background: color-mix(in srgb, var(--starpalace-accent) 28%, transparent);
+}
+
+.embedding-lab-run[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.embedding-lab-msg {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.embedding-lab-msg--err {
+  color: #e07a7a;
+  background: rgba(224, 122, 122, 0.08);
+  border: 1px solid rgba(224, 122, 122, 0.3);
+}
+
+.embedding-lab-msg--ok {
+  color: #74e07a;
+  background: rgba(116, 224, 122, 0.08);
+  border: 1px solid rgba(116, 224, 122, 0.3);
+}
+
+.embedding-lab-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed color-mix(in srgb, var(--starpalace-accent) 40%, transparent);
+  border-radius: 6px;
+}
+
+.embedding-lab-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--starpalace-accent);
+}
+
+.embedding-lab-preview-clear {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.embedding-lab-preview-clear:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.embedding-lab-preview-canvas {
+  border-radius: 4px;
+  background: #02060f;
+  display: block;
+  width: 100%;
+}
+
+.embedding-lab-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.embedding-lab-history-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(2, 11, 24, 0.5);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.embedding-lab-history-row--active {
+  border-color: color-mix(in srgb, var(--starpalace-accent) 50%, transparent);
+}
+
+.embedding-lab-history-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.embedding-lab-history-strategy {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.embedding-lab-history-time {
+  color: var(--text-muted);
+}
+
+.embedding-lab-history-scope {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.embedding-lab-history-note {
+  color: var(--text);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.embedding-lab-history-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.embedding-lab-history-actions button {
+  flex: 1;
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.embedding-lab-history-actions button:hover:not([disabled]) {
+  background: rgba(74, 158, 255, 0.22);
+}
+
+.embedding-lab-history-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.embedding-lab-hint {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: right;
+  margin-top: 4px;
+}

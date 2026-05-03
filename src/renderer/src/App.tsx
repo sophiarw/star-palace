@@ -19,6 +19,7 @@ import CollectionsPanel from './components/CollectionsPanel/CollectionsPanel'
 import { useCollections } from './hooks/useCollections'
 import { useGalaxyVisibility } from './hooks/useGalaxyVisibility'
 import PerfOverlay from './components/PerfOverlay/PerfOverlay'
+import EmbeddingLab, { type ExperimentPreview } from './components/EmbeddingLab/EmbeddingLab'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -48,6 +49,11 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false)
   const [showCollectionsPanel, setShowCollectionsPanel] = useState(true)
   const [showPerf, setShowPerf] = useState(false)
+  // B3 — EmbeddingLab visibility + the lifted preview state. Preview lives
+  // here (not inside the panel) so StarMap can read it for the overlay
+  // overrides, and `Back to production` can clear it from either place.
+  const [showEmbeddingLab, setShowEmbeddingLab] = useState(false)
+  const [experimentPreview, setExperimentPreview] = useState<ExperimentPreview | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const layoutVersionRef = useRef<number>(-1)
 
@@ -123,6 +129,20 @@ export default function App() {
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
       e.preventDefault()
       setShowPerf(v => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // B3 — Shift+E mirrors the perf-overlay pattern. Same input-focus skip
+  // so typing a capital 'E' in a text field doesn't open the lab.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'E' || !e.shiftKey) return
+      const target = e.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      setShowEmbeddingLab(v => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -506,6 +526,20 @@ export default function App() {
       )}
 
       <PerfOverlay visible={showPerf} onClose={() => setShowPerf(false)} />
+
+      <EmbeddingLab
+        visible={showEmbeddingLab}
+        onClose={() => setShowEmbeddingLab(false)}
+        stars={stars}
+        preview={experimentPreview}
+        onPreview={setExperimentPreview}
+        onMutated={() => {
+          // Snapshot promote/revert mutates server-side embeddings; nudge
+          // pollStats so the version delta path picks up the new positions
+          // and refreshes the sky.
+          pollStats().catch(() => { /* surfaced elsewhere */ })
+        }}
+      />
 
       {showEmpty && (
         <div className="empty-state">
