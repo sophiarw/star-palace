@@ -752,8 +752,14 @@ const drawNebula: ThemedDrawer = (ctx, cx, cy, _r, rng) => {
 
   const W = ctx.canvas.width, H = ctx.canvas.height
   const half = Math.min(W, H) / 2
-  const NW = Math.max(48, Math.floor(W / 2))
-  const NH = Math.max(48, Math.floor(H / 2))
+  // FBM is a low-frequency density field — bilinear upsample of a small
+  // ImageData buffer is visually indistinguishable from a full-res render.
+  // Cap NW/NH at NOISE_MAX so the largest nebula sprites (up to ~91² pixels
+  // at the biggest size bucket) don't pay 8 k× 5-octave FBM samples per
+  // first build. 48-floor preserves the existing minimum quality.
+  const NOISE_MAX = 56
+  const NW = Math.min(NOISE_MAX, Math.max(48, Math.floor(W / 2)))
+  const NH = Math.min(NOISE_MAX, Math.max(48, Math.floor(H / 2)))
   const noiseCanvas = document.createElement('canvas')
   noiseCanvas.width = NW
   noiseCanvas.height = NH
