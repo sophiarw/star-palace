@@ -1,10 +1,10 @@
 import express from 'express'
 import cors from 'cors'
-import { homedir, platform } from 'os'
+import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
-import { exec } from 'child_process'
+import { openInDefaultApp } from './util/openInDefaultApp'
 import { FileIndex } from './db/FileIndex'
 import { HnswIndex } from './ann/HnswIndex'
 import { OllamaClient } from './embedding/OllamaClient'
@@ -141,14 +141,15 @@ app.post('/api/file/:id/star-type', (req, res) => {
 })
 
 // --- Open file in OS default app ---
-app.post('/api/file/:id/open', (req, res) => {
+app.post('/api/file/:id/open', async (req, res) => {
   const file = db.get(req.params.id)
   if (!file) return res.status(404).json({ error: 'not found' })
-  const cmd = platform() === 'win32' ? `start "" "${file.path}"` : platform() === 'darwin' ? `open "${file.path}"` : `xdg-open "${file.path}"`
-  exec(cmd, err => {
-    if (err) return res.status(500).json({ error: String(err) })
+  try {
+    await openInDefaultApp(file.path)
     res.json({ ok: true })
-  })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
 })
 
 // --- Force relayout ---
