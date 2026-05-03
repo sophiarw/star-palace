@@ -16,6 +16,7 @@ import {
   spriteLogicalSize,
 } from './sprites'
 import { defaultJitterFor } from './proc'
+import { drawChromaticAberration } from './vaporCrt'
 import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import { usageStarType, type PercentileBuckets } from './usageStarType'
@@ -1239,6 +1240,18 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           ctx.stroke()
         }
       }
+
+      // F-NEXT-D — vapor chromatic aberration on focused cores. Walks the
+      // same `drawnByFocusId` set the rings just used; the screen-blend
+      // arc pair brightens each focused star's nucleus with a magenta /
+      // cyan fringe, the analogue-CRT "channel mis-registration" look.
+      // Vapor only — JWST keeps clean halos. Cheap (≤ ~30 focus ids,
+      // 2 arcs each).
+      if (activeTheme.id === 'vapor') {
+        for (const drawn of drawnByFocusId.values()) {
+          drawChromaticAberration(ctx, drawn.sx, drawn.sy, drawn.drawW / 2)
+        }
+      }
       ctx.restore()
     }
     markEnd('09.decoration')
@@ -1438,6 +1451,20 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
     ctx.restore()
     markEnd('14.labels')
+
+    // F-NEXT-D — final post-pass. Sits ABOVE the HUD so effects like the
+    // vapor CRT scanline overlay read like a real screen treatment over
+    // the entire app, not a backdrop you can see chrome poking through.
+    // Optional per theme; JWST has no postPass and pays nothing.
+    markStart()
+    if (activeTheme.postPass) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1
+      activeTheme.postPass(ctx, w, h, dpr)
+      ctx.restore()
+    }
+    markEnd('15.postPass')
 
     dirtyRef.current = false
     lastCamSnapRef.current = cam
