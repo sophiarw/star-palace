@@ -5,6 +5,12 @@ import { recomputeClusters, updateClusterCentroids } from './clustering'
 import { detectSignFlips } from '../math/pinMath'
 import { LAYOUT_THRESHOLD, type ProjectionFile } from '../../shared/types'
 
+// B2 — minimum sample count for a subset PCA fit. Below ~10 the eigenvector
+// decomposition becomes rank-deficient (fewer samples than embedding dims) and
+// the resulting projection collapses to a tiny region. Caller (the experiment
+// endpoint) converts a too-small subset into HTTP 400 instead of a stack trace.
+export const SUBSET_PCA_MIN = 10
+
 export class Relayouter {
   private db: FileIndex
   private pca: StarPca | null = null
@@ -155,5 +161,41 @@ export class Relayouter {
     const count = this.db.countWithEmbeddings()
     if (count < LAYOUT_THRESHOLD) return false
     return this.train()
+  }
+
+  // B2 — fit a one-shot PCA on just the supplied files and return their
+  // scaled (x, y) positions in [-500, 500]. The fitted model is intentionally
+  // discarded: subset experiments are local-scope projections that the live
+  // global model wouldn't produce (full-corpus variance dominates the global
+  // axes, so a sub-tree experiment compresses into a tiny patch when projected
+  // through the global PCA). Returning null lets the endpoint convert the
+  // too-small case into HTTP 400 without a thrown error.
+  //
+  // Side-effect-free: does NOT mutate `layout_meta`, `layout_version`, the
+  // global PCA model, file rows, or clusters. The caller writes the returned
+  // positions to `files.x/y` itself (with a synthetic negative version) so the
+  // renderer's `/api/map/positions?since=N` delta picks them up but the
+  // numbered-version lineage stays untouched.
+  trainSubset(fileIds: string[]): Map<string, [number, number]> | null {
+    if (fileIds.length < SUBSET_PCA_MIN) return null
+    const files = fileIds
+      .map(id => this.db.get(id))
+      .filter((f): f is NonNullable<ReturnType<FileIndex['get']>> =>
+        f !== null && f.embedding !== null
+      )
+    if (files.length < SUBSET_PCA_MIN) return null
+
+    const embeddings = files.map(f => f.embedding!)
+    const pca = StarPca.train(embeddings)
+    const rawPositions = embeddings.map(e => pca.project(e))
+    const { scaled } = scalePositions(rawPositions, 1000)
+
+    const out = new Map<string, [number, number]>()
+    for (let i = 0; i < files.length; i++) {
+      const [x, y] = scaled[i]
+      const [jx, jy] = jitterFor(files[i].id)
+      out.set(files[i].id, [x + jx, y + jy])
+    }
+    return out
   }
 }
