@@ -83,7 +83,7 @@ export async function insertOne(
         .slice(0, K_NEAREST)
     : []
 
-  const pos = embedResult ? relayouter.projectOne(embedResult.embedding) : null
+  const pos = embedResult ? relayouter.projectOne(embedResult.embedding, node.id) : null
 
   const writeAll = db.db.transaction(() => {
     db.upsert({

@@ -1,5 +1,6 @@
 import type { FileIndex } from '../db/FileIndex'
 import { StarPca, scalePositions, applyScale, type PcaModel } from './Pca'
+import { jitterFor } from './jitter'
 import { recomputeClusters, updateClusterCentroids } from './clustering'
 import { detectSignFlips } from '../math/pinMath'
 import { LAYOUT_THRESHOLD, type ProjectionFile } from '../../shared/types'
@@ -36,12 +37,17 @@ export class Relayouter {
   // Project a single embedding using the current model (no re-fit). Applies
   // the train-time scale transform when available so post-train inserts land
   // in the same world-unit range as the training set instead of clustering at
-  // raw PCA scale near the origin.
-  projectOne(embedding: Float32Array): [number, number] | null {
+  // raw PCA scale near the origin. The optional `id` adds a tiny deterministic
+  // jitter so two files with identical embeddings don't render on top of each
+  // other.
+  projectOne(embedding: Float32Array, id?: string): [number, number] | null {
     if (!this.pca) return null
     const raw = this.pca.project(embedding)
     const s = this.pca.scale
-    return s ? applyScale(raw, s) : raw
+    const scaled = s ? applyScale(raw, s) : raw
+    if (!id) return scaled
+    const [jx, jy] = jitterFor(id)
+    return [scaled[0] + jx, scaled[1] + jy]
   }
 
   // True when the loaded model predates per-axis scale persistence and a
@@ -122,7 +128,8 @@ export class Relayouter {
     const updateAll = this.db.db.transaction(() => {
       for (let i = 0; i < files.length; i++) {
         const [x, y] = scaled[i]
-        updateStmt.run(x, y, this.layoutVersion, files[i].id)
+        const [jx, jy] = jitterFor(files[i].id)
+        updateStmt.run(x + jx, y + jy, this.layoutVersion, files[i].id)
       }
     })
     updateAll()
