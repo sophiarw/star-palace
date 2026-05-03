@@ -166,6 +166,12 @@ describe('FileIndex', () => {
     expect(b.originX === c.originX && b.originY === c.originY).toBe(false)
   })
 
+  it('places the first user galaxy at the origin (default does not push it off-center)', () => {
+    const a = idx.getOrCreateGalaxy('/Users/foo/tiny', 'tiny')
+    expect(a.originX).toBe(0)
+    expect(a.originY).toBe(0)
+  })
+
   it('lists galaxies with member_count', () => {
     const g = idx.getOrCreateGalaxy('/Users/foo/notes', 'notes')
     idx.upsert(makeFile({ id: 'gx1', path: '/Users/foo/notes/a.md', galaxyId: g.id }))

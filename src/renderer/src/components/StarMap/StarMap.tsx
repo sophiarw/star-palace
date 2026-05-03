@@ -318,6 +318,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const dpr = dprRef.current
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const w = canvas.width / dpr, h = canvas.height / dpr
+    // Opaque clear: backdrop draw + vignette below are not guaranteed to
+    // cover the full backing store on resize / DPR change. Without this,
+    // stale pixels survive in narrow bands.
+    ctx.fillStyle = '#000814'
+    ctx.fillRect(0, 0, w, h)
     const cam = camRef.current
     const currentStars = starsRef.current
     const currentClusters = clustersRef.current

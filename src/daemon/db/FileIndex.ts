@@ -432,10 +432,15 @@ export class FileIndex {
     const existing = this.db.prepare(`SELECT * FROM galaxies WHERE root_path = ?`).get(rootPath) as GalaxyRow | undefined
     if (existing) return rowToGalaxy(existing)
 
-    // Spiral slot = current galaxy count + 1 (1-indexed). The default galaxy
-    // already occupies slot 1 (origin), so the first user galaxy lands at slot 2.
-    const total = (this.db.prepare(`SELECT COUNT(*) AS c FROM galaxies`).get() as { c: number }).c
-    const slot = total + 1
+    // Spiral slot = count of existing user galaxies + 1. The default galaxy
+    // (sentinel root path) is excluded so the first user galaxy lands at
+    // slot 1 (origin), keeping single-corpus demos centered. Default and
+    // first user overlap at origin; default only ever holds legacy backfill
+    // rows — empty in the fresh-DB common case.
+    const userTotal = (this.db.prepare(
+      `SELECT COUNT(*) AS c FROM galaxies WHERE root_path NOT LIKE '__default__:%'`
+    ).get() as { c: number }).c
+    const slot = userTotal + 1
     const [originX, originY] = galaxySpiralOffset(slot)
     const result = this.db.prepare(
       `INSERT INTO galaxies (name, root_path, origin_x, origin_y, created_at)
