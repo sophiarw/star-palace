@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
-import type { Star, Cluster, SearchResult, Edge } from '@shared/types'
+import type { Star, Cluster, SearchResult, Edge, StarType } from '@shared/types'
 import { CONSTELLATION_PALETTE } from '@shared/types'
 import { fetchNeighborhood, edgeFromNeighborhood } from '../../api'
 import HoverCard from '../HoverCard/HoverCard'
@@ -13,9 +13,11 @@ import {
 } from './sprites'
 import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
+import { usageStarType, type PercentileBuckets } from './usageStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
 import type { VimAction } from '../../hooks/useVimMode'
 import type { Theme } from '../../themes/types'
+import type { ClassificationMode } from '../../hooks/useClassificationMode'
 
 interface Props {
   stars: Star[]
@@ -28,10 +30,46 @@ interface Props {
   onHoveredChange?: (id: string | null) => void
   // F11 — active theme. Drives typed sprite drawer pick + canvas backdrop.
   theme: Theme
+  // F10 — classification mode + precomputed corpus percentile buckets. When
+  // mode === 'usage' the renderer routes through usageStarType for the
+  // effective type and uses importance_score as the size driver. Both are
+  // optional so existing call sites still compile.
+  classMode?: ClassificationMode
+  percentileBuckets?: PercentileBuckets
   // F4 — Shift+mousedown on a hovered star starts a drag-to-pin gesture; on
   // release we fire this callback. Optional so existing call sites compile
   // before App.tsx wires it up.
   onPinFile?: (id: string, worldX: number, worldY: number) => void
+}
+
+// F10 — resolve the effective StarType for a star given the active mode +
+// percentile buckets. Manual override always wins; type-mode falls through
+// to the F2 extension classifier; usage-mode buckets via importance_score.
+// Returns null only when neither path nominates a type (cluster-hue path).
+function effectiveStarType(
+  star: Star,
+  mode: ClassificationMode,
+  buckets: PercentileBuckets | undefined,
+): StarType | null {
+  if (star.starType) return star.starType
+  if (mode === 'usage' && buckets) {
+    return usageStarType(star.importanceScore ?? 0, buckets)
+  }
+  // type mode (or usage mode with no buckets yet) → F2 default
+  return defaultStarType(star.name, star.mimeType, star.category)
+}
+
+// F10 — usage-mode size mapping. Replaces sizeBucketFor(viewCount) so a
+// frequently-touched file looks bigger. Uses the same bucket count as
+// view-count-driven sizing (0..4) so cached sprites stay reusable. Tier
+// thresholds are deliberately coarse — micro-flicker on small score drift
+// would be visually noisy.
+function sizeBucketForImportance(score: number): number {
+  if (score < 1) return 0
+  if (score < 5) return 1
+  if (score < 12) return 2
+  if (score < 25) return 3
+  return 4
 }
 
 // F11 — search-highlight + pin glyph + pin-drag preview now read the active
@@ -142,7 +180,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, onPinFile }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -176,6 +214,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // theme stay until LRU eviction).
   const themeRef = useRef(theme)
   useEffect(() => { themeRef.current = theme }, [theme])
+
+  // F10 — classification mode + percentile buckets refs. The draw callback
+  // reads them per-frame so flipping the mode toggle re-skins every visible
+  // star instantly without rebuilding the rAF loop.
+  const classModeRef = useRef<ClassificationMode>(classMode ?? 'type')
+  useEffect(() => { classModeRef.current = classMode ?? 'type' }, [classMode])
+  const bucketsRef = useRef<PercentileBuckets | undefined>(percentileBuckets)
+  useEffect(() => { bucketsRef.current = percentileBuckets }, [percentileBuckets])
 
   // Keep refs in sync
   useEffect(() => { starsRef.current = stars }, [stars])
@@ -364,6 +410,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const w = canvas.width / dpr, h = canvas.height / dpr
     const activeTheme = themeRef.current
+    // F10 — read mode + buckets per-frame so toggle flips re-render the
+    // sky without rebuilding the rAF loop.
+    const activeMode = classModeRef.current
+    const activeBuckets = bucketsRef.current
     // Opaque clear: backdrop draw + vignette below are not guaranteed to
     // cover the full backing store on resize / DPR change. Without this,
     // stale pixels survive in narrow bands. Theme drives the fill colour
@@ -480,9 +530,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
       ctx.globalAlpha = dimAlpha * exposure
 
-      const sb = sizeBucketFor(star.viewCount)
+      // F10: in usage mode, size scales with importance_score (replaces
+      // the view-count-only bucket). Type mode keeps the existing F2 path.
+      const sb = activeMode === 'usage'
+        ? sizeBucketForImportance(star.importanceScore ?? 0)
+        : sizeBucketFor(star.viewCount)
       let sprite: HTMLCanvasElement
-      const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
+      const effectiveType = effectiveStarType(star, activeMode, activeBuckets)
       if (effectiveType) {
         sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
       } else {
@@ -508,12 +562,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // Animation overlay — pulsar rotating beam + quasar jet flicker. Cardinality is small.
     const tNow = performance.now() / 1000
     for (const star of currentStars) {
-      const animType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
+      const animType = effectiveStarType(star, activeMode, activeBuckets)
       if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
 
-      const sb = sizeBucketFor(star.viewCount)
+      const sb = activeMode === 'usage'
+        ? sizeBucketForImportance(star.importanceScore ?? 0)
+        : sizeBucketFor(star.viewCount)
       const r = spriteCoreRadius(sb)
       const phaseOffset = (hashStr(star.id) % 1000) / 1000
 
@@ -574,7 +630,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (!drawn) continue  // off-screen + not selected/neighbor — main pass culled
         const { sprite, sx, sy, drawW, drawH } = drawn
 
-        const sb = sizeBucketFor(star.viewCount)
+        const sb = activeMode === 'usage'
+          ? sizeBucketForImportance(star.importanceScore ?? 0)
+          : sizeBucketFor(star.viewCount)
         let scaleR = drawScale
         if (isHighlighted) scaleR *= SPRITE_HIGHLIGHT_SCALE + pulseScale
         if (isNeighbor && !isSelected) scaleR *= SPRITE_NEIGHBOR_SCALE
@@ -674,7 +732,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         if (!star.isPinned) continue
         const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
         if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
-        const r = spriteCoreRadius(sizeBucketFor(star.viewCount)) * drawScale
+        const sbLock = activeMode === 'usage'
+          ? sizeBucketForImportance(star.importanceScore ?? 0)
+          : sizeBucketFor(star.viewCount)
+        const r = spriteCoreRadius(sbLock) * drawScale
         ctx.fillText('\u{1F512}', sx, sy - r - 6)
       }
       ctx.textAlign = 'start'
@@ -701,8 +762,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ctx.lineTo(tx, ty)
         ctx.stroke()
         ctx.setLineDash([])
-        const sb = sizeBucketFor(star.viewCount)
-        const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
+        const sb = activeMode === 'usage'
+          ? sizeBucketForImportance(star.importanceScore ?? 0)
+          : sizeBucketFor(star.viewCount)
+        const effectiveType = effectiveStarType(star, activeMode, activeBuckets)
         let sprite: HTMLCanvasElement
         if (effectiveType) {
           sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
@@ -737,7 +800,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const alpha = focusAlpha * zoomAlpha
       if (alpha < 0.05) continue
 
-      const r = spriteCoreRadius(sizeBucketFor(star.viewCount)) * drawScale
+      const sbLabel = activeMode === 'usage'
+        ? sizeBucketForImportance(star.importanceScore ?? 0)
+        : sizeBucketFor(star.viewCount)
+      const r = spriteCoreRadius(sbLabel) * drawScale
       ctx.fillStyle = '#c8dff5'
       ctx.font = `${Math.min(11, 8 + cam.zoom * 1.5)}px monospace`
       ctx.globalAlpha = alpha

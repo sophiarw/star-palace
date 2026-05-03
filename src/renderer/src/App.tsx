@@ -12,6 +12,8 @@ import PCDial from './components/PCDial/PCDial'
 import { usePcDial } from './hooks/usePcDial'
 import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
 import { useTheme } from './hooks/useTheme'
+import { useClassificationMode } from './hooks/useClassificationMode'
+import { computePercentileBuckets } from './components/StarMap/usageStarType'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -94,6 +96,21 @@ export default function App() {
 
   const pcDial = usePcDial()
   const themeCtx = useTheme()
+  const classCtx = useClassificationMode()
+
+  // F10 — corpus-wide percentile thresholds for the usage classifier.
+  // Recomputed whenever the star list mutates (re-index, daemon poll). The
+  // classifier reads buckets at draw time so the sky re-skins instantly on
+  // mode flip without paying the sort cost again.
+  const percentileBuckets = useMemo(() => {
+    const scores: number[] = []
+    for (const s of stars) {
+      // Treat null importance_score (pre-walker-pass legacy rows) as 0 so
+      // they land in the bottom bucket. Matches the "babies" intuition.
+      scores.push(s.importanceScore ?? 0)
+    }
+    return computePercentileBuckets(scores)
+  }, [stars])
 
   // F11 — propagate active theme into CSS so chrome (HoverCard ring,
   // DetailPanel pin badge, SearchBar highlight, StarMap selection ring)
@@ -252,6 +269,8 @@ export default function App() {
         vimAction={vimAction}
         onHoveredChange={setHoveredId}
         theme={themeCtx.theme}
+        classMode={classCtx.mode}
+        percentileBuckets={percentileBuckets}
         onPinFile={(id, wx, wy) => {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}
@@ -283,6 +302,8 @@ export default function App() {
         themes={themeCtx.available}
         currentThemeId={themeCtx.theme.id}
         onThemeChange={themeCtx.setTheme}
+        classMode={classCtx.mode}
+        onClassModeChange={classCtx.setMode}
       />
 
       <GalaxyPanel
