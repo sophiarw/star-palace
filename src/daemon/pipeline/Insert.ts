@@ -1,7 +1,7 @@
 import { createHash } from 'crypto'
 import type { FileIndex } from '../db/FileIndex'
 import type { HnswIndex } from '../ann/HnswIndex'
-import type { EmbeddingEngine } from '../embedding/EmbeddingEngine'
+import type { EmbeddingEngine, EmbeddingResult } from '../embedding/EmbeddingEngine'
 import type { Relayouter } from '../layout/Relayouter'
 import { pluralityVoteCluster } from '../layout/clustering'
 import type { FileNode, WalkStats } from '../../shared/types'
@@ -10,6 +10,8 @@ import { walkDirectory } from '../index/walker'
 import type { WalkOptions } from '../index/walker'
 import type { UsageMetadata } from '../index/usageMetadata'
 import { computeImportanceScore } from './importanceScore'
+import { STRATEGIES, isStrategyId, DEFAULT_STRATEGY } from '../embedding/strategies'
+import type { StrategyId } from '../embedding/strategies'
 
 // F17 — minimum gap between progress emits. Walker tries to fire after every
 // file but coalesces events that land inside the same 100 ms window so a
@@ -117,15 +119,33 @@ export async function insertOne(
   const now = Date.now()
 
   const existing = db.get(node.id)
-  if (node.category !== 'media') {
-    const text = content.toString('utf8')
-    if (text.trim()) {
-      const hash = createHash('sha1').update(text).digest('hex')
-      if (existing?.contentHash === hash) return
-    }
-  }
 
-  const embedResult = await embedEngine.embedFile(node, content)
+  // B1 — resolve the active strategy from app_settings up-front. Tags are
+  // pulled from the existing row so a re-index sees the user's manual tag
+  // assignments without an extra round-trip; Insert never mutates tags.
+  const rawStrategy = db.getDefaultStrategy()
+  const strategy: StrategyId = isStrategyId(rawStrategy) ? rawStrategy : DEFAULT_STRATEGY
+  const tags = existing?.tags ?? null
+
+  // Build the prompt eagerly so we can hash exactly what Ollama would see.
+  // The legacy short-circuit hashed raw content; with strategies the prompt
+  // can include metadata and tags, so the hash MUST cover the full text or
+  // a strategy flip would be invisible to the cache key. Skip-condition is
+  // therefore (promptHash matches AND strategy matches).
+  const prompt = STRATEGIES[strategy].build({ node, content, tags })
+  let embedResult: EmbeddingResult | null = null
+  if (prompt !== null && prompt.trim()) {
+    const promptHash = createHash('sha1').update(prompt).digest('hex')
+    if (existing?.contentHash === promptHash && existing?.embeddingStrategy === strategy) {
+      // Skip: same prompt + same strategy => same vector. No embed, no
+      // KNN refresh, no upsert. Walker idempotency intact.
+      return
+    }
+    // Call embed() directly with the already-built prompt; no need to
+    // route back through embedFile and rebuild it.
+    const result = await embedEngine.embed(prompt)
+    embedResult = { embedding: result.embedding, contentHash: result.contentHash, strategy }
+  }
 
   // ANN search runs against the existing index — the new point is not added
   // until the DB transaction commits, so a tx rollback never leaves an HNSW
@@ -197,12 +217,12 @@ export async function insertOne(
         osLastUsed: effectiveOsLastUsed,
         now,
       }),
-      // B1 — pure preservation in commit 2. Insert never mutates these (the
-      // ON CONFLICT clause COALESCEs NULL into whatever the row already has),
-      // and commit 4 will replace the literal nulls with the values that
-      // actually drove the embed call.
-      tags: existing?.tags ?? null,
-      embeddingStrategy: existing?.embeddingStrategy ?? null,
+      // B1 — record the strategy that produced `embedding`. When this insert
+      // doesn't re-embed (prompt was null e.g. media on content-only), keep
+      // whatever the existing row reported. Tags are pure preservation here:
+      // the user owns them via setTags, Insert never writes new ones.
+      tags,
+      embeddingStrategy: embedResult?.strategy ?? existing?.embeddingStrategy ?? null,
     })
 
     if (!embedResult) return

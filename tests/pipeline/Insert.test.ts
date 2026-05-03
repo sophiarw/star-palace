@@ -147,6 +147,112 @@ describe('Insert pipeline (mocked Ollama)', () => {
     }
   })
 
+  // B1 — strategy threading
+
+  it('uses the active default strategy when building the prompt', async () => {
+    db.setDefaultStrategy('metadata+content')
+
+    const node: FileNode = {
+      id: 'mc1',
+      name: 'note.md',
+      path: '/Users/jane/notes/note.md',
+      platform: 'local',
+      mimeType: 'text/markdown',
+      category: 'document',
+      size: 4,
+      createdAt: 0,
+      modifiedAt: 1_704_067_200_000,
+    }
+    await insertOne(node, Buffer.from('body'), { db, hnsw, embedEngine: engine, relayouter })
+
+    // The mock recorded every prompt that hit fetch — last call must be the
+    // metadata-headed prompt, not the raw 'body'.
+    const lastCall = vi.mocked(fetch).mock.calls.at(-1)
+    expect(lastCall).toBeDefined()
+    const sentBody = JSON.parse((lastCall![1] as RequestInit).body as string) as { prompt: string }
+    expect(sentBody.prompt.startsWith('filename: note.md')).toBe(true)
+    expect(sentBody.prompt).toContain('---\ncontent:\nbody')
+
+    const stored = db.get('mc1')!
+    expect(stored.embeddingStrategy).toBe('metadata+content')
+  })
+
+  it('re-embeds when the active strategy changes for an unchanged file', async () => {
+    const node: FileNode = {
+      id: 'sc1',
+      name: 'doc.md',
+      path: '/Users/jane/doc.md',
+      platform: 'local',
+      mimeType: 'text/markdown',
+      category: 'document',
+      size: 4,
+      createdAt: 0,
+      modifiedAt: 1_704_067_200_000,
+    }
+    const content = Buffer.from('hello')
+
+    // First insert under content-only (the seeded default)
+    await insertOne(node, content, { db, hnsw, embedEngine: engine, relayouter })
+    const callsAfterFirst = vi.mocked(fetch).mock.calls.length
+    expect(db.get('sc1')!.embeddingStrategy).toBe('content-only')
+
+    // Re-running with the same default skips (idempotent path)
+    await insertOne(node, content, { db, hnsw, embedEngine: engine, relayouter })
+    expect(vi.mocked(fetch).mock.calls.length).toBe(callsAfterFirst)
+
+    // Flip the default — same content, different strategy => re-embed
+    db.setDefaultStrategy('metadata+content')
+    await insertOne(node, content, { db, hnsw, embedEngine: engine, relayouter })
+    expect(vi.mocked(fetch).mock.calls.length).toBe(callsAfterFirst + 1)
+
+    const after = db.get('sc1')!
+    expect(after.embeddingStrategy).toBe('metadata+content')
+  })
+
+  it('skips embed when content + strategy are both unchanged', async () => {
+    const node: FileNode = {
+      id: 'sk1',
+      name: 'a.txt',
+      path: '/tmp/a.txt',
+      platform: 'local',
+      mimeType: 'text/plain',
+      category: 'document',
+      size: 3,
+      createdAt: 0,
+      modifiedAt: 0,
+    }
+    await insertOne(node, Buffer.from('abc'), { db, hnsw, embedEngine: engine, relayouter })
+    const before = vi.mocked(fetch).mock.calls.length
+
+    // Same node, same content, same default strategy — no fetch
+    await insertOne(node, Buffer.from('abc'), { db, hnsw, embedEngine: engine, relayouter })
+    expect(vi.mocked(fetch).mock.calls.length).toBe(before)
+  })
+
+  it('preserves manual tags across a re-index that re-embeds', async () => {
+    const node: FileNode = {
+      id: 'tg1',
+      name: 'tagged.md',
+      path: '/Users/jane/tagged.md',
+      platform: 'local',
+      mimeType: 'text/markdown',
+      category: 'document',
+      size: 5,
+      createdAt: 0,
+      modifiedAt: 0,
+    }
+    await insertOne(node, Buffer.from('hello'), { db, hnsw, embedEngine: engine, relayouter })
+    db.setTags('tg1', ['important', 'q4'])
+    expect(db.getTags('tg1')).toEqual(['important', 'q4'])
+
+    // Force a re-embed by changing the strategy
+    db.setDefaultStrategy('metadata+content')
+    await insertOne(node, Buffer.from('hello'), { db, hnsw, embedEngine: engine, relayouter })
+
+    expect(db.getTags('tg1')).toEqual(['important', 'q4'])
+    expect(db.get('tg1')!.embeddingStrategy).toBe('metadata+content')
+  })
+
   it('layout trains when threshold reached', async () => {
     // Insert LAYOUT_THRESHOLD deterministic files directly
     const client = new OllamaClient()
