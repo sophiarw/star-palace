@@ -8,7 +8,7 @@ import type { Theme } from '../../themes/types'
 // has no DOM dependency (which lets node-only tests import it freely).
 export { hashStr }
 
-const SIZE_RADII = [3, 4.5, 6, 8, 11, 16, 22] as const
+const SIZE_RADII = [2.1, 3.15, 4.2, 5.6, 7.7, 11.2, 15.4] as const  // 0.7× of prior [3, 4.5, 6, 8, 11, 16, 22]
 export const SIZE_BUCKET_COUNT = SIZE_RADII.length
 export const TEMP_BUCKET_COUNT = 4
 
