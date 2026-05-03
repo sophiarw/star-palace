@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { Star, Cluster, MapStats, SearchResult, StarType, GalaxySummary } from '@shared/types'
+import { CONSTELLATION_PALETTE } from '@shared/types'
 import { fetchAll, fetchStats, fetchGalaxies, getCollection } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
@@ -278,6 +279,17 @@ export default function App() {
       .catch(err => console.warn('removeMember failed:', err))
   }, [collections])
 
+  // F5 — props bundle for StarMap. The hull color comes from the same
+  // CONSTELLATION_PALETTE used for clusters, indexed by the collection's
+  // colorIndex so collections visually match constellation hues. Returns
+  // null when no collection is active so StarMap skips both the hull and
+  // the dim/highlight focus path.
+  const starMapActiveCollection = useMemo(() => {
+    if (!activeCollection) return null
+    const color = CONSTELLATION_PALETTE[activeCollection.colorIndex % CONSTELLATION_PALETTE.length]
+    return { color, memberIds: activeMemberIds }
+  }, [activeCollection, activeMemberIds])
+
   const { mode } = useVimMode({
     onAction: dispatchVimAction,
     onToggleSearch: handleToggleSearch,
@@ -311,6 +323,7 @@ export default function App() {
         onPinFile={(id, wx, wy) => {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}
+        activeCollection={starMapActiveCollection}
       />
 
       {showSearch && (
