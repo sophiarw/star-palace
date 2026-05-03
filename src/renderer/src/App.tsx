@@ -157,6 +157,9 @@ export default function App() {
         onSelect={handleSelect}
         vimAction={vimAction}
         onHoveredChange={setHoveredId}
+        onPinFile={(id, wx, wy) => {
+          pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
+        }}
       />
 
       <SearchBar

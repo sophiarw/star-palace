@@ -25,6 +25,10 @@ interface Props {
   onReady?: () => void
   vimAction?: VimAction | null
   onHoveredChange?: (id: string | null) => void
+  // F4 — Shift+mousedown on a hovered star starts a drag-to-pin gesture; on
+  // release we fire this callback. Optional so existing call sites compile
+  // before App.tsx wires it up.
+  onPinFile?: (id: string, worldX: number, worldY: number) => void
 }
 
 const HIGHLIGHT_COLOR = '#ffe066'
@@ -111,7 +115,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, onPinFile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -129,6 +133,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   const lastMouse = useRef({ x: 0, y: 0 })
   const searchPulseStart = useRef<number>(0)
   const dprRef = useRef<number>(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
+  // F4 — drag-to-pin state: pinDrag.current holds the live target world
+  // coords. The main draw loop runs each frame via rAF, so we don't need to
+  // trigger a React re-render on each cursor move; the next frame picks up
+  // the new ref value.
+  const pinDrag = useRef<{ id: string; worldX: number; worldY: number } | null>(null)
 
   // Keep refs in sync
   useEffect(() => { starsRef.current = stars }, [stars])
@@ -580,6 +589,68 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
 
+    // F4 — pinned-star lock glyph at high zoom. Cheap text glyph above the
+    // sprite, only when zoomed in enough that the user can see it (low zoom
+    // would be visual clutter).
+    if (cam.zoom > 1.5) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.font = '14px monospace'
+      ctx.fillStyle = '#ffe066'
+      ctx.globalAlpha = 0.85
+      ctx.textAlign = 'center'
+      for (const star of currentStars) {
+        if (!star.isPinned) continue
+        const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
+        if (sx < -CULL_MARGIN || sx > w + CULL_MARGIN || sy < -CULL_MARGIN || sy > h + CULL_MARGIN) continue
+        const r = spriteCoreRadius(sizeBucketFor(star.viewCount)) * drawScale
+        ctx.fillText('\u{1F512}', sx, sy - r - 6)
+      }
+      ctx.textAlign = 'start'
+      ctx.restore()
+    }
+
+    // F4 — pin-drag preview: dashed line from the natural position to the
+    // current cursor + a faint sprite at the cursor so the user can see
+    // where they're aiming.
+    const drag = pinDrag.current
+    if (drag) {
+      const star = currentStars.find(s => s.id === drag.id)
+      if (star) {
+        const [nx, ny] = worldToScreen(star.x, star.y, cam, w, h)
+        const [tx, ty] = worldToScreen(drag.worldX, drag.worldY, cam, w, h)
+        ctx.save()
+        ctx.globalCompositeOperation = 'source-over'
+        ctx.setLineDash([6, 4])
+        ctx.strokeStyle = '#ffe066'
+        ctx.globalAlpha = 0.6
+        ctx.lineWidth = 1.4
+        ctx.beginPath()
+        ctx.moveTo(nx, ny)
+        ctx.lineTo(tx, ty)
+        ctx.stroke()
+        ctx.setLineDash([])
+        const sb = sizeBucketFor(star.viewCount)
+        const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
+        let sprite: HTMLCanvasElement
+        if (effectiveType) {
+          sprite = getTypedStarSprite(effectiveType, sb)
+        } else {
+          const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
+          const colorIndex = cluster ? cluster.colorIndex : -1
+          const tb = tempBucketFor(star.id)
+          sprite = getStarSprite(colorIndex, tb, sb)
+        }
+        const sw = sprite.width, sh = sprite.height
+        const previewScale = drawScale * SPRITE_SELECTED_SCALE
+        const drawW = sw * previewScale, drawH = sh * previewScale
+        ctx.globalCompositeOperation = 'lighter'
+        ctx.globalAlpha = 0.7 * exposure
+        ctx.drawImage(sprite, tx - drawW / 2, ty - drawH / 2, drawW, drawH)
+        ctx.restore()
+      }
+    }
+
     // Labels — alpha tapers smoothly from zoom 0.8 upward; no hard cutoff.
     ctx.save()
     for (const star of currentStars) {
@@ -667,14 +738,35 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
   // Mouse events
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // F4 — Shift + mousedown on a hovered star starts pinning. Plain drag
+    // continues to pan the camera; the Shift modifier is the only signal we
+    // need (no click-vs-drag threshold).
+    if (e.shiftKey && hoveredId && onPinFile) {
+      const canvas = canvasRef.current
+      if (canvas) {
+        const w = canvas.clientWidth, h = canvas.clientHeight
+        const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
+        pinDrag.current = { id: hoveredId, worldX: wx, worldY: wy }
+        lastMouse.current = { x: e.clientX, y: e.clientY }
+        return
+      }
+    }
     isDragging.current = true
     lastMouse.current = { x: e.clientX, y: e.clientY }
-  }, [])
+  }, [hoveredId, onPinFile])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const w = canvas.clientWidth, h = canvas.clientHeight
+
+    // F4 — pin-drag in progress: live-update the target world position.
+    if (pinDrag.current) {
+      const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
+      pinDrag.current = { ...pinDrag.current, worldX: wx, worldY: wy }
+      lastMouse.current = { x: e.clientX, y: e.clientY }
+      return
+    }
 
     if (isDragging.current) {
       const dx = e.clientX - lastMouse.current.x
@@ -709,8 +801,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   }, [])
 
   const handleMouseUp = useCallback(() => {
+    if (pinDrag.current && onPinFile) {
+      const { id, worldX, worldY } = pinDrag.current
+      onPinFile(id, worldX, worldY)
+      pinDrag.current = null
+      return
+    }
     isDragging.current = false
-  }, [])
+  }, [onPinFile])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (Math.abs(e.clientX - lastMouse.current.x) > 3 || Math.abs(e.clientY - lastMouse.current.y) > 3) return
@@ -778,6 +876,21 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheel)
   }, [handleWheel])
+
+  // F4 — Esc cancels an in-progress pin-drag. Capture phase + stopImmediate
+  // so vim's Escape (which clears selection + search) doesn't fire on the
+  // same press. If no drag is live, the event passes through untouched.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && pinDrag.current) {
+        pinDrag.current = null
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
 
   const hoveredStar = hoveredId ? starIndex.current.get(hoveredId) ?? null : null
   const hoveredCluster = hoveredStar?.clusterId !== null && hoveredStar?.clusterId !== undefined
