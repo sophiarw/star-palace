@@ -34,9 +34,12 @@ interface Props {
   onPinFile?: (id: string, worldX: number, worldY: number) => void
 }
 
-const HIGHLIGHT_COLOR = '#ffe066'
+// F11 — search-highlight + pin glyph + pin-drag preview now read the active
+// theme accent from `activeTheme.ui.accentColor` per-frame so flipping themes
+// recolors the chrome instantly. Selection ring + neighbor ring stay
+// constant — they're functional state markers, not theme accents.
 const NEIGHBOR_RING_COLOR = 'rgba(140, 200, 255, 0.85)'
-const SELECTED_RING_COLOR = '#fff4d0'  // warm white, distinct from gold + cyan
+const SELECTED_RING_COLOR = '#fff4d0'  // warm white, distinct from accent + cyan
 const EDGE_COLOR = 'rgba(120, 180, 255, 0.45)'
 const DIM_ALPHA = 0.08
 const SPRITE_HOVER_SCALE = 1.35
@@ -579,7 +582,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
         if (isHighlighted) {
           ctx.globalCompositeOperation = 'source-over'
-          ctx.strokeStyle = HIGHLIGHT_COLOR
+          ctx.strokeStyle = activeTheme.ui.accentColor
           ctx.lineWidth = 2
           ctx.globalAlpha = 0.85
           ctx.beginPath()
@@ -629,7 +632,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
       ctx.font = '14px monospace'
-      ctx.fillStyle = '#ffe066'
+      ctx.fillStyle = activeTheme.ui.accentColor
       ctx.globalAlpha = 0.85
       ctx.textAlign = 'center'
       for (const star of currentStars) {
@@ -655,7 +658,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ctx.save()
         ctx.globalCompositeOperation = 'source-over'
         ctx.setLineDash([6, 4])
-        ctx.strokeStyle = '#ffe066'
+        ctx.strokeStyle = activeTheme.ui.accentColor
         ctx.globalAlpha = 0.6
         ctx.lineWidth = 1.4
         ctx.beginPath()
