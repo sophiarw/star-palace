@@ -20,7 +20,7 @@ Locked decisions:
 | — | **BUG**: neighbor stars still vanish at high zoom despite bypass-cull fix | — | Root cause unclear; multiple fix attempts failed. | **OPEN** |
 | F2 | Auto-schema (extension → star type) | S | Renderer fallback only; no DB migration. | **DONE** |
 | F3 | PC dial (pick X/Y from top-8 components) | M | Layout meta change; no schema for files. | **DONE** |
-| F4 | Manual reposition + pin | M | New columns; embedding-delta math. | |
+| F4 | Manual reposition + pin | M | New columns; embedding-delta math. | **DONE** |
 | F5 | Virtual collections | M-L | New tables + endpoints + render hull. | |
 | F6 | Vim mode | M | Pure UI; no backend. | **IN PROGRESS** |
 | F7 | Hierarchical k-means / LOD tree | L | Re-architecture; biggest blast radius. | |
@@ -172,6 +172,18 @@ Offset only manifests on axes that were active at pin time. On unrelated PC axes
 - Pin a file with null embedding (binary/media without text) — allow; `naturalX = naturalY = 0` so `α = targetX`, `β = targetY`.
 - Re-pin: overwrite previous atomically.
 - Search: embedding unchanged; ANN results unchanged. Pin only affects display.
+
+**Implementation (shipped):**
+- Gesture: **Shift + mousedown on a hovered star** starts the drag. Plain drag continues to pan everywhere; the Shift modifier is the explicit pin signal (no click-vs-drag threshold). Esc cancels mid-drag.
+- Pin math lives **client-side** in `usePcDial.scaledById`. The renderer adds `α/β` to the active axes' natural PC values before computing per-axis min/max scale, so the pinned star lands at the requested world position even on PC-pair switches.
+- Daemon endpoint takes PC-space `(x, y)` (not world coords); the renderer inverts its own min/max scaling locally via `worldToPc(...)` before posting. Keeps the daemon ignorant of the renderer's normalisation state.
+- PCA sign-flip on retrain: `Relayouter.train()` captures the previous eigenvectors, calls `detectSignFlips(old, new)`, and `db.applyPinSignFlips(...)` negates `α/β` on any axis where the dot-product flipped sign. Where `|dot| < 0.9` the axis is logged as unstable and offsets are left as-is (best-effort).
+- Visual surface: gold lock glyph above pinned stars at `cam.zoom > 1.5`, dashed line preview during drag, lock badge in HoverCard, "Pinned at PC{a} × PC{b}" + Unpin button in DetailPanel.
+
+**Known limitations (logged from ship):**
+1. **Min/max rebase**: the per-axis min/max calc includes pinned files. Dragging a star far outside the natural cluster bounds compresses everything else toward centre. Spec-faithful; mitigation (exclude pinned from bounds) deferred.
+2. **PCA axis swap on retrain**: when two close eigenvalues swap order between trains, the sign-flip detector returns 0 and the offset is left untouched (logged `[F4] pin axis k unstable`). Visually the pin will look wrong until the user re-pins. Rare in practice.
+3. **No `(x, y)` write on retrain for pinned files**: pinned position is computed client-side from the projection payload + `α/β`, not persisted into `files.x/y`. The legacy fallback path (server `(x, y)` from `/api/map/all`) therefore shows the natural position for pinned files until the renderer applies the offset.
 
 ### Why not force-directed incremental?
 
