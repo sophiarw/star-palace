@@ -53,7 +53,6 @@ export async function insertOne(
   const { db, hnsw, embedEngine, relayouter } = opts
   const now = Date.now()
 
-  // 1. Check content hash BEFORE calling embed — skip if unchanged
   const existing = db.get(node.id)
   if (node.category !== 'media') {
     const text = content.toString('utf8')
@@ -63,65 +62,65 @@ export async function insertOne(
     }
   }
 
-  // 2. Get embed result (may be null for media/empty)
   const embedResult = await embedEngine.embedFile(node, content)
 
-  // 3. Upsert the file row (with or without embedding)
-  db.upsert({
-    id: node.id,
-    name: node.name,
-    path: node.path,
-    platform: node.platform,
-    mimeType: node.mimeType,
-    category: node.category,
-    size: node.size,
-    createdAt: node.createdAt,
-    modifiedAt: node.modifiedAt,
-    embedding: embedResult?.embedding ?? null,
-    contentHash: embedResult?.contentHash ?? null,
-    x: null,
-    y: null,
-    z: null,
-    clusterId: null,
-    layoutVersion: 0,
-    firstSeen: existing?.firstSeen ?? now,
-    viewCount: existing?.viewCount ?? 0,
-    isPinned: existing?.isPinned ?? false,
-    starType: existing?.starType ?? null,
-  })
+  // ANN search runs against the existing index — the new point is not added
+  // until the DB transaction commits, so a tx rollback never leaves an HNSW
+  // orphan referencing a missing file row. Self-filtering still handles the
+  // re-index case where the old vector is already at this label.
+  const neighbors = embedResult
+    ? hnsw.searchKNN(embedResult.embedding, K_NEAREST + 1)
+        .filter(r => r.id !== node.id)
+        .slice(0, K_NEAREST)
+    : []
 
-  if (!embedResult) return  // no embedding — done
+  const pos = embedResult ? relayouter.projectOne(embedResult.embedding) : null
 
-  // 4. Add to HNSW
-  hnsw.addPoint(embedResult.embedding, node.id)
-
-  // 5. ANN top-K
-  const knnResults = hnsw.searchKNN(embedResult.embedding, K_NEAREST + 1)
-  const neighbors = knnResults.filter(r => r.id !== node.id).slice(0, K_NEAREST)
-
-  // 6. Write outgoing edges for this file
-  db.deleteEdgesFrom(node.id)
-  for (const neighbor of neighbors) {
-    const similarity = 1 - neighbor.distance  // hnswlib 'ip' distance = 1 - dot
-    if (similarity < ISOLATION_THRESHOLD) continue
-    db.upsertEdge({
-      srcId: node.id,
-      dstId: neighbor.id,
-      weight: Math.max(0, Math.min(1, similarity)),
-      engine: 'embedding',
-      computedAt: now,
+  const writeAll = db.db.transaction(() => {
+    db.upsert({
+      id: node.id,
+      name: node.name,
+      path: node.path,
+      platform: node.platform,
+      mimeType: node.mimeType,
+      category: node.category,
+      size: node.size,
+      createdAt: node.createdAt,
+      modifiedAt: node.modifiedAt,
+      embedding: embedResult?.embedding ?? null,
+      contentHash: embedResult?.contentHash ?? null,
+      x: null,
+      y: null,
+      z: null,
+      clusterId: null,
+      layoutVersion: 0,
+      firstSeen: existing?.firstSeen ?? now,
+      viewCount: existing?.viewCount ?? 0,
+      isPinned: existing?.isPinned ?? false,
+      starType: existing?.starType ?? null,
     })
-  }
-  db.pruneEdgesFrom(node.id, K_NEAREST)
 
-  // 7. For each neighbor: check if this file should appear in their outgoing edges
-  for (const neighbor of neighbors) {
-    const similarity = 1 - neighbor.distance
-    if (similarity < ISOLATION_THRESHOLD) continue
-    const neighborEdges = db.getEdgesFrom(neighbor.id)
-    const alreadyLinked = neighborEdges.some(e => e.dstId === node.id)
-    if (!alreadyLinked) {
-      // Does this file displace the worst neighbor's K-th edge?
+    if (!embedResult) return
+
+    db.deleteEdgesFrom(node.id)
+    for (const neighbor of neighbors) {
+      const similarity = 1 - neighbor.distance
+      if (similarity < ISOLATION_THRESHOLD) continue
+      db.upsertEdge({
+        srcId: node.id,
+        dstId: neighbor.id,
+        weight: Math.max(0, Math.min(1, similarity)),
+        engine: 'embedding',
+        computedAt: now,
+      })
+    }
+    db.pruneEdgesFrom(node.id, K_NEAREST)
+
+    for (const neighbor of neighbors) {
+      const similarity = 1 - neighbor.distance
+      if (similarity < ISOLATION_THRESHOLD) continue
+      const neighborEdges = db.getEdgesFrom(neighbor.id)
+      if (neighborEdges.some(e => e.dstId === node.id)) continue
       if (neighborEdges.length < K_NEAREST || similarity > neighborEdges[neighborEdges.length - 1].weight) {
         db.upsertEdge({
           srcId: neighbor.id,
@@ -133,17 +132,14 @@ export async function insertOne(
         db.pruneEdgesFrom(neighbor.id, K_NEAREST)
       }
     }
-  }
 
-  // 8. Cluster assignment: plurality vote among neighbors' cluster_ids
-  const neighborClusterIds = neighbors
-    .map(n => db.get(n.id)?.clusterId ?? null)
-  const clusterId = pluralityVoteCluster(neighborClusterIds)
-  db.updateCluster(node.id, clusterId)
+    const neighborClusterIds = neighbors.map(n => db.get(n.id)?.clusterId ?? null)
+    db.updateCluster(node.id, pluralityVoteCluster(neighborClusterIds))
 
-  // 9. Project if layout is ready
-  const pos = relayouter.projectOne(embedResult.embedding)
-  if (pos) {
-    db.updatePosition(node.id, pos[0], pos[1], relayouter.currentVersion)
-  }
+    if (pos) db.updatePosition(node.id, pos[0], pos[1], relayouter.currentVersion)
+  })
+
+  writeAll()
+
+  if (embedResult) hnsw.addPoint(embedResult.embedding, node.id)
 }

@@ -5,8 +5,9 @@ import { HnswIndex } from '../../src/daemon/ann/HnswIndex'
 import { OllamaClient } from '../../src/daemon/embedding/OllamaClient'
 import { EmbeddingEngine } from '../../src/daemon/embedding/EmbeddingEngine'
 import { Relayouter } from '../../src/daemon/layout/Relayouter'
-import { indexPath } from '../../src/daemon/pipeline/Insert'
+import { indexPath, insertOne } from '../../src/daemon/pipeline/Insert'
 import { EMBED_DIM, K_NEAREST, LAYOUT_THRESHOLD } from '../../src/shared/types'
+import type { FileNode } from '../../src/shared/types'
 
 const FIXTURES = resolve(__dirname, '../fixtures/sample')
 
@@ -100,6 +101,50 @@ describe('Insert pipeline (mocked Ollama)', () => {
     const count2 = vi.mocked(fetch).mock.calls.length
     // Second run should not call embed API again (same content hash)
     expect(count2).toBe(count1)
+  })
+
+  it('concurrent inserts produce a consistent K-NN graph (no orphans, no dupes, K cap holds)', async () => {
+    const N = 25
+    const nodes: { node: FileNode; content: Buffer }[] = []
+    for (let i = 0; i < N; i++) {
+      const text = `concurrent insert content number ${i} unique ${i * 7}`
+      nodes.push({
+        node: {
+          id: `cc${i}`,
+          name: `cc${i}.txt`,
+          path: `/tmp/cc${i}.txt`,
+          platform: 'local',
+          mimeType: 'text/plain',
+          category: 'document',
+          size: text.length,
+          createdAt: 0,
+          modifiedAt: 0,
+        },
+        content: Buffer.from(text),
+      })
+    }
+
+    await Promise.all(
+      nodes.map(({ node, content }) =>
+        insertOne(node, content, { db, hnsw, embedEngine: engine, relayouter })
+      )
+    )
+
+    const ids = new Set(nodes.map(n => n.node.id))
+    const allFiles = db.listWithEmbeddings().map(f => f.id)
+    expect(allFiles.length).toBe(N)
+    for (const id of ids) expect(allFiles).toContain(id)
+
+    for (const id of allFiles) {
+      const edges = db.getEdgesFrom(id)
+      expect(edges.length).toBeLessThanOrEqual(K_NEAREST)
+      const dsts = new Set(edges.map(e => e.dstId))
+      expect(dsts.size).toBe(edges.length)
+      for (const e of edges) {
+        expect(ids.has(e.dstId)).toBe(true)
+        expect(e.dstId).not.toBe(id)
+      }
+    }
   })
 
   it('layout trains when threshold reached', async () => {
