@@ -207,6 +207,25 @@ export function useVimMode({
             e.preventDefault()
             onToggleCheatsheet()
             break
+          case 'i': {
+            e.preventDefault()
+            const focusInput = () => {
+              const el = document.getElementById('galaxy-panel-path-input') as HTMLInputElement | null
+              if (el) {
+                el.focus()
+                el.select()
+              }
+            }
+            const input = document.getElementById('galaxy-panel-path-input')
+            if (input) {
+              focusInput()
+            } else {
+              const expand = document.querySelector<HTMLButtonElement>('.galaxy-panel-collapsed')
+              expand?.click()
+              setTimeout(focusInput, 0)
+            }
+            break
+          }
         }
       } else if (currentMode === 'search') {
         if (key === 'Escape') {

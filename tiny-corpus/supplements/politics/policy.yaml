@@ -1,0 +1,13 @@
+# Federal budget allocations FY2024 (illustrative)
+mandatory:
+  social_security: 1466
+  medicare: 1029
+  medicaid: 616
+  income_security: 412
+discretionary:
+  defense: 821
+  veterans: 135
+  education: 80
+  transportation: 116
+interest_on_debt: 659
+total_outlays_billions: 6750

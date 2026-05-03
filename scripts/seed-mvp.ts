@@ -2,7 +2,7 @@ import { resolve } from 'path'
 import { existsSync } from 'fs'
 
 const DAEMON_URL = `http://127.0.0.1:${process.env.DAEMON_PORT ?? 7373}`
-const CORPUS_PATH = resolve(process.cwd(), process.argv[2] ?? 'dummy-corpus')
+const CORPUS_PATH = resolve(process.cwd(), process.argv[2] ?? 'tiny-corpus')
 
 async function waitForDaemon(retries = 30, delay = 1000): Promise<void> {
   for (let i = 0; i < retries; i++) {
@@ -27,7 +27,12 @@ async function waitForDaemon(retries = 30, delay = 1000): Promise<void> {
 async function main(): Promise<void> {
   if (!existsSync(CORPUS_PATH)) {
     console.error(`Corpus not found at ${CORPUS_PATH}`)
-    console.error('Run: bash scripts/fetch-corpus.sh')
+    if (CORPUS_PATH.endsWith('tiny-corpus')) {
+      console.error('Run: node scripts/build-tiny-corpus.mjs')
+      console.error('  (requires dummy-corpus — first fetch with: bash scripts/fetch-corpus.sh)')
+    } else if (CORPUS_PATH.endsWith('dummy-corpus')) {
+      console.error('Run: bash scripts/fetch-corpus.sh')
+    }
     process.exit(1)
   }
 

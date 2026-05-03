@@ -66,6 +66,7 @@ export default function GalaxyPanel({ galaxies, onIndexed, onFlyTo }: Props) {
 
       <div className="galaxy-panel-form">
         <input
+          id="galaxy-panel-path-input"
           className="galaxy-panel-input"
           type="text"
           value={path}

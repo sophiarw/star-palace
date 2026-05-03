@@ -1,0 +1,23 @@
+# New Testament canonical books
+gospels:
+  - matthew
+  - mark
+  - luke
+  - john
+acts:
+  - acts of the apostles
+pauline_epistles:
+  - romans
+  - 1 corinthians
+  - 2 corinthians
+  - galatians
+  - ephesians
+  - philippians
+  - colossians
+general_epistles:
+  - hebrews
+  - james
+  - 1 peter
+  - 2 peter
+apocalyptic:
+  - revelation

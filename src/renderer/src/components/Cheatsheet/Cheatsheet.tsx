@@ -7,7 +7,7 @@ interface Binding {
   desc: string
 }
 
-const NORMAL_BINDINGS: Binding[] = [
+const NAV_BINDINGS: Binding[] = [
   { key: 'h / j / k / l', desc: 'Pan 50 world-units' },
   { key: 'H / J / K / L', desc: 'Pan 200 world-units' },
   { key: '+ or =', desc: 'Zoom in ×1.2' },
@@ -24,6 +24,10 @@ const NORMAL_BINDINGS: Binding[] = [
   { key: '?', desc: 'Toggle this cheatsheet' },
 ]
 
+const INDEX_BINDINGS: Binding[] = [
+  { key: 'i', desc: 'Focus the indexer (Galaxy panel path input)' },
+]
+
 export default function Cheatsheet({ onClose }: Props) {
   return (
     <aside className="cheatsheet-panel">
@@ -33,7 +37,7 @@ export default function Cheatsheet({ onClose }: Props) {
       </header>
       <table className="cheatsheet-table">
         <tbody>
-          {NORMAL_BINDINGS.map(b => (
+          {NAV_BINDINGS.map(b => (
             <tr key={b.key}>
               <td className="cheatsheet-key"><kbd>{b.key}</kbd></td>
               <td className="cheatsheet-desc">{b.desc}</td>
@@ -41,6 +45,24 @@ export default function Cheatsheet({ onClose }: Props) {
           ))}
         </tbody>
       </table>
+
+      <div className="cheatsheet-section-title">Index a directory</div>
+      <table className="cheatsheet-table">
+        <tbody>
+          {INDEX_BINDINGS.map(b => (
+            <tr key={b.key}>
+              <td className="cheatsheet-key"><kbd>{b.key}</kbd></td>
+              <td className="cheatsheet-desc">{b.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="cheatsheet-note">
+        Press <kbd>i</kbd> to focus the path input in the Galaxy panel
+        (top-right). Type an absolute folder path, optionally name the galaxy,
+        then click <strong>Index</strong>. The daemon walks the directory,
+        embeds each file via Ollama, and adds new stars to the sky.
+      </div>
       <div className="cheatsheet-note">
         Star Palace vim mode departs from standard vim: navigation keys pan the
         canvas rather than move a cursor, and <kbd>gg</kbd> fits the entire sky
