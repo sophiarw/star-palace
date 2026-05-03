@@ -197,7 +197,7 @@ export const LAYOUT_THRESHOLD = 200  // min embeddings before PCA trains
 export const EMBED_DIM = 768
 export const OLLAMA_PORT = 11434
 export const DAEMON_PORT = 7373
-export const MAX_TEXT_BYTES = 30 * 1024  // 30KB ≈ 7500 tokens; stays under nomic-embed-text num_ctx=8192
+export const MAX_TEXT_BYTES = 8 * 1024  // 8KB safety cap. Prose tokenises ~4 bytes/token (so 8KB ≈ 2k tokens, well under nomic-embed-text num_ctx=8192), but binary/CSV/code is 1-2 bytes/token; the prior 30KB cap blew the context limit on ~29% of Documents (PDFs, CSVs, dense code). When real PDF/DOCX extractors land, this can grow back.
 export const MAX_FILE_BYTES = 5 * 1024 * 1024  // 5MB
 
 // F9 galaxies: world-unit spacing for the deterministic spiral that places
