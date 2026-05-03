@@ -29,7 +29,11 @@ export class HnswIndex {
     this.labelToId = new Map()
     this.nextLabel = 0
 
-    // InnerProductSpace: distance = 1 - dot(a,b). For normalised vectors, dot = cosine.
+    // InnerProductSpace: distance = 1 - dot(a,b). The contract requires
+    // unit-length inputs so 1 - dot equals 1 - cosine_similarity. The
+    // pipeline normalises in EmbeddingEngine.embed before reaching here;
+    // callers that bypass that path (e.g. tests with hand-crafted vectors)
+    // must normalise themselves.
     this.index = new HierarchicalNSW('ip', this.dim)
     this.index.initIndex(opts.maxElements ?? 200_000, 16, 200, 100)
   }
