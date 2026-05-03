@@ -120,9 +120,13 @@ const BACKDROP_PAN_PARALLAX = 0.3    // backdrop pans 30% of camera pan
 const BACKDROP_MIN_SCALE = 0.5       // clamp so the 2× canvas always fills the viewport
 
 // Zoom-aware exposure: dim when zoomed out, brighten when zoomed in.
+// F15 — exposure ceiling lowered (1.6 → 1.1) so additive halos stop drowning
+// the per-instance procedural artwork (red giant mottling, nebula FBM washes,
+// neutron-star nucleus dots, etc.). Floor raised (0.3 → 0.45) so deep-zoom-out
+// sprites stay visible while interior detail starts to read.
 const EXPOSURE_REF_ZOOM = 1.0
-const EXPOSURE_MIN = 0.3
-const EXPOSURE_MAX = 1.6
+const EXPOSURE_MIN = 0.45
+const EXPOSURE_MAX = 1.1
 const EXPOSURE_GAMMA = 0.55
 
 function exposureFor(zoom: number): number {

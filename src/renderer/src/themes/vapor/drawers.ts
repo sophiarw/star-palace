@@ -89,10 +89,12 @@ function rollGlitch(rng: () => number): boolean {
  * -------------------------------------------------------------------------- */
 
 const drawRedGiant: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  // F15 — outer halo bands (t >= 0.60) alphas reduced ~30% (×0.7) so the
+  // pixelated mottling reads; inner core bands (t <= 0.40) untouched.
   paintPosterizedDisc(ctx, cx, cy, r * 3.0, [
     [1.00, 'rgba(40, 0, 60, 0.0)'],
-    [0.85, 'rgba(120, 0, 100, 0.40)'],
-    [0.60, 'rgba(255, 0, 122, 0.65)'],
+    [0.85, 'rgba(120, 0, 100, 0.28)'],
+    [0.60, 'rgba(255, 0, 122, 0.46)'],
     [0.40, 'rgba(255, 42, 252, 0.90)'],
     [0.22, 'rgba(255, 200, 240, 1.0)'],
   ])
@@ -180,10 +182,12 @@ const drawBlueSupergiant: ThemedDrawer = (ctx, cx, cy, r, rng, sizeBucket) => {
   ctx.translate(cx, cy)
   ctx.rotate(tilt)
   ctx.scale(squish, 1 / squish)
+  // F15 — outer halo bands (t >= 0.55) alphas reduced ~30% (×0.7) so the
+  // hyper-yellow X-spikes + cyan core read; inner bands untouched.
   paintPosterizedDisc(ctx, 0, 0, r * 3.0, [
     [1.00, 'rgba(0, 30, 80, 0.0)'],
-    [0.85, 'rgba(0, 60, 160, 0.35)'],
-    [0.55, 'rgba(0, 245, 255, 0.65)'],
+    [0.85, 'rgba(0, 60, 160, 0.25)'],
+    [0.55, 'rgba(0, 245, 255, 0.46)'],
     [0.35, 'rgba(140, 255, 255, 0.9)'],
     [0.20, 'rgba(255, 255, 255, 1.0)'],
   ])
@@ -270,10 +274,12 @@ const drawWhiteDwarf: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const jitter = rngRange(rng, 0.9, 1.1)
   r = r * jitter
 
+  // F15 — outer halo bands (t >= 0.62) alphas reduced ~30% (×0.7) so the
+  // Tron wisps read; inner bands untouched.
   paintPosterizedDisc(ctx, cx, cy, r * 1.7, [
     [1.00, 'rgba(255, 0, 122, 0.0)'],
-    [0.78, 'rgba(255, 0, 122, 0.55)'],
-    [0.62, 'rgba(0, 245, 255, 0.65)'],
+    [0.78, 'rgba(255, 0, 122, 0.39)'],
+    [0.62, 'rgba(0, 245, 255, 0.46)'],
     [0.46, 'rgba(57, 255, 20, 0.75)'],
     [0.28, 'rgba(255, 255, 255, 1.0)'],
   ])
@@ -321,9 +327,10 @@ const drawNeutronStar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
     'rgba(255, 242, 0, 1.0)',
   ]
 
+  // F15 — soft halo backing alpha reduced ~30% (×0.7) so the dot field reads.
   paintPosterizedDisc(ctx, cx, cy, r * 1.6, [
     [1.0, 'rgba(20, 0, 40, 0.0)'],
-    [0.85, 'rgba(40, 0, 60, 0.5)'],
+    [0.85, 'rgba(40, 0, 60, 0.35)'],
   ])
 
   ctx.save()
@@ -360,10 +367,12 @@ const drawPulsar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const drift = rngRange(rng, -Math.PI / 12, Math.PI / 12)
   const ratio = rngRange(rng, 0.7, 1.3)
 
+  // F15 — outer halo bands (t >= 0.55) alphas reduced ~30% (×0.7) so the
+  // dual-color beams + scanline interference read; inner bands untouched.
   paintPosterizedDisc(ctx, cx, cy, r * 2.5, [
     [1.00, 'rgba(0, 0, 60, 0.0)'],
-    [0.80, 'rgba(90, 0, 255, 0.40)'],
-    [0.55, 'rgba(0, 245, 255, 0.55)'],
+    [0.80, 'rgba(90, 0, 255, 0.28)'],
+    [0.55, 'rgba(0, 245, 255, 0.39)'],
     [0.35, 'rgba(255, 42, 252, 0.65)'],
     [0.18, 'rgba(255, 255, 255, 1.0)'],
   ])
@@ -444,10 +453,12 @@ const drawBinary: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   ctx.translate(cx, cy)
   ctx.rotate(ax)
   ctx.scale(1.4, 0.85)
+  // F15 — outer halo bands alphas reduced ~30% (×0.7) so the two cores
+  // (drawn separately below) read distinctly.
   paintPosterizedDisc(ctx, 0, 0, (r + sep) * 1.5, [
     [1.0, 'rgba(0, 0, 80, 0.0)'],
-    [0.85, 'rgba(90, 0, 255, 0.30)'],
-    [0.55, 'rgba(255, 0, 122, 0.45)'],
+    [0.85, 'rgba(90, 0, 255, 0.21)'],
+    [0.55, 'rgba(255, 0, 122, 0.32)'],
   ])
   ctx.restore()
 
@@ -492,10 +503,12 @@ const drawQuasar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const accent = rngPick(rng, accents)
   const tilt = rng() * Math.PI
 
+  // F15 — outer halo bands (t >= 0.55) alphas reduced ~30% (×0.7) so the
+  // accretion disc + neon polar jets read; inner band untouched.
   paintPosterizedDisc(ctx, cx, cy, r * 2.4, [
     [1.00, 'rgba(20, 0, 60, 0.0)'],
-    [0.80, 'rgba(90, 0, 255, 0.40)'],
-    [0.55, 'rgba(255, 42, 252, 0.55)'],
+    [0.80, 'rgba(90, 0, 255, 0.28)'],
+    [0.55, 'rgba(255, 42, 252, 0.39)'],
     [0.30, 'rgba(255, 200, 240, 0.85)'],
   ])
 
@@ -557,10 +570,13 @@ const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
   const innerR = rngRange(rng, 0.92, 1.00) * r
   const ringW  = rngRange(rng, 0.4, 0.6) * r
 
+  // F15 — outer warp halo bands (t >= 0.55) alphas reduced ~30% (×0.7) so the
+  // accretion ring + asymmetric Doppler arc + chromatic ghost read; inner
+  // band kept to preserve the magenta event-horizon edge.
   paintPosterizedDisc(ctx, cx, cy, r * 3.2, [
     [1.00, 'rgba(0, 0, 0, 0.0)'],
-    [0.85, 'rgba(40, 0, 80, 0.35)'],
-    [0.55, 'rgba(90, 0, 255, 0.45)'],
+    [0.85, 'rgba(40, 0, 80, 0.25)'],
+    [0.55, 'rgba(90, 0, 255, 0.32)'],
     [0.40, 'rgba(255, 0, 122, 0.55)'],
   ])
 
@@ -638,6 +654,10 @@ const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
 
 /* --------------------------------------------------------------------------
  * 9. NEBULA — clipped bezier silhouette + posterized cellular noise
+ *
+ * F15 note: nebula has no separate outer halo — the bezier silhouette + the
+ * posterized cellular noise ARE the procedural detail. Reducing them would
+ * gut the artwork F15 aims to expose. Skipped intentionally.
  * -------------------------------------------------------------------------- */
 
 const drawNebula: ThemedDrawer = (ctx, cx, cy, r, rng) => {
@@ -728,10 +748,12 @@ const drawNebula: ThemedDrawer = (ctx, cx, cy, r, rng) => {
  * -------------------------------------------------------------------------- */
 
 const drawDefault: ThemedDrawer = (ctx, cx, cy, r) => {
+  // F15 — outer halo bands (t >= 0.50) alphas reduced ~30% (×0.7) for parity
+  // with typed drawers; inner core band untouched.
   paintPosterizedDisc(ctx, cx, cy, r * 1.8, [
     [1.00, 'rgba(90, 0, 255, 0.0)'],
-    [0.75, 'rgba(255, 42, 252, 0.55)'],
-    [0.50, 'rgba(0, 245, 255, 0.65)'],
+    [0.75, 'rgba(255, 42, 252, 0.39)'],
+    [0.50, 'rgba(0, 245, 255, 0.46)'],
     [0.30, 'rgba(255, 255, 255, 1.0)'],
   ])
   applyCircularFade(ctx, cx, cy, ctx.canvas.width / 2, 0.78)
