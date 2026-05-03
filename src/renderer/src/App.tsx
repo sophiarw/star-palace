@@ -11,6 +11,7 @@ import type { VimAction } from './hooks/useVimMode'
 import PCDial from './components/PCDial/PCDial'
 import { usePcDial } from './hooks/usePcDial'
 import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
+import { useTheme } from './hooks/useTheme'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -90,6 +91,7 @@ export default function App() {
   }, [])
 
   const pcDial = usePcDial()
+  const themeCtx = useTheme()
 
   // F9: each star's displayed position is its local PCA position (or daemon-
   // provided fallback) + its galaxy's origin offset. Galaxies live at distinct
@@ -206,6 +208,7 @@ export default function App() {
         onSelect={handleSelect}
         vimAction={vimAction}
         onHoveredChange={setHoveredId}
+        theme={themeCtx.theme}
         onPinFile={(id, wx, wy) => {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}

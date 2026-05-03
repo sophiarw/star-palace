@@ -15,6 +15,7 @@ import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
 import type { VimAction } from '../../hooks/useVimMode'
+import type { Theme } from '../../themes/types'
 
 interface Props {
   stars: Star[]
@@ -25,6 +26,8 @@ interface Props {
   onReady?: () => void
   vimAction?: VimAction | null
   onHoveredChange?: (id: string | null) => void
+  // F11 — active theme. Drives typed sprite drawer pick + canvas backdrop.
+  theme: Theme
   // F4 — Shift+mousedown on a hovered star starts a drag-to-pin gesture; on
   // release we fire this callback. Optional so existing call sites compile
   // before App.tsx wires it up.
@@ -115,7 +118,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, onPinFile }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, onPinFile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -138,6 +141,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // trigger a React re-render on each cursor move; the next frame picks up
   // the new ref value.
   const pinDrag = useRef<{ id: string; worldX: number; worldY: number } | null>(null)
+
+  // F11 — active theme ref. The draw callback below reads it each frame so
+  // theme switches re-render every visible star without rebuilding the rAF
+  // loop (cache key includes the theme id so cached sprites for the previous
+  // theme stay until LRU eviction).
+  const themeRef = useRef(theme)
+  useEffect(() => { themeRef.current = theme }, [theme])
 
   // Keep refs in sync
   useEffect(() => { starsRef.current = stars }, [stars])
@@ -318,10 +328,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const dpr = dprRef.current
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const w = canvas.width / dpr, h = canvas.height / dpr
+    const activeTheme = themeRef.current
     // Opaque clear: backdrop draw + vignette below are not guaranteed to
     // cover the full backing store on resize / DPR change. Without this,
-    // stale pixels survive in narrow bands.
-    ctx.fillStyle = '#000814'
+    // stale pixels survive in narrow bands. Theme drives the fill colour
+    // (jwst slate, vapor purple, ...).
+    ctx.fillStyle = activeTheme.background.canvasFill
     ctx.fillRect(0, 0, w, h)
     const cam = camRef.current
     const currentStars = starsRef.current
@@ -434,7 +446,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       let sprite: HTMLCanvasElement
       const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
       if (effectiveType) {
-        sprite = getTypedStarSprite(effectiveType, sb)
+        sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
       } else {
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
@@ -644,7 +656,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
         let sprite: HTMLCanvasElement
         if (effectiveType) {
-          sprite = getTypedStarSprite(effectiveType, sb)
+          sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
         } else {
           const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
           const colorIndex = cluster ? cluster.colorIndex : -1
