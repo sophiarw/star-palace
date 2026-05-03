@@ -12,6 +12,19 @@ export async function fetchAll(): Promise<ViewportResult> {
   return res.json()
 }
 
+export interface PositionsDeltaResult {
+  version: number
+  positions: { id: string; x: number; y: number; layoutVersion: number }[]
+  clusters: import('@shared/types').Cluster[]
+}
+
+export async function fetchPositionsSince(since: number): Promise<PositionsDeltaResult> {
+  const params = new URLSearchParams({ since: String(since) })
+  const res = await fetch(`${BASE}/api/map/positions?${params}`)
+  if (!res.ok) throw new Error(`fetchPositionsSince: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchViewport(x1: number, y1: number, x2: number, y2: number): Promise<ViewportResult> {
   const params = new URLSearchParams({ x1: String(x1), y1: String(y1), x2: String(x2), y2: String(y2) })
   const res = await fetch(`${BASE}/api/map/viewport?${params}`)

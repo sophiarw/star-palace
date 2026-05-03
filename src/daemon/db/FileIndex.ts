@@ -289,6 +289,19 @@ export class FileIndex {
     `).run(x, y, layoutVersion, id)
   }
 
+  // Positions for files with layout_version > since. Returns just the
+  // (id, x, y, layoutVersion) tuple — the renderer patches existing star
+  // rows in place, preserving Star object identity for files that didn't
+  // move so memoised consumers don't rebuild downstream maps.
+  listPositionsSince(since: number): { id: string; x: number; y: number; layoutVersion: number }[] {
+    const rows = this.db.prepare(`
+      SELECT id, x, y, layout_version
+      FROM files
+      WHERE x IS NOT NULL AND y IS NOT NULL AND layout_version > ?
+    `).all(since) as { id: string; x: number; y: number; layout_version: number }[]
+    return rows.map(r => ({ id: r.id, x: r.x, y: r.y, layoutVersion: r.layout_version }))
+  }
+
   updateCluster(id: string, clusterId: number | null): void {
     this.db.prepare(`UPDATE files SET cluster_id = ? WHERE id = ?`).run(clusterId, id)
   }

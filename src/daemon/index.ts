@@ -414,6 +414,21 @@ app.get('/api/map/all', (_req, res) => {
   res.json({ stars, clusters })
 })
 
+// --- Position delta (cheap layoutVersion-bump refresh) ---
+//
+// During a relayout the renderer used to refetch the full /api/map/all
+// payload (~5 MB at 10 k stars) just to pick up new x/y values. This
+// endpoint returns only the positions whose layout_version > the supplied
+// `since` value, plus the current cluster set (cluster centroids also
+// shift on relayout). The renderer patches its star list in place so
+// unchanged rows keep their object identity for downstream memos.
+app.get('/api/map/positions', (req, res) => {
+  const since = parseInt(req.query.since as string ?? '0', 10) || 0
+  const positions = db.listPositionsSince(since)
+  const clusters = db.getClusters()
+  res.json({ version: relayouter.currentVersion, positions, clusters })
+})
+
 // --- Projection (F3 PC dial) ---
 app.get('/api/map/projection', (_req, res) => {
   if (!relayouter.isReady) {

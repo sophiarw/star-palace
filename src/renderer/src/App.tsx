@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { Star, Cluster, MapStats, SearchResult, StarType, GalaxySummary } from '@shared/types'
 import { CONSTELLATION_PALETTE } from '@shared/types'
-import { fetchAll, fetchStats, fetchGalaxies, getCollection } from './api'
+import { fetchAll, fetchStats, fetchGalaxies, getCollection, fetchPositionsSince } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
 import StatsBar from './components/StatsBar/StatsBar'
@@ -82,9 +82,30 @@ export default function App() {
     try {
       const s = await fetchStats()
       setStats(s)
-      // Re-fetch map if layout version bumped
+      // On relayout, fetch only the position delta (cheap) instead of the
+      // full /api/map/all payload, and patch existing stars in place so
+      // unchanged rows keep their Star object identity. Identity preserved
+      // here means downstream memos (`rawStarsById`, `projectedStars`,
+      // `starsById`) only rebuild the entries that actually moved.
+      // Falls back to full loadMap on the very first version observation
+      // (layoutVersionRef === -1) and on any error from the delta path.
       if (layoutVersionRef.current >= 0 && s.layoutVersion > layoutVersionRef.current) {
-        await loadMap()
+        try {
+          const delta = await fetchPositionsSince(layoutVersionRef.current)
+          if (delta.positions.length > 0) {
+            const patch = new Map(delta.positions.map(p => [p.id, p]))
+            setStars(prev => prev.map(star => {
+              const upd = patch.get(star.id)
+              if (!upd) return star
+              if (star.x === upd.x && star.y === upd.y && star.layoutVersion === upd.layoutVersion) return star
+              return { ...star, x: upd.x, y: upd.y, layoutVersion: upd.layoutVersion }
+            }))
+          }
+          setClusters(delta.clusters)
+        } catch {
+          // Network blip or endpoint unavailable — fall back to a full reload.
+          await loadMap()
+        }
       }
       layoutVersionRef.current = s.layoutVersion
     } catch { /* daemon may not be running */ }
