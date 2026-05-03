@@ -18,6 +18,16 @@ import { progressStore } from './index/progressStore'
 import type { ProgressState } from './index/progressStore'
 import type { MapStats, ViewportResult, SearchResult, FileContent, StarType, CollectionKind } from '../shared/types'
 import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES, isStarType } from '../shared/types'
+import { STRATEGIES, isStrategyId, STRATEGY_IDS } from './embedding/strategies'
+import {
+  runExperiment,
+  getExperimentPositions,
+  promoteExperiment,
+  revertExperiment,
+  reembedRestOfCorpus,
+  reindexFile,
+} from './embedding/experiments'
+import { listSnapshots } from './embedding/snapshots'
 
 const RAW_MIME_ALLOW = /^image\/(png|jpeg|gif|webp|svg\+xml)$/
 
@@ -687,6 +697,157 @@ app.get('/api/file/:id/neighborhood', (req, res) => {
     : null
 
   res.json({ file: { ...file, embedding: undefined }, neighbors, clusterColor })
+})
+
+// --- B2: embedding experiments / snapshots ---
+//
+// Five GET / POST endpoints back the lab UI in B3:
+//   GET  /api/embedding/strategies                        — registry + active default
+//   POST /api/embedding/default                           — flip default_strategy
+//   POST /api/embedding/experiment                        — re-embed a sub-tree
+//   GET  /api/embedding/experiment/:id/positions          — subset PCA result
+//   POST /api/embedding/experiment/:id/promote            — adopt + background re-embed
+//   POST /api/embedding/experiment/:id/revert             — restore prior embeddings/positions
+//   GET  /api/embedding/snapshots                         — history listing
+//   POST /api/file/:id/reindex                            — single-file re-embed
+//
+// All write paths preserve the Insert-pipeline ordering invariants (HNSW
+// search before SQL tx, addPoint after commit) — see
+// src/daemon/embedding/experiments.ts for the shared helper.
+
+app.get('/api/embedding/strategies', (_req, res) => {
+  const list = STRATEGY_IDS.map(id => ({
+    id,
+    label: STRATEGIES[id].label,
+    description: STRATEGIES[id].description,
+  }))
+  const rawDefault = db.getDefaultStrategy()
+  res.json({
+    strategies: list,
+    default: isStrategyId(rawDefault) ? rawDefault : 'content-only',
+  })
+})
+
+app.post('/api/embedding/default', (req, res) => {
+  const body = req.body as { strategy?: unknown }
+  if (!isStrategyId(body.strategy)) {
+    return res.status(400).json({ error: 'strategy must be a known StrategyId' })
+  }
+  db.setDefaultStrategy(body.strategy)
+  res.json({ ok: true, strategy: body.strategy })
+})
+
+app.post('/api/embedding/experiment', async (req, res) => {
+  const body = req.body as { scopePath?: unknown; strategy?: unknown; note?: unknown }
+  if (typeof body.scopePath !== 'string' || !body.scopePath.trim()) {
+    return res.status(400).json({ error: 'scopePath must be a non-empty string' })
+  }
+  if (!isStrategyId(body.strategy)) {
+    return res.status(400).json({ error: 'strategy must be a known StrategyId' })
+  }
+  const note = typeof body.note === 'string' ? body.note : undefined
+
+  try {
+    const result = await runExperiment(
+      { db, hnsw, embedEngine, relayouter },
+      { scopePath: body.scopePath, strategy: body.strategy, note }
+    )
+    if ('ok' in result) {
+      hnsw.save()
+      return res.json({ snapshotId: result.snapshotId, affectedIds: result.affectedIds })
+    }
+    if (result.code === 'too-few-files') {
+      return res.status(400).json({ error: result.message, count: result.count })
+    }
+    if (result.code === 'invalid-strategy') {
+      return res.status(400).json({ error: result.message })
+    }
+    if (result.code === 'subset-pca-failed') {
+      return res.status(500).json({ error: result.message })
+    }
+    return res.status(500).json({ error: 'unknown experiment failure' })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+app.get('/api/embedding/experiment/:id/positions', (req, res) => {
+  const result = getExperimentPositions(db, req.params.id)
+  if ('code' in result) return res.status(404).json({ error: 'snapshot not found' })
+  res.json(result)
+})
+
+app.post('/api/embedding/experiment/:id/promote', (req, res) => {
+  const result = promoteExperiment(db, req.params.id)
+  if ('code' in result) return res.status(404).json({ error: 'snapshot not found' })
+
+  // Kick the corpus-wide re-embed in the background. The progressStore is
+  // built around the walker's tick payload shape, so we adapt our (processed,
+  // total, currentId) frame onto its (scanned, indexed, currentPath) fields:
+  // `scanned == processed`, `indexed == processed - errors`, `currentPath ==
+  // currentId`. Saves us inventing a new SSE channel.
+  const jobId = progressStore.start({ galaxyId: null, galaxyName: null })
+  const excludeIds = new Set<string>()  // affected ids already match the new strategy
+  void reembedRestOfCorpus(
+    { db, hnsw, embedEngine, excludeIds, newStrategy: result.snapshot.strategy },
+    {
+      tick: ({ processed, total, currentId }) => {
+        progressStore.update(jobId, {
+          scanned: processed,
+          indexed: processed,
+          currentPath: currentId,
+          total,
+        })
+      },
+    }
+  ).then(({ processed, total, errors }) => {
+    hnsw.save()
+    progressStore.finish(jobId, {
+      status: 'done',
+      scanned: processed,
+      indexed: processed - errors,
+      errors,
+      total,
+    })
+  }).catch(err => {
+    progressStore.finish(jobId, { status: 'error', errorMessage: String(err) })
+  })
+
+  res.json({ ok: true, jobId })
+})
+
+app.post('/api/embedding/experiment/:id/revert', (req, res) => {
+  // ?relayout=false skips the post-revert global PCA retrain — used by
+  // batched reverts that intend to retrain once at the end.
+  const relayout = req.query.relayout !== 'false'
+  const result = revertExperiment({ db, hnsw, relayouter }, req.params.id, { relayout })
+  if ('code' in result) return res.status(404).json({ error: 'snapshot not found' })
+  hnsw.save()
+  res.json({
+    ok: true,
+    restored: result.restoredCount,
+    skipped: result.skippedCount,
+    layoutVersion: relayouter.currentVersion,
+  })
+})
+
+app.get('/api/embedding/snapshots', (_req, res) => {
+  res.json(listSnapshots(db))
+})
+
+app.post('/api/file/:id/reindex', async (req, res) => {
+  try {
+    const result = await reindexFile({ db, hnsw, embedEngine }, req.params.id)
+    if ('code' in result) {
+      if (result.code === 'not-found') return res.status(404).json({ error: 'not found' })
+      if (result.code === 'read-failed') return res.status(500).json({ error: result.message })
+    } else {
+      hnsw.save()
+      return res.json({ ok: true, embedded: result.embedded })
+    }
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
 })
 
 export function startDaemon(port = DAEMON_PORT): void {
