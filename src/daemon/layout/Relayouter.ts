@@ -1,7 +1,8 @@
 import type { FileIndex } from '../db/FileIndex'
 import { StarPca, scalePositions, type PcaModel } from './Pca'
 import { recomputeClusters, updateClusterCentroids } from './clustering'
-import { LAYOUT_THRESHOLD } from '../../shared/types'
+import { detectSignFlips } from '../math/pinMath'
+import { LAYOUT_THRESHOLD, type ProjectionFile } from '../../shared/types'
 
 export class Relayouter {
   private db: FileIndex
@@ -47,13 +48,23 @@ export class Relayouter {
   }
 
   // For each file with an embedding, return its projection onto all PCs.
-  getAllProjections(): { id: string; pcs: number[] }[] {
+  // Pin coefficients ride along so the renderer's PC-dial pipeline can apply
+  // them client-side (F4 — see usePcDial.scaledById).
+  getAllProjections(): ProjectionFile[] {
     if (!this.pca) return []
     const files = this.db.listWithEmbeddings()
-    const out: { id: string; pcs: number[] }[] = []
+    const out: ProjectionFile[] = []
     for (const f of files) {
       if (!f.embedding) continue
-      out.push({ id: f.id, pcs: this.pca.projectAll(f.embedding) })
+      out.push({
+        id: f.id,
+        pcs: this.pca.projectAll(f.embedding),
+        isPinned: f.isPinned,
+        pinAlpha: f.pinAlpha,
+        pinBeta: f.pinBeta,
+        pinAxisA: f.pinAxisA,
+        pinAxisB: f.pinAxisB,
+      })
     }
     return out
   }
@@ -68,7 +79,20 @@ export class Relayouter {
       .map(f => f.embedding)
       .filter((e): e is Float32Array => e !== null)
 
+    // F4 — capture old eigenvectors so we can detect per-axis sign flips.
+    // PCA SVD is sign-ambiguous: the "same" semantic axis can flip on a
+    // refit, and any pinned files would otherwise jump to the mirror world
+    // position. detectSignFlips → applyPinSignFlips negates α/β where the
+    // axis flipped (and logs where the axis became unstable).
+    const oldComponents = this.pca?.toJSON().components ?? null
+
     this.pca = StarPca.train(embeddings)
+
+    if (oldComponents) {
+      const newComponents = this.pca.toJSON().components
+      const flips = detectSignFlips(oldComponents, newComponents)
+      this.db.applyPinSignFlips(flips)
+    }
 
     // Project all and scale to [-500, 500]
     const rawPositions = embeddings.map(e => this.pca!.project(e))

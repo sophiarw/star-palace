@@ -107,6 +107,20 @@ export interface SearchResult {
   path: string
 }
 
+// F3/F4 — payload of `/api/map/projection`. One entry per file with an
+// embedding; `pcs` is its projection onto every PC the trained model
+// retains. Pin coefs ride along so the renderer can apply them client-side
+// without a second round-trip when the user toggles the PC dial.
+export interface ProjectionFile {
+  id: string
+  pcs: number[]
+  isPinned: boolean
+  pinAlpha: number | null
+  pinBeta: number | null
+  pinAxisA: number | null
+  pinAxisB: number | null
+}
+
 // File content payload for in-app viewer
 export interface FileContent {
   content: string | null   // null when binary/media; viewer should fall back to /raw
