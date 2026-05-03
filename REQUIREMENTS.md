@@ -29,6 +29,9 @@ Locked decisions:
 | F10 | Usage-driven star classification (mode toggle) | M | New columns (os_use_count, os_last_used, importance_score); new `main-sequence` STAR_TYPE; renderer toggle "Color by: [Type] [Usage]". | |
 | F11 | Theme selector (visual aesthetic switch) | M | Pluggable theme registry; ships with `jwst` (deep-space realism) + `vapor` (synthwave/chromatic-aberration). Same functionality across themes, different drawers + chrome. Renderer-only; localStorage. Two F8a prototype decks archived under `prototypes/f8a` + `prototypes/f8a-vapor`. | **DONE** |
 | F12 | Selection animation (pulse / breathe) | XS | Renderer-only; replaces SPRITE_SELECTED_BOOST_ALPHA static treatment with a time-varying pulse. | **DONE** |
+| F13 | Search-match explainability (literal hits + AI insight) | M | Two complementary surfaces in DetailPanel for understanding *why* a file ranked for a query. (a) **Literal**: highlight every occurrence of the query string inside the file content viewer (case-insensitive, scrolls to first hit). (b) **AI insight**: new daemon endpoint calls an LLM with the query + the embedded text + neighborhood snippet → returns a 1-2 sentence explanation of the semantic association. Renderer-only for (a); new daemon endpoint + LLM dependency for (b). | |
+| F14 | Reveal in OS file explorer (capital O) | XS | Vim `O` (capital) opens the selected file's containing folder in the OS file explorer with the file selected. New daemon endpoint + DetailPanel button. macOS `open -R`, Windows `explorer /select,`, Linux `xdg-open <dirname>`. Lowercase `o` keeps existing "open file in default app" behaviour. | |
+| F15 | Reduce glow / expose procedural detail | XS | Bright additive halos drown out the per-instance procedural detail (red giant mottling, nebula FBM, neutron-star nucleus dots). Lower exposure curve + sprite halo alpha so the artwork reads. | |
 
 Detail for each feature is inlined into the relevant section below (Layout, Schema, API, Graph display, etc.). Recommended sequencing at the bottom.
 
@@ -712,6 +715,120 @@ When a star is selected, animate its scale or alpha so the selection state reads
 **Out of scope**:
 - Multi-state animation (e.g. different pulse for hover vs select).
 - Per-type animation profiles.
+
+### F13 — Search-match explainability (literal hits + AI insight)
+
+When a search ranks a file, the user often wants to know *why*. Two surfaces in DetailPanel, complementary and independently useful.
+
+#### (a) Literal-string highlight
+
+Renderer-only. When the active search query is non-empty and the user opens DetailPanel for a result, highlight every literal occurrence of the query inside the content viewer.
+
+- Case-insensitive substring match.
+- Wrap each hit in `<mark>` (or a styled span) so CSS controls the highlight colour. Use `var(--starpalace-accent)` so it inherits the active theme.
+- Auto-scroll the viewer to the first hit on open. "Next/prev hit" buttons + counter ("3 / 47") in the panel header.
+- Multi-word queries: highlight each word separately. Quoted substrings ("foo bar") highlight as one literal.
+- Skip when content is binary/media (no text payload).
+- Cost: O(content length × query terms). Cap at the first ~5000 hits to avoid pathological pages.
+
+**Files (renderer)**:
+- `src/renderer/src/components/DetailPanel/DetailPanel.tsx` — render `<mark>` spans, hit counter, next/prev nav.
+- `src/renderer/src/components/DetailPanel/highlightLiteral.ts` (NEW) — pure helper: `highlightLiteral(text, terms): Array<{text: string, hit: boolean}>`. Unit-test in `tests/renderer/highlightLiteral.test.ts`.
+- `src/renderer/src/styles/global.css` — `.detail-content mark { background: var(--starpalace-accent); color: #000; }`.
+
+#### (b) AI insight
+
+Daemon endpoint calls an LLM with the query + file's embedded text + top-K neighbor snippets → returns a short explanation of why the file matched.
+
+- New endpoint `POST /api/file/:id/search-insight` body `{ query: string }` → response `{ insight: string, model: string, tookMs: number }`.
+- Daemon assembles a prompt: query + first ~2000 chars of file content + first 3 neighbors' filename + first 200 chars each.
+- LLM provider config in daemon: `STARPALACE_INSIGHT_MODEL` env (default `null` → endpoint returns 503 "insight not configured"). Optional later: pluggable Ollama / OpenAI / Anthropic backends.
+- DetailPanel renders an "✨ Why this file?" button (visible when active search query exists). Click → POST endpoint → display response below. Loading spinner. 503 → polite "AI insight requires INSIGHT_MODEL configured".
+- Cache: in-memory LRU keyed on `(fileId, query)`, cap 64 entries. Short TTL (10 min).
+- Cost: one LLM call per click. User-initiated, not automatic.
+
+**Files (daemon)**:
+- `src/daemon/index.ts` — new POST endpoint.
+- `src/daemon/insight/generate.ts` (NEW) — prompt assembly + LLM call. Pluggable `InsightProvider` interface; first impl wraps Ollama (which is already in the stack for embeddings).
+- `src/daemon/insight/cache.ts` (NEW) — LRU 64.
+
+**Files (renderer)**:
+- `src/renderer/src/components/DetailPanel/DetailPanel.tsx` — button + response card.
+- `src/renderer/src/api.ts` — `requestSearchInsight(id, query)` helper.
+
+#### Edge cases
+
+- Empty / no-query DetailPanel open: hide both surfaces.
+- Non-text file (media): hide (a); for (b), still allow but the LLM gets only filename + neighbors.
+- LLM provider unreachable: 503 → polite message, retry button.
+- Query changes after insight cached for that (file, query): show stale insight as-is; user can click again to regenerate.
+- Multi-galaxy: insight is per-file, galaxy-agnostic.
+
+#### Out of scope (v1 of F13)
+
+- Server-side highlight rendering (renderer does the literal pass).
+- Streaming LLM responses (await the full response).
+- Per-paragraph attribution (which sentence contains the match) — keep it short and overall.
+- Insights for files with no search context (no global "summarise this file" path).
+- Insight history persistence across sessions.
+
+### F15 — Reduce glow / expose procedural detail
+
+After F11 procedural sprites + F8a per-id variation shipped, the bright additive glow halos drown the per-instance artwork (red giant convection mottling, nebula FBM color washes, neutron-star nucleus dots, black-hole accretion ring asymmetry). Lower the global exposure / halo alpha so the procedural detail reads.
+
+**Knobs to tune (StarMap.tsx):**
+- `EXPOSURE_MIN` / `EXPOSURE_MAX` / `EXPOSURE_GAMMA` — global multiplier on additive star pass.
+- `SPRITE_HOVER_SCALE` / `SPRITE_HIGHLIGHT_SCALE` / boost-alpha — selection brightness pop.
+- Per-drawer `halo` gradient max alpha in `themes/jwst/drawers.ts` and `themes/vapor/drawers.ts`.
+
+**Approach:**
+- Drop `EXPOSURE_MAX` from 1.6 → 1.1 (less zoom-driven brightening).
+- Drop default halo alpha by 25-35% across drawers (multiply each `rgba(...,a)` first stop by 0.7).
+- Keep core brightness — just dim the outer halos so the disc/structure shows through.
+- Iterate live with reload until detail reads.
+
+**Acceptance:**
+- At default zoom, the inside of a red giant or nebula is clearly distinguishable from a generic glowing disc.
+- Selected stars still pop (selection ring + pulse intact); just less halo bloom.
+
+**Files:**
+- `src/renderer/src/components/StarMap/StarMap.tsx` — exposure constants.
+- `src/renderer/src/themes/jwst/drawers.ts` and `src/renderer/src/themes/vapor/drawers.ts` — halo alpha multipliers.
+
+**Out of scope:**
+- Per-type independent exposure profiles.
+- User-facing exposure slider (F1c notes a slider as a future option).
+
+### F14 — Reveal in OS file explorer (capital O)
+
+Lowercase `o` already opens the selected file in the OS default app (`open <path>` on macOS, etc.). Capital `O` should instead open the containing folder in the OS file explorer with the file highlighted.
+
+**Bindings:**
+- Vim `O` (capital, normal mode) — only when a star is selected. Calls daemon endpoint.
+- Lowercase `o` unchanged.
+- DetailPanel adds a small "Reveal in Finder" button (label adapts per platform: "Reveal in Finder" / "Show in Explorer" / "Open folder").
+
+**Daemon endpoint:**
+- `POST /api/file/:id/reveal` → spawns the OS reveal command, returns `{ ok: true }`.
+- macOS: `execFile('open', ['-R', path])` — reveals file in Finder, highlights it.
+- Windows: `spawn('explorer', ['/select,', path], { windowsVerbatimArguments: true })` — same RCE-safe pattern as `openInDefaultApp`.
+- Linux: `execFile('xdg-open', [dirname(path)])` — opens the folder; xdg-open has no native "select file" flag.
+
+**Files:**
+- `src/daemon/index.ts` — new endpoint.
+- `src/daemon/util/openInDefaultApp.ts` — extend with `revealInFileExplorer(path)` sibling function (mirrors the cross-platform shape).
+- `src/renderer/src/hooks/useVimMode.ts` — add `case 'O'` mirroring the existing `case 'o'`.
+- `src/renderer/src/components/DetailPanel/DetailPanel.tsx` — Reveal button beside the existing Open button.
+- `src/renderer/src/api.ts` — `revealFile(id)` helper.
+- Cheatsheet update.
+
+**Edge cases:**
+- File path no longer exists (deleted/moved since indexed): OS command fails silently or shows an error; daemon returns 200 anyway (we did try). Optional: stat first → 404.
+- Linux without xdg-open: 500 with a polite error.
+
+**Out of scope (v1):**
+- Per-platform "show in <named explorer>" customisation (Path Finder, Total Commander).
+- Highlighting the file inside a third-party file manager.
 
 ### F8 — Procedural per-file graphics
 
