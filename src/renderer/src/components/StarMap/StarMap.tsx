@@ -37,6 +37,20 @@ export interface ActiveCollectionVis {
   memberIds: Set<string>
 }
 
+// B3 — experiment preview overlay. When set, the renderer treats `ids`
+// like a position override: each affected star draws at the supplied
+// (x, y) instead of its persisted coords, and gets a tinted halo ring
+// so the user knows the star is in experimental territory. `positions`
+// uses world coordinates relative to the same origin the daemon uses
+// for production positions (no galaxy-offset adjustment is performed
+// inside StarMap; App-level code must apply that before passing in,
+// matching how `stars` already arrive).
+export interface ExperimentPreviewVis {
+  ids: Set<string>
+  positions: Map<string, [number, number]>
+  color: string
+}
+
 // Drawn-sprite metadata recorded during the main star pass and replayed
 // by the decoration pass. Hoisted out of `draw()` so the ref-stored
 // per-frame Map can carry the type without a generic cast.
@@ -74,6 +88,9 @@ interface Props {
   // convex-hull outline is drawn behind them in the collection's color.
   // Non-members are dimmed exactly like search-active state.
   activeCollection?: ActiveCollectionVis | null
+  // B3 — preview overlay for an embedding experiment. See
+  // ExperimentPreviewVis above for shape semantics.
+  experimentPreview?: ExperimentPreviewVis | null
 }
 
 // F5 — hull rendering constants. Fill alpha is intentionally low so the
@@ -258,7 +275,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, classMode, percentileBuckets, onPinFile, activeCollection, experimentPreview }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Camera is intentionally NOT React state. During pan, native mousemove
   // dispatches at 60–120 Hz; if every move called setState, React would
@@ -490,6 +507,16 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
     highlightSet.current = next
   }, [searchHighlights, activeCollection])
+
+  // B3 — preview overlay ref. The draw loop reads this every frame to
+  // override (x, y) for affected stars and tint their halo. dirty-flag
+  // bumped on prop change so the next frame redraws even if no other
+  // state changed.
+  const experimentPreviewRef = useRef<ExperimentPreviewVis | null>(experimentPreview ?? null)
+  useEffect(() => {
+    experimentPreviewRef.current = experimentPreview ?? null
+    dirtyRef.current = true
+  }, [experimentPreview])
 
   const starIndex = useRef<Map<string, Star>>(new Map())
   useEffect(() => {
@@ -947,8 +974,18 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // tier in sprites.ts is now unused but harmless.
     const lodFor = (_spritePx: number, _focused: boolean): Lod => 'full'
 
+    // B3 — preview overrides: when an experiment is being previewed, the
+    // overlay map supplies replacement world coords for affected stars.
+    // The override is applied at the very top of drawMainStar so every
+    // downstream calc (cull test, sprite metadata for the decoration
+    // pass, drawn-id bookkeeping) uses the experimental position.
+    const previewOverride = experimentPreviewRef.current
+
     const drawMainStar = (star: Star, allowOffscreen: boolean): void => {
-      const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
+      const overridePos = previewOverride?.positions.get(star.id) ?? null
+      const wx = overridePos ? overridePos[0] : star.x
+      const wy = overridePos ? overridePos[1] : star.y
+      const [sx, sy] = worldToScreen(wx, wy, cam, w, h)
       const offscreen = sx < -cull || sx > w + cull || sy < -cull || sy > h + cull
       if (offscreen && !allowOffscreen) return
       const isHighlighted = highlights.has(star.id)
@@ -1034,6 +1071,15 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     renderForced(selectedId)
     renderForced(hoveredId)
     for (const n of currentNeighbors) renderForced(n.id)
+    // B3 — preview overrides: force-draw any affected star whose new
+    // position lies in the viewport even if its production cell was
+    // outside the iterated bounds (the spatial grid is keyed on the
+    // production coords, not the override).
+    if (previewOverride) {
+      for (const id of previewOverride.ids) {
+        renderForced(id)
+      }
+    }
     ctx.restore()
     markEnd('07.mainStars')
 
@@ -1223,6 +1269,38 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
     markEnd('09.decoration')
+
+    // B3 — experiment overlay rings. Tints each affected star's halo so
+    // the user can spot what's experimental vs. production at a glance.
+    // Sits after the decoration pass (so selection / neighbour rings
+    // stack visibly underneath when both apply) and before the theme
+    // overlay (so themed scanlines / Tron grid still draw on top of
+    // the ring at the same z as everything else).
+    markStart()
+    if (previewOverride && previewOverride.ids.size > 0) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.lineWidth = 1.5
+      ctx.globalAlpha = 0.9
+      ctx.strokeStyle = previewOverride.color
+      for (const id of previewOverride.ids) {
+        const pos = previewOverride.positions.get(id)
+        if (!pos) continue
+        const [psx, psy] = worldToScreen(pos[0], pos[1], cam, w, h)
+        if (psx < -cull || psx > w + cull || psy < -cull || psy > h + cull) continue
+        const star = starIndex.current.get(id)
+        if (!star) continue
+        const sb = activeMode === 'usage'
+          ? sizeBucketForImportance(star.importanceScore ?? 0)
+          : sizeBucketFor(star.viewCount)
+        const r = spriteCoreRadius(sb) * drawScale + 5
+        ctx.beginPath()
+        ctx.arc(psx, psy, r, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
+    markEnd('09b.experimentRings')
 
     // F11 — theme overlay (scanlines, Tron grid, etc.). Sits ON TOP of the
     // sky and underneath the HUD layer (chevrons, lock glyphs, labels) so

@@ -402,6 +402,28 @@ export default function App() {
     return { color, memberIds: activeMemberIds }
   }, [activeCollection, activeMemberIds])
 
+  // B3 — preview overlay for StarMap. The color tracks the active theme
+  // accent so the experimental ring reads as "warm warning" without
+  // hardcoding a hex. Position offset matches the same galaxy-offset
+  // logic projectedStars uses, so an experimental position lands in the
+  // same world space as the production position it's replacing.
+  const starMapExperimentPreview = useMemo(() => {
+    if (!experimentPreview) return null
+    const adjusted = new Map<string, [number, number]>()
+    for (const [id, [x, y]] of experimentPreview.positions) {
+      const star = rawStarsById.get(id)
+      const offset = star && star.galaxyId !== null
+        ? galaxyOffsetById.get(star.galaxyId) ?? [0, 0]
+        : [0, 0]
+      adjusted.set(id, [x + offset[0], y + offset[1]])
+    }
+    return {
+      ids: experimentPreview.ids,
+      positions: adjusted,
+      color: themeCtx.theme.ui.accentColor,
+    }
+  }, [experimentPreview, rawStarsById, galaxyOffsetById, themeCtx.theme.ui.accentColor])
+
   const { mode } = useVimMode({
     onAction: dispatchVimAction,
     onToggleSearch: handleToggleSearch,
@@ -446,6 +468,7 @@ export default function App() {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}
         activeCollection={starMapActiveCollection}
+        experimentPreview={starMapExperimentPreview}
       />
 
       {showSearch && (
