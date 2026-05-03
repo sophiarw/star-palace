@@ -12,6 +12,7 @@ import {
   type ExperimentPosition,
   HttpError,
 } from '../../api'
+import { useIndexProgress } from '../../hooks/useIndexProgress'
 
 // B3 — minimum subdir size for an experiment. Mirrors B2's hard floor; if
 // B2 ships a different number this constant is the single point to update.
@@ -138,6 +139,12 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
   // Track which snapshot is being acted on so we can disable just its row's
   // buttons rather than all rows (a long promote shouldn't lock revert).
   const [busySnapshotId, setBusySnapshotId] = useState<string | null>(null)
+  // B3 — active promote job. The promote endpoint kicks off a background
+  // re-embed under the new strategy and returns its jobId; we subscribe
+  // to the existing /api/index/progress SSE so the panel can show the
+  // same progress UI used during indexing. Cleared on terminal frame.
+  const [promoteJobId, setPromoteJobId] = useState<string | null>(null)
+  const promoteJobFinishedRef = useRef<string | null>(null)
 
   const tree = useMemo(() => buildTree(stars), [stars])
   const flatNodes = useMemo(() => flattenTree(tree), [tree])
@@ -192,6 +199,30 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
     loadSnapshots()
   }, [visible, loadStrategies, loadSnapshots])
 
+  // B3 — re-embed progress for the active promote. Hits the same endpoint
+  // GalaxyPanel uses; B2 wires the promote job into the same progressStore.
+  // If B2's progress feed isn't live, the snapshot stays at status=idle
+  // indefinitely and we surface a spinner instead of a percentage.
+  const promoteProgress = useIndexProgress(promoteJobId)
+
+  useEffect(() => {
+    if (!promoteJobId) return
+    if (promoteProgress.status === 'running') return
+    if (promoteJobFinishedRef.current === promoteJobId) return
+    if (promoteProgress.status === 'idle') return
+    promoteJobFinishedRef.current = promoteJobId
+    if (promoteProgress.status === 'done') {
+      setOkMsg(`Re-embed complete (${promoteProgress.indexed} files).`)
+    } else if (promoteProgress.status === 'error') {
+      setError(promoteProgress.errorMessage ?? 'Promote re-embed failed')
+    }
+    // Drop the subscription regardless of outcome and refresh the
+    // snapshot list + parent stars so the new positions stream in.
+    setPromoteJobId(null)
+    loadSnapshots().catch(() => { /* surfaced */ })
+    onMutated()
+  }, [promoteJobId, promoteProgress.status, promoteProgress.indexed, promoteProgress.errorMessage, loadSnapshots, onMutated])
+
   const handleRun = useCallback(async () => {
     if (!scopePath || !chosenStrategy) return
     setRunning(true)
@@ -240,19 +271,21 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
     setError(null)
     setOkMsg(null)
     try {
-      await promoteExperiment(snap.snapshotId)
-      setOkMsg(`Promoted ${snap.strategy}.`)
+      const result = await promoteExperiment(snap.snapshotId)
+      setOkMsg(`Promoting ${snap.strategy}…`)
       onPreview(null)
-      await loadSnapshots()
+      // Wire the SSE subscription so we can show progress + auto-clean
+      // up when the daemon finishes the background re-embed.
+      promoteJobFinishedRef.current = null
+      setPromoteJobId(result.jobId)
       // Bump default state via a strategies refetch.
       await loadStrategies()
-      onMutated()
     } catch (err) {
       setError(`Promote failed: ${String(err)}`)
     } finally {
       setBusySnapshotId(null)
     }
-  }, [onPreview, loadSnapshots, loadStrategies, onMutated])
+  }, [onPreview, loadStrategies])
 
   const handleRevert = useCallback(async (snap: SnapshotSummary) => {
     if (typeof window !== 'undefined' && !window.confirm(
@@ -265,14 +298,16 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
       await revertExperiment(snap.snapshotId)
       setOkMsg('Reverted.')
       onPreview(null)
-      await loadSnapshots()
+      // Refresh both lists: revert may roll the daemon's default back to
+      // the prior strategy, and snapshot history reflects the change.
+      await Promise.all([loadSnapshots(), loadStrategies()])
       onMutated()
     } catch (err) {
       setError(`Revert failed: ${String(err)}`)
     } finally {
       setBusySnapshotId(null)
     }
-  }, [onPreview, loadSnapshots, onMutated])
+  }, [onPreview, loadSnapshots, loadStrategies, onMutated])
 
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -333,7 +368,9 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
 
   if (!visible) return null
 
-  const runDisabled = running || !scopePath || scopeCount < MIN_FILES_FOR_EXPERIMENT || !chosenStrategy
+  const promoteInFlight = promoteJobId !== null
+  const runDisabled = running || promoteInFlight
+    || !scopePath || scopeCount < MIN_FILES_FOR_EXPERIMENT || !chosenStrategy
   const chosenMeta = strategies.find(s => s.id === chosenStrategy) ?? null
 
   return (
@@ -453,6 +490,34 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
             </button>
           </div>
           <canvas ref={previewCanvasRef} className="embedding-lab-preview-canvas" />
+        </div>
+      )}
+
+      {promoteJobId && (
+        <div className="embedding-lab-promote-progress">
+          {/* `total` is null until B2's terminal frame fills it (matches
+              GalaxyPanel's behaviour); show indeterminate stripes until
+              percent flips numeric. If the SSE never connects (B2 not
+              live), the bar stays indeterminate and the count stays at
+              0 — still readable as "promote in flight". */}
+          <div className="embedding-lab-promote-label">
+            Re-embedding in background
+            {promoteProgress.indexed > 0 && ` — ${promoteProgress.indexed} files`}
+          </div>
+          <div
+            className={
+              promoteProgress.percent !== null
+                ? 'embedding-lab-promote-bar'
+                : 'embedding-lab-promote-bar embedding-lab-promote-bar--indeterminate'
+            }
+          >
+            <div
+              className="embedding-lab-promote-fill"
+              style={promoteProgress.percent !== null
+                ? { width: `${Math.round(promoteProgress.percent * 100)}%` }
+                : undefined}
+            />
+          </div>
         </div>
       )}
 

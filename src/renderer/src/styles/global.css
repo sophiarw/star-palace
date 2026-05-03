@@ -2013,3 +2013,42 @@ body {
   text-align: right;
   margin-top: 4px;
 }
+
+.embedding-lab-promote-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 35%, transparent);
+  border-radius: 6px;
+  background: rgba(255, 224, 102, 0.05);
+}
+
+.embedding-lab-promote-label {
+  font-size: 11px;
+  color: var(--starpalace-accent);
+}
+
+.embedding-lab-promote-bar {
+  height: 4px;
+  background: rgba(2, 11, 24, 0.6);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.embedding-lab-promote-fill {
+  height: 100%;
+  background: var(--starpalace-accent);
+  transition: width 240ms ease-out;
+}
+
+/* Indeterminate stripes — same idea as the galaxy-panel indexer. */
+.embedding-lab-promote-bar--indeterminate .embedding-lab-promote-fill {
+  width: 30%;
+  animation: embedding-lab-stripe 1.6s linear infinite;
+}
+
+@keyframes embedding-lab-stripe {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(370%); }
+}
