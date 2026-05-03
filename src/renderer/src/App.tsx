@@ -163,8 +163,12 @@ export default function App() {
     setVimAction({ ...action })
   }, [])
 
-  const handleFocusSearch = useCallback(() => {
+  const handleToggleSearch = useCallback(() => {
     searchInputRef.current?.focus()
+  }, [])
+
+  const handleSelectStar = useCallback((id: string) => {
+    setSelectedId(id)
   }, [])
 
   const handleEscape = useCallback(() => {
@@ -196,7 +200,8 @@ export default function App() {
 
   const { mode } = useVimMode({
     onAction: dispatchVimAction,
-    onFocusSearch: handleFocusSearch,
+    onToggleSearch: handleToggleSearch,
+    onSelectStar: handleSelectStar,
     onEscape: handleEscape,
     onSelectHovered: handleSelectHovered,
     hoveredId,
