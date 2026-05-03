@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { frameMetrics, type FrameSnapshot } from '../../lib/frameMetrics'
+import { frameMetrics, type FrameSnapshot, type PassSummary, type CounterSummary } from '../../lib/frameMetrics'
 
 interface Props {
   visible: boolean
@@ -37,7 +37,14 @@ function colorFor(ms: number): string {
   return '#e07a7a'                // sub-30 fps
 }
 
-function copyToClipboard(snap: FrameSnapshot): void {
+function copyToClipboard(snap: FrameSnapshot, passes: PassSummary[], timings: PassSummary[], counters: CounterSummary): void {
+  const passLines = passes.map(p =>
+    `  ${p.name.padEnd(18)}  p99 ${fmt(p.p99Ms).padStart(6)} ms  mean ${fmt(p.meanMs).padStart(6)} ms  n ${p.n}`,
+  )
+  const timingLines = timings.map(t =>
+    `  ${t.name.padEnd(18)}  p99 ${fmt(t.p99Ms).padStart(6)} ms  mean ${fmt(t.meanMs).padStart(6)} ms  n ${t.n}`,
+  )
+  const counterLines = Object.entries(counters).map(([k, v]) => `  ${k.padEnd(18)}  ${v}`)
   const lines = [
     `FPS: ${snap.fps.toFixed(1)}`,
     `avg: ${fmt(snap.avgMs)} ms`,
@@ -50,7 +57,10 @@ function copyToClipboard(snap: FrameSnapshot): void {
     `interacting avg: ${fmt(snap.interactingAvgMs)} ms`,
     `interacting p99: ${fmt(snap.interactingP99Ms)} ms`,
     `visible stars: ${snap.visibleStars}`,
-  ].join('\n')
+    passes.length > 0 ? '\nPasses (sorted by p99 desc):\n' + passLines.join('\n') : '',
+    timings.length > 0 ? '\nTimings:\n' + timingLines.join('\n') : '',
+    counterLines.length > 0 ? '\nCounters:\n' + counterLines.join('\n') : '',
+  ].filter(Boolean).join('\n')
   if (typeof navigator !== 'undefined' && navigator.clipboard) {
     navigator.clipboard.writeText(lines).catch(() => { /* ignore */ })
   }
@@ -59,20 +69,36 @@ function copyToClipboard(snap: FrameSnapshot): void {
 
 export default function PerfOverlay({ visible, onClose }: Props) {
   const [snap, setSnap] = useState<FrameSnapshot>(() => frameMetrics.snapshot())
+  const [passes, setPasses] = useState<PassSummary[]>(() => frameMetrics.passSnapshot())
+  const [timings, setTimings] = useState<PassSummary[]>(() => frameMetrics.timingSnapshot())
+  const [counters, setCounters] = useState<CounterSummary>(() => frameMetrics.countersSnapshot())
 
   useEffect(() => {
     if (!visible) return
-    const id = window.setInterval(() => setSnap(frameMetrics.snapshot()), POLL_MS)
+    const id = window.setInterval(() => {
+      setSnap(frameMetrics.snapshot())
+      setPasses(frameMetrics.passSnapshot())
+      setTimings(frameMetrics.timingSnapshot())
+      setCounters(frameMetrics.countersSnapshot())
+    }, POLL_MS)
     return () => window.clearInterval(id)
   }, [visible])
 
   const handleReset = useCallback(() => {
     frameMetrics.reset()
     setSnap(frameMetrics.snapshot())
+    setPasses(frameMetrics.passSnapshot())
+    setTimings(frameMetrics.timingSnapshot())
+    setCounters(frameMetrics.countersSnapshot())
   }, [])
 
   const handleCopy = useCallback(() => {
-    copyToClipboard(frameMetrics.snapshot())
+    copyToClipboard(
+      frameMetrics.snapshot(),
+      frameMetrics.passSnapshot(),
+      frameMetrics.timingSnapshot(),
+      frameMetrics.countersSnapshot(),
+    )
   }, [])
 
   if (!visible) return null
@@ -127,6 +153,52 @@ export default function PerfOverlay({ visible, onClose }: Props) {
         <span style={labelStyle}>visible stars</span>
         <span>{snap.visibleStars.toLocaleString()}</span>
       </div>
+      {passes.length > 0 && (
+        <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px dashed rgba(140,200,255,0.2)' }}>
+          <div style={{ ...labelStyle, marginBottom: 2 }}>passes (p99 desc)</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {passes.map(p => {
+                const c = colorFor(p.p99Ms * 4)  // pass budget = 4 ms ≈ 25 % of 60 fps frame
+                return (
+                  <tr key={p.name}>
+                    <td style={{ color: '#dbe8ff', paddingRight: 8 }}>{p.name}</td>
+                    <td style={{ color: c, textAlign: 'right' }}>{fmt(p.p99Ms)}</td>
+                    <td style={{ color: '#5d7299', textAlign: 'right', paddingLeft: 6 }}>{fmt(p.meanMs)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {timings.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ ...labelStyle, marginBottom: 2 }}>timings</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {timings.map(t => (
+                <tr key={t.name}>
+                  <td style={{ color: '#dbe8ff', paddingRight: 8 }}>{t.name}</td>
+                  <td style={{ color: colorFor(t.p99Ms * 4), textAlign: 'right' }}>{fmt(t.p99Ms)}</td>
+                  <td style={{ color: '#5d7299', textAlign: 'right', paddingLeft: 6 }}>{fmt(t.meanMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {Object.keys(counters).length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ ...labelStyle, marginBottom: 2 }}>counters</div>
+          {Object.entries(counters).map(([k, v]) => (
+            <div key={k} style={rowStyle}>
+              <span style={{ color: '#dbe8ff' }}>{k}</span>
+              <span>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button
           type="button"

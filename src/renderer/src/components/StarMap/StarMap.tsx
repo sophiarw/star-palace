@@ -10,6 +10,7 @@ import {
   tempBucketFor,
   spriteCoreRadius,
   hashStr,
+  spriteCacheStats,
 } from './sprites'
 import { defaultJitterFor } from './proc'
 import { getBackdrop, getBackdropMultiplier } from './background'
@@ -655,12 +656,27 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // sky without rebuilding the rAF loop.
     const activeMode = classModeRef.current
     const activeBuckets = bucketsRef.current
+    // Per-pass timing instrumentation (Phase 0). DEV-only — Vite folds the
+    // const so prod builds strip the recordPass calls + the markers via
+    // dead-code elimination. `_markT` is reused across passes so we don't
+    // pay an allocation per call. Wrap each pass with markStart() before
+    // and markEnd('NN.name') after.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const PERF = !!(import.meta as any).env?.DEV
+    let _markT = 0
+    const markStart = (): void => { if (PERF) _markT = performance.now() }
+    const markEnd = (name: string): void => {
+      if (PERF) frameMetrics.recordPass(name, performance.now() - _markT)
+    }
+
     // Opaque clear: backdrop draw + vignette below are not guaranteed to
     // cover the full backing store on resize / DPR change. Without this,
     // stale pixels survive in narrow bands. Theme drives the fill colour
     // (jwst slate, vapor purple, ...).
+    markStart()
     ctx.fillStyle = activeTheme.background.canvasFill
     ctx.fillRect(0, 0, w, h)
+    markEnd('01.clear')
     const cam = camRef.current
     const currentClusters = clustersRef.current
     const currentEdges = edgesRef.current
@@ -707,6 +723,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     // Deep-field backdrop (prerendered: nebulae + faint stars + far galaxies),
     // scaled + panned with parallax so it reads as deeper space behind the stars.
+    markStart()
     const backdrop = getBackdrop(w, h)
     const m = getBackdropMultiplier()
     const bgScale = Math.max(BACKDROP_MIN_SCALE, Math.pow(cam.zoom, BACKDROP_ZOOM_PARALLAX))
@@ -718,15 +735,19 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     ctx.translate(bgTx, bgTy)
     ctx.drawImage(backdrop, -(w * m) / 2, -(h * m) / 2)
     ctx.restore()
+    markEnd('02.backdrop')
 
     // Vignette to keep focus toward center
+    markStart()
     const vignette = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7)
     vignette.addColorStop(0, 'rgba(0,0,0,0)')
     vignette.addColorStop(1, 'rgba(0,4,12,0.55)')
     ctx.fillStyle = vignette
     ctx.fillRect(0, 0, w, h)
+    markEnd('03.vignette')
 
     // Constellation nebulae — multi-stop gradients with subtle elliptical squish per cluster
+    markStart()
     ctx.save()
     ctx.globalCompositeOperation = 'screen'
     for (const cluster of currentClusters) {
@@ -754,12 +775,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.restore()
     }
     ctx.restore()
+    markEnd('04.clusters')
 
     // F5 — active-collection hull. Sits behind the star pass so members
     // remain crisp on top. Skips when there's no collection or its member
     // set is empty; falls through to a centered circle when the visible
     // membership collapses to a single point (matches the F5 spec for
     // size-1 collections).
+    markStart()
     const activeColl = activeCollectionRef.current
     if (activeColl && activeColl.memberIds.size > 0) {
       const memberPts: Pt[] = []
@@ -804,8 +827,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         }
       }
     }
+    markEnd('05.activeHull')
 
     // Edges (selected neighborhood only) — additive screen blend for filament feel
+    markStart()
     if (currentEdges.length > 0) {
       ctx.save()
       ctx.globalCompositeOperation = 'screen'
@@ -828,10 +853,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       }
       ctx.restore()
     }
+    markEnd('06.edges')
 
     // Main star pass — sprite-cached, additive blend so overlapping halos bloom together.
     // Side-channel: record per-star sprite metadata for the decoration pass so it doesn't
     // recompute the sprite + scale twice per frame.
+    markStart()
     // F8b — `rotation` is non-null for default-path (cluster-hue) stars so the
     // decoration pass replays the same rotation on its brightness-boost re-draw;
     // null for typed stars (their drawer already bakes per-id orientation).
@@ -970,10 +997,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     renderForced(hoveredId)
     for (const n of currentNeighbors) renderForced(n.id)
     ctx.restore()
+    markEnd('07.mainStars')
 
     // Animation overlay — pulsar rotating beam + quasar jet flicker. Iterates
     // the precomputed pulsar/quasar list so we don't re-classify every star
     // each frame. Cardinality is small in practice (manually-typed only).
+    markStart()
     // Quality-driven skip: when the on-screen sprite is tiny, the beam is
     // invisible anyway and re-running the per-frame gradient is pure cost.
     const animSkipPx =
@@ -1036,10 +1065,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       ctx.restore()
     }
+    markEnd('08.animOverlay')
 
     // Decoration pass — additive sprite re-draw (selected) + warm-white selection ring +
     // gold ring (highlighted) + cyan ring (neighbors). Iterates the small focus-id set
     // (≤ ~30 ids: selected + neighbors + highlights) instead of all stars.
+    markStart()
     if (hasFocus) {
       ctx.save()
       const focusIds = new Set<string>()
@@ -1129,10 +1160,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       }
       ctx.restore()
     }
+    markEnd('09.decoration')
 
     // F11 — theme overlay (scanlines, Tron grid, etc.). Sits ON TOP of the
     // sky and underneath the HUD layer (chevrons, lock glyphs, labels) so
     // chrome stays legible on noisy themes like vapor.
+    markStart()
     if (activeTheme.background.overlay) {
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
@@ -1140,9 +1173,11 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       activeTheme.background.overlay(ctx, w, h)
       ctx.restore()
     }
+    markEnd('10.themeOverlay')
 
     // Off-screen neighbor markers — draw a chevron at the canvas edge for each
     // neighbor whose center is outside the viewport, pointing toward it.
+    markStart()
     if (selectedId && currentNeighbors.length > 0) {
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
@@ -1161,11 +1196,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       }
       ctx.restore()
     }
+    markEnd('11.chevrons')
 
     // F4 — pinned-star lock glyph at high zoom. Cheap text glyph above the
     // sprite, only when zoomed in enough that the user can see it (low zoom
     // would be visual clutter). Iterates the precomputed pinned list so this
     // is O(pinned) instead of O(N).
+    markStart()
     if (cam.zoom > 1.5) {
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
@@ -1185,10 +1222,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.textAlign = 'start'
       ctx.restore()
     }
+    markEnd('12.lockGlyphs')
 
     // F4 — pin-drag preview: dashed line from the natural position to the
     // current cursor + a faint sprite at the cursor so the user can see
     // where they're aiming.
+    markStart()
     const drag = pinDrag.current
     if (drag) {
       const star = starIndex.current.get(drag.id) ?? null
@@ -1240,12 +1279,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ctx.restore()
       }
     }
+    markEnd('13.pinDrag')
 
     // Labels — alpha tapers smoothly from zoom 0.8 upward; no hard cutoff.
     // Below zoom 0.8 only the hovered label can render (zoomAlpha = 0 for
     // everything else), so we early-exit the per-cell scan and just render
     // the hovered label if any. Above 0.8 we iterate viewport cells via the
     // grid so labels stay O(visible_cells).
+    markStart()
     const drawLabel = (star: Star): void => {
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) return
@@ -1305,6 +1346,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       }
     }
     ctx.restore()
+    markEnd('14.labels')
 
     dirtyRef.current = false
     lastCamSnapRef.current = cam
@@ -1373,6 +1415,19 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         draw()
         const deltaMs = tNow - lastTickMs
         frameMetrics.record(deltaMs, interacting, lastVisibleCountRef.current)
+        // Phase 0: sample sprite cache stats once per drawn frame so the
+        // overlay can show whether the cache is thrashing without polluting
+        // the get*() hot path with per-call recordCounter calls.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((import.meta as any).env?.DEV) {
+          const s = spriteCacheStats()
+          frameMetrics.recordCounter('spriteCache.default.size', s.defaultSize)
+          frameMetrics.recordCounter('spriteCache.default.misses', s.defaultMisses)
+          frameMetrics.recordCounter('spriteCache.default.hits', s.defaultHits)
+          frameMetrics.recordCounter('spriteCache.typed.size', s.typedSize)
+          frameMetrics.recordCounter('spriteCache.typed.misses', s.typedMisses)
+          frameMetrics.recordCounter('spriteCache.typed.hits', s.typedHits)
+        }
       } else {
         frameMetrics.recordSkipped()
       }
@@ -1453,6 +1508,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   }, [hoveredId, onPinFile])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const PERF = !!(import.meta as any).env?.DEV
+    const _t0 = PERF ? performance.now() : 0
     const canvas = canvasRef.current
     if (!canvas) return
     const w = canvas.clientWidth, h = canvas.clientHeight
@@ -1495,6 +1553,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     setHoveredId(closest)
     if (closest) setHoverPos({ x: e.clientX, y: e.clientY })
+    if (PERF) frameMetrics.recordTiming('hover', performance.now() - _t0)
   }, [])
 
   const handleMouseUp = useCallback(() => {

@@ -82,6 +82,33 @@ export type Lod = 'cheap' | 'full'
  * `SpikeVariant` lives in `proc.ts` (canonical home for procedural types).
  */
 
+// Phase 0 instrumentation. Module-local counters incremented on hit/miss so
+// the perf overlay can answer "is the cache thrashing?" without touching the
+// hot path. `spriteCacheStats()` is read once per frame from the rAF loop in
+// StarMap.tsx; no per-call recordCounter to keep get*() inlinable.
+let _defaultMisses = 0
+let _defaultHits = 0
+let _typedMisses = 0
+let _typedHits = 0
+
+export function spriteCacheStats(): {
+  defaultSize: number
+  defaultMisses: number
+  defaultHits: number
+  typedSize: number
+  typedMisses: number
+  typedHits: number
+} {
+  return {
+    defaultSize: cache.size,
+    defaultMisses: _defaultMisses,
+    defaultHits: _defaultHits,
+    typedSize: typedCache.size(),
+    typedMisses: _typedMisses,
+    typedHits: _typedHits,
+  }
+}
+
 export function getStarSprite(
   colorIndex: number,
   tempBucket: number,
@@ -91,7 +118,8 @@ export function getStarSprite(
 ): HTMLCanvasElement {
   const key = `${colorIndex}|${tempBucket}|${sizeBucket}|${spikeVariant}|${lod}`
   const cached = cache.get(key)
-  if (cached) return cached
+  if (cached) { _defaultHits++; return cached }
+  _defaultMisses++
   const sprite = renderSprite(colorIndex, tempBucket, sizeBucket, spikeVariant, lod)
   cache.set(key, sprite)
   return sprite
@@ -249,7 +277,8 @@ export function getTypedStarSprite(
 ): HTMLCanvasElement {
   const key = typedSpriteKey(theme.id, type, sizeBucket, starId, lod)
   const cached = typedCache.get(key)
-  if (cached) return cached
+  if (cached) { _typedHits++; return cached }
+  _typedMisses++
   const sprite = lod === 'cheap'
     ? renderCheapTypedSprite(type, sizeBucket)
     : renderTypedSprite(theme, type, sizeBucket, starId)
