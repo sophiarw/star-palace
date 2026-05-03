@@ -15,6 +15,7 @@ import { getBackdrop, getBackdropMultiplier } from './background'
 import { defaultStarType } from './autoStarType'
 import { worldToScreen, screenToWorld, type Camera } from './coords'
 import type { VimAction } from '../../hooks/useVimMode'
+import type { Theme } from '../../themes/types'
 
 interface Props {
   stars: Star[]
@@ -25,15 +26,20 @@ interface Props {
   onReady?: () => void
   vimAction?: VimAction | null
   onHoveredChange?: (id: string | null) => void
+  // F11 — active theme. Drives typed sprite drawer pick + canvas backdrop.
+  theme: Theme
   // F4 — Shift+mousedown on a hovered star starts a drag-to-pin gesture; on
   // release we fire this callback. Optional so existing call sites compile
   // before App.tsx wires it up.
   onPinFile?: (id: string, worldX: number, worldY: number) => void
 }
 
-const HIGHLIGHT_COLOR = '#ffe066'
+// F11 — search-highlight + pin glyph + pin-drag preview now read the active
+// theme accent from `activeTheme.ui.accentColor` per-frame so flipping themes
+// recolors the chrome instantly. Selection ring + neighbor ring stay
+// constant — they're functional state markers, not theme accents.
 const NEIGHBOR_RING_COLOR = 'rgba(140, 200, 255, 0.85)'
-const SELECTED_RING_COLOR = '#fff4d0'  // warm white, distinct from gold + cyan
+const SELECTED_RING_COLOR = '#fff4d0'  // warm white, distinct from accent + cyan
 const EDGE_COLOR = 'rgba(120, 180, 255, 0.45)'
 const DIM_ALPHA = 0.08
 const SPRITE_HOVER_SCALE = 1.35
@@ -115,7 +121,7 @@ function drawChevron(ctx: CanvasRenderingContext2D, x: number, y: number, angle:
   ctx.restore()
 }
 
-export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, onPinFile }: Props) {
+export default function StarMap({ stars, clusters, searchHighlights, selectedId, onSelect, onReady, vimAction, onHoveredChange, theme, onPinFile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [cam, setCam] = useState<Camera>({ cx: 0, cy: 0, zoom: 1 })
   const camRef = useRef<Camera>(cam)
@@ -138,6 +144,13 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // trigger a React re-render on each cursor move; the next frame picks up
   // the new ref value.
   const pinDrag = useRef<{ id: string; worldX: number; worldY: number } | null>(null)
+
+  // F11 — active theme ref. The draw callback below reads it each frame so
+  // theme switches re-render every visible star without rebuilding the rAF
+  // loop (cache key includes the theme id so cached sprites for the previous
+  // theme stay until LRU eviction).
+  const themeRef = useRef(theme)
+  useEffect(() => { themeRef.current = theme }, [theme])
 
   // Keep refs in sync
   useEffect(() => { starsRef.current = stars }, [stars])
@@ -318,10 +331,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const dpr = dprRef.current
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     const w = canvas.width / dpr, h = canvas.height / dpr
+    const activeTheme = themeRef.current
     // Opaque clear: backdrop draw + vignette below are not guaranteed to
     // cover the full backing store on resize / DPR change. Without this,
-    // stale pixels survive in narrow bands.
-    ctx.fillStyle = '#000814'
+    // stale pixels survive in narrow bands. Theme drives the fill colour
+    // (jwst slate, vapor purple, ...).
+    ctx.fillStyle = activeTheme.background.canvasFill
     ctx.fillRect(0, 0, w, h)
     const cam = camRef.current
     const currentStars = starsRef.current
@@ -434,7 +449,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       let sprite: HTMLCanvasElement
       const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
       if (effectiveType) {
-        sprite = getTypedStarSprite(effectiveType, sb)
+        sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
       } else {
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
@@ -567,7 +582,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
         if (isHighlighted) {
           ctx.globalCompositeOperation = 'source-over'
-          ctx.strokeStyle = HIGHLIGHT_COLOR
+          ctx.strokeStyle = activeTheme.ui.accentColor
           ctx.lineWidth = 2
           ctx.globalAlpha = 0.85
           ctx.beginPath()
@@ -575,6 +590,17 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           ctx.stroke()
         }
       }
+      ctx.restore()
+    }
+
+    // F11 — theme overlay (scanlines, Tron grid, etc.). Sits ON TOP of the
+    // sky and underneath the HUD layer (chevrons, lock glyphs, labels) so
+    // chrome stays legible on noisy themes like vapor.
+    if (activeTheme.background.overlay) {
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1
+      activeTheme.background.overlay(ctx, w, h)
       ctx.restore()
     }
 
@@ -606,7 +632,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.save()
       ctx.globalCompositeOperation = 'source-over'
       ctx.font = '14px monospace'
-      ctx.fillStyle = '#ffe066'
+      ctx.fillStyle = activeTheme.ui.accentColor
       ctx.globalAlpha = 0.85
       ctx.textAlign = 'center'
       for (const star of currentStars) {
@@ -632,7 +658,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ctx.save()
         ctx.globalCompositeOperation = 'source-over'
         ctx.setLineDash([6, 4])
-        ctx.strokeStyle = '#ffe066'
+        ctx.strokeStyle = activeTheme.ui.accentColor
         ctx.globalAlpha = 0.6
         ctx.lineWidth = 1.4
         ctx.beginPath()
@@ -644,7 +670,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         const effectiveType = star.starType ?? defaultStarType(star.name, star.mimeType, star.category)
         let sprite: HTMLCanvasElement
         if (effectiveType) {
-          sprite = getTypedStarSprite(effectiveType, sb)
+          sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id)
         } else {
           const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
           const colorIndex = cluster ? cluster.colorIndex : -1

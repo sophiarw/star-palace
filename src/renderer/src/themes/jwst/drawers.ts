@@ -1,0 +1,800 @@
+/**
+ * JWST theme drawers — F8a per-type variation, deep-space-realism aesthetic.
+ *
+ * Ported from `prototypes/f8a/index.html` (worktree-agent-af8ce890cf5c7d92b)
+ * with no behavioural changes; rng() call order is identical so the same
+ * star id renders identically to the prototype deck.
+ *
+ * Each drawer pulls rng() in a fixed order; reordering reseeds downstream
+ * features. Comments tag the call order at the top of each function.
+ */
+
+import type { ThemedDrawer } from '../types'
+import {
+  applyCircularFade,
+  buildRamp,
+  fbm2D,
+  hashStr,
+  mix,
+  pickN,
+  rngPick,
+  rngRange,
+  type RGB,
+} from '../../components/StarMap/proc'
+
+/* --------------------------------------------------------------------------
+ * 1. RED GIANT — convection mottling + solar prominences + limb darkening
+ * -------------------------------------------------------------------------- */
+
+const drawRedGiant: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2)
+  halo.addColorStop(0,    'rgba(255,210,160,0.85)')
+  halo.addColorStop(0.18, 'rgba(255,150,90,0.55)')
+  halo.addColorStop(0.40, 'rgba(220,90,50,0.30)')
+  halo.addColorStop(0.65, 'rgba(160,40,30,0.14)')
+  halo.addColorStop(1,    'rgba(110,20,10,0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  // Convection mottling — additive blobs over the disc
+  // rng() ord: A) blob count, B..) per-blob {angle, radial-pos, size, alpha}
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  const blobCount = 8 + Math.floor(rng() * 7) // 8..14
+  for (let i = 0; i < blobCount; i++) {
+    let bx = 0, by = 0, ok = false
+    for (let t = 0; t < 6; t++) {
+      const u = rng() * 2 - 1
+      const v = rng() * 2 - 1
+      if (u * u + v * v < 0.85) { bx = u; by = v; ok = true; break }
+    }
+    if (!ok) { bx = 0; by = 0 }
+    const sz = rngRange(rng, 0.15, 0.40) * r
+    const a = rngRange(rng, 0.18, 0.45)
+    const px = cx + bx * r * 0.85
+    const py = cy + by * r * 0.85
+    const g = ctx.createRadialGradient(px, py, 0, px, py, sz)
+    g.addColorStop(0,   `rgba(255,235,200,${a})`)
+    g.addColorStop(0.5, `rgba(255,170,90,${a * 0.6})`)
+    g.addColorStop(1,   'rgba(255,120,40,0)')
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+
+  // Limb darkening (no rng) — thin dark ring at r*1.0 for spherical solidity
+  const limb = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.05)
+  limb.addColorStop(0,    'rgba(0,0,0,0)')
+  limb.addColorStop(0.7,  'rgba(80,20,10,0.0)')
+  limb.addColorStop(0.92, 'rgba(60,15,5,0.45)')
+  limb.addColorStop(1,    'rgba(20,5,0,0)')
+  ctx.fillStyle = limb
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2); ctx.fill()
+
+  // Prominences — 2..4 arcing flares from the limb
+  // rng() ord: count, then per-prominence {angle, length, drift}
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  const promCount = 2 + Math.floor(rng() * 3) // 2..4
+  for (let i = 0; i < promCount; i++) {
+    const ang = rng() * Math.PI * 2
+    const length = rngRange(rng, 1.15, 1.55)
+    const drift  = rngRange(rng, -0.6, 0.6)
+    const sx = cx + Math.cos(ang) * r * 0.98
+    const sy = cy + Math.sin(ang) * r * 0.98
+    const cpAng = ang + drift
+    const cpx = cx + Math.cos(cpAng) * r * 1.65
+    const cpy = cy + Math.sin(cpAng) * r * 1.65
+    const ex = cx + Math.cos(ang + drift * 1.4) * r * length
+    const ey = cy + Math.sin(ang + drift * 1.4) * r * length
+
+    const STEPS = 14
+    let prevX = sx, prevY = sy
+    for (let k = 1; k <= STEPS; k++) {
+      const t = k / STEPS
+      const it = 1 - t
+      const nx = it * it * sx + 2 * it * t * cpx + t * t * ex
+      const ny = it * it * sy + 2 * it * t * cpy + t * t * ey
+      const lw = (1 - t * 0.7) * Math.max(1.0, r * 0.10)
+      const a = (1 - t * 0.85) * 0.7
+      const g = ctx.createLinearGradient(prevX, prevY, nx, ny)
+      g.addColorStop(0, `rgba(255,210,140,${a})`)
+      g.addColorStop(1, `rgba(255,140,80,${a * 0.6})`)
+      ctx.strokeStyle = g
+      ctx.lineWidth = lw
+      ctx.beginPath(); ctx.moveTo(prevX, prevY); ctx.lineTo(nx, ny); ctx.stroke()
+      prevX = nx; prevY = ny
+    }
+  }
+  ctx.restore()
+
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.9)
+  core.addColorStop(0,   'rgba(255,235,210,0.85)')
+  core.addColorStop(0.6, 'rgba(255,170,100,0.30)')
+  core.addColorStop(1,   'rgba(255,140,80,0)')
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.78)
+}
+
+/* --------------------------------------------------------------------------
+ * 2. BLUE SUPERGIANT — spike count + halo eccentricity + spike base angle
+ * -------------------------------------------------------------------------- */
+
+const drawBlueSupergiant: ThemedDrawer = (ctx, cx, cy, r, rng, sizeBucket) => {
+  // rng() ord: A) spike count, B) halo squish, C) halo tilt, D) spike base angle
+  const spikeWeights: Array<{ n: number; w: number }> = [
+    { n: 4, w: 0.55 },
+    { n: 6, w: 0.30 },
+    { n: 8, w: 0.15 },
+  ]
+  const u = rng()
+  let acc = 0, spikeCount = 4
+  for (const { n, w } of spikeWeights) { acc += w; if (u <= acc) { spikeCount = n; break } }
+
+  const squish = rngRange(rng, 0.75, 1.25)
+  const tilt   = rng() * Math.PI
+  const base   = rng() * (Math.PI / spikeCount)
+
+  // Eccentric halo
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(tilt)
+  ctx.scale(squish, 1 / squish)
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 3.2)
+  halo.addColorStop(0,    'rgba(230,240,255,0.95)')
+  halo.addColorStop(0.15, 'rgba(160,190,255,0.6)')
+  halo.addColorStop(0.40, 'rgba(80,120,230,0.35)')
+  halo.addColorStop(0.70, 'rgba(40,70,180,0.15)')
+  halo.addColorStop(1,    'rgba(0,10,80,0)')
+  ctx.fillStyle = halo
+  ctx.beginPath(); ctx.arc(0, 0, r * 3.2, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  // Spikes
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(tilt + base)
+  ctx.globalCompositeOperation = 'screen'
+  const reach = r * 3.0
+  const lineWidth = sizeBucket >= 4 ? 1.6 : 1.3
+  for (let i = 0; i < spikeCount; i++) {
+    const ang = (i / spikeCount) * Math.PI
+    const dx = Math.cos(ang) * reach
+    const dy = Math.sin(ang) * reach
+    const grad = ctx.createLinearGradient(-dx, -dy, dx, dy)
+    grad.addColorStop(0,    'rgba(120,160,255,0)')
+    grad.addColorStop(0.45, 'rgba(220,235,255,0.85)')
+    grad.addColorStop(0.5,  'rgba(255,255,255,1)')
+    grad.addColorStop(0.55, 'rgba(220,235,255,0.85)')
+    grad.addColorStop(1,    'rgba(120,160,255,0)')
+    ctx.strokeStyle = grad
+    ctx.lineWidth = lineWidth
+    ctx.beginPath(); ctx.moveTo(-dx, -dy); ctx.lineTo(dx, dy); ctx.stroke()
+  }
+  ctx.restore()
+
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4)
+  core.addColorStop(0,    'rgba(255,250,235,1)')
+  core.addColorStop(0.30, 'rgba(220,230,255,0.95)')
+  core.addColorStop(0.65, 'rgba(150,180,255,0.55)')
+  core.addColorStop(1,    'rgba(60,120,220,0)')
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2); ctx.fill()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.78)
+}
+
+/* --------------------------------------------------------------------------
+ * 3. WHITE DWARF — corona wisps + size jitter
+ * -------------------------------------------------------------------------- */
+
+const drawWhiteDwarf: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  // rng() ord: A) size jitter, B..) per-wisp {count, angles, lengths}
+  const jitter = rngRange(rng, 0.9, 1.1)
+  r = r * jitter
+
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.6)
+  grad.addColorStop(0,    'rgba(255,255,255,1)')
+  grad.addColorStop(0.35, 'rgba(240,245,255,0.85)')
+  grad.addColorStop(0.65, 'rgba(200,220,255,0.4)')
+  grad.addColorStop(1,    'rgba(160,190,240,0)')
+  ctx.fillStyle = grad
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.fill()
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  const wispCount = 4 + Math.floor(rng() * 4) // 4..7
+  for (let i = 0; i < wispCount; i++) {
+    const ang = rng() * Math.PI * 2
+    const lenScale = rngRange(rng, 1.5, 2.4)
+    const inner = r * 1.05
+    const outer = r * lenScale
+    const ix = cx + Math.cos(ang) * inner
+    const iy = cy + Math.sin(ang) * inner
+    const ox = cx + Math.cos(ang) * outer
+    const oy = cy + Math.sin(ang) * outer
+    const g = ctx.createLinearGradient(ix, iy, ox, oy)
+    g.addColorStop(0, 'rgba(220,235,255,0.55)')
+    g.addColorStop(1, 'rgba(160,200,255,0)')
+    ctx.strokeStyle = g
+    ctx.lineWidth = 0.9
+    ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ox, oy); ctx.stroke()
+  }
+  ctx.restore()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.82)
+}
+
+/* --------------------------------------------------------------------------
+ * 4. NEUTRON STAR — nucleus of glowing red+grey dots (no rays)
+ * -------------------------------------------------------------------------- */
+
+const drawNeutronStar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  // Soft outer halo
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4)
+  halo.addColorStop(0,    'rgba(255,180,170,0.30)')
+  halo.addColorStop(0.35, 'rgba(220,140,150,0.18)')
+  halo.addColorStop(0.7,  'rgba(160,90,110,0.07)')
+  halo.addColorStop(1,    'rgba(80,40,60,0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  // Faint inner backing
+  const back = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.6)
+  back.addColorStop(0,    'rgba(60,30,40,0.85)')
+  back.addColorStop(0.7,  'rgba(40,20,30,0.45)')
+  back.addColorStop(1,    'rgba(20,10,20,0)')
+  ctx.fillStyle = back
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.fill()
+
+  const dotCount = 28 + Math.floor(rng() * 22) // 28..49
+  const clusterR = rngRange(rng, 1.35, 1.7) * r
+  const minSep   = r * 0.18
+
+  const RED  = { core: '255,90,80',    glow: '255,150,120' }
+  const GREY = { core: '220,225,235',  glow: '180,190,210' }
+
+  interface Dot { x: number; y: number; isRed: boolean; dotR: number; alpha: number }
+  const placed: Dot[] = []
+  let tries = 0
+  while (placed.length < dotCount && tries < dotCount * 18) {
+    tries++
+    const u = rng() * 2 - 1
+    const v = rng() * 2 - 1
+    if (u * u + v * v > 1) continue
+    const pullF = 0.85
+    const px = cx + u * clusterR * pullF
+    const py = cy + v * clusterR * pullF
+    let ok = true
+    for (const p of placed) {
+      const dx = p.x - px, dy = p.y - py
+      if (dx * dx + dy * dy < minSep * minSep) { ok = false; break }
+    }
+    if (!ok) continue
+    const isRed = rng() < 0.6
+    const dotR = rngRange(rng, 0.12, 0.20) * r
+    const alpha = rngRange(rng, 0.85, 1.0)
+    placed.push({ x: px, y: py, isRed, dotR, alpha })
+  }
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  for (const p of placed) {
+    const palette = p.isRed ? RED : GREY
+    const haloR = p.dotR * 2.2
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, haloR)
+    g.addColorStop(0,   `rgba(${palette.glow},${0.55 * p.alpha})`)
+    g.addColorStop(0.5, `rgba(${palette.glow},${0.22 * p.alpha})`)
+    g.addColorStop(1,   `rgba(${palette.glow},0)`)
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(p.x, p.y, haloR, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+
+  for (const p of placed) {
+    const palette = p.isRed ? RED : GREY
+    const cg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.dotR)
+    cg.addColorStop(0,    `rgba(255,255,255,${p.alpha})`)
+    cg.addColorStop(0.35, `rgba(${palette.core},${p.alpha})`)
+    cg.addColorStop(1,    `rgba(${palette.core},0)`)
+    ctx.fillStyle = cg
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.dotR, 0, Math.PI * 2); ctx.fill()
+  }
+
+  applyCircularFade(ctx, cx, cy, cx, 0.85)
+}
+
+/* --------------------------------------------------------------------------
+ * 5. PULSAR — beam tilt + asymmetry + intensity ratio + plasma mottling
+ * -------------------------------------------------------------------------- */
+
+const drawPulsar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  const tilt = rng() * Math.PI
+  const drift = rngRange(rng, -Math.PI / 12, Math.PI / 12)
+  const ratio = rngRange(rng, 0.7, 1.3)
+
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.5)
+  halo.addColorStop(0,    'rgba(210,235,255,0.78)')
+  halo.addColorStop(0.18, 'rgba(170,215,255,0.50)')
+  halo.addColorStop(0.38, 'rgba(130,185,250,0.28)')
+  halo.addColorStop(0.58, 'rgba(95,155,235,0.14)')
+  halo.addColorStop(0.80, 'rgba(60,115,205,0.05)')
+  halo.addColorStop(1,    'rgba(40,80,170,0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  // Plasma mottling
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  const mottleCount = 8 + Math.floor(rng() * 7) // 8..14
+  for (let i = 0; i < mottleCount; i++) {
+    let bx = 0, by = 0, ok = false
+    for (let t = 0; t < 6; t++) {
+      const u = rng() * 2 - 1, v = rng() * 2 - 1
+      if (u * u + v * v < 0.85) { bx = u; by = v; ok = true; break }
+    }
+    if (!ok) { bx = 0; by = 0 }
+    const sz = rngRange(rng, 0.18, 0.42) * r
+    const a = rngRange(rng, 0.25, 0.55)
+    const px = cx + bx * r * 0.85
+    const py = cy + by * r * 0.85
+    const warm = rng() < 0.45
+    const g = ctx.createRadialGradient(px, py, 0, px, py, sz)
+    if (warm) {
+      g.addColorStop(0,   `rgba(255,250,235,${a})`)
+      g.addColorStop(0.5, `rgba(190,220,255,${a * 0.5})`)
+      g.addColorStop(1,   'rgba(120,170,240,0)')
+    } else {
+      g.addColorStop(0,   `rgba(220,240,255,${a})`)
+      g.addColorStop(0.5, `rgba(120,180,255,${a * 0.6})`)
+      g.addColorStop(1,   'rgba(60,120,220,0)')
+    }
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+
+  // Fine plasma pinpoints
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  const fineCount = 12 + Math.floor(rng() * 9) // 12..20
+  for (let i = 0; i < fineCount; i++) {
+    let bx = 0, by = 0, ok = false
+    for (let t = 0; t < 6; t++) {
+      const u = rng() * 2 - 1, v = rng() * 2 - 1
+      if (u * u + v * v < 0.7) { bx = u; by = v; ok = true; break }
+    }
+    if (!ok) { bx = 0; by = 0 }
+    const px = cx + bx * r * 0.7
+    const py = cy + by * r * 0.7
+    const pr = rngRange(rng, 0.6, 1.6)
+    const a = rngRange(rng, 0.55, 0.95)
+    const pg = ctx.createRadialGradient(px, py, 0, px, py, pr * 2)
+    pg.addColorStop(0,   `rgba(255,255,255,${a})`)
+    pg.addColorStop(0.5, `rgba(220,240,255,${a * 0.5})`)
+    pg.addColorStop(1,   'rgba(180,220,255,0)')
+    ctx.fillStyle = pg
+    ctx.beginPath(); ctx.arc(px, py, pr * 2, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+
+  // Two beams with bright core overlay
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  const beamLen = r * 4.5
+  const drawBeam = (angle: number, intensity: number): void => {
+    const tx = cx + Math.cos(angle) * beamLen
+    const ty = cy + Math.sin(angle) * beamLen
+    const px = -Math.sin(angle), py = Math.cos(angle)
+
+    const g = ctx.createLinearGradient(cx, cy, tx, ty)
+    const a = Math.min(1, 0.95 * intensity)
+    g.addColorStop(0,    `rgba(220,240,255,${a})`)
+    g.addColorStop(0.35, `rgba(160,210,255,${a * 0.55})`)
+    g.addColorStop(0.7,  `rgba(110,170,240,${a * 0.18})`)
+    g.addColorStop(1,    'rgba(80,140,220,0)')
+    const w = r * 0.55 * intensity
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(cx + px * w * 0.25, cy + py * w * 0.25)
+    ctx.lineTo(tx + px * w, ty + py * w)
+    ctx.lineTo(tx - px * w, ty - py * w)
+    ctx.lineTo(cx - px * w * 0.25, cy - py * w * 0.25)
+    ctx.closePath(); ctx.fill()
+
+    const cw = w * 0.32
+    const cg = ctx.createLinearGradient(cx, cy, tx, ty)
+    const ca = Math.min(1, 0.85 * intensity)
+    cg.addColorStop(0,    `rgba(255,255,255,${ca})`)
+    cg.addColorStop(0.45, `rgba(220,240,255,${ca * 0.5})`)
+    cg.addColorStop(0.85, `rgba(180,220,255,${ca * 0.10})`)
+    cg.addColorStop(1,    'rgba(160,210,255,0)')
+    ctx.fillStyle = cg
+    ctx.beginPath()
+    ctx.moveTo(cx + px * cw * 0.15, cy + py * cw * 0.15)
+    ctx.lineTo(tx + px * cw, ty + py * cw)
+    ctx.lineTo(tx - px * cw, ty - py * cw)
+    ctx.lineTo(cx - px * cw * 0.15, cy - py * cw * 0.15)
+    ctx.closePath(); ctx.fill()
+  }
+  drawBeam(tilt, ratio)
+  drawBeam(tilt + Math.PI + drift, 2 - ratio)
+  ctx.restore()
+
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.0)
+  core.addColorStop(0,    'rgba(255,255,255,1)')
+  core.addColorStop(0.4,  'rgba(230,245,255,0.95)')
+  core.addColorStop(0.75, 'rgba(180,210,255,0.5)')
+  core.addColorStop(1,    'rgba(120,170,240,0)')
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.0, 0, Math.PI * 2); ctx.fill()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.78)
+}
+
+/* --------------------------------------------------------------------------
+ * 6. BINARY — separation + size ratio + orbit angle
+ * -------------------------------------------------------------------------- */
+
+const drawBinary: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  const sep = rngRange(rng, 0.8, 1.6) * r
+  const ratio = rngRange(rng, 0.5, 1.5)
+  const ax = rng() * Math.PI
+
+  const ux = Math.cos(ax), uy = Math.sin(ax)
+  const r1 = r * 1.0
+  const r2 = r * ratio
+  const x1 = cx - ux * sep, y1 = cy - uy * sep
+  const x2 = cx + ux * sep, y2 = cy + uy * sep
+
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(ax)
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, (r + sep) * 1.6)
+  halo.addColorStop(0,    'rgba(255,220,180,0.55)')
+  halo.addColorStop(0.35, 'rgba(255,180,130,0.22)')
+  halo.addColorStop(0.7,  'rgba(220,90,60,0.08)')
+  halo.addColorStop(1,    'rgba(120,40,30,0)')
+  ctx.scale(1.4, 0.85)
+  ctx.fillStyle = halo
+  ctx.beginPath(); ctx.arc(0, 0, (r + sep) * 1.6, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  const drawCore = (x: number, y: number, rr: number, palette: [string, string, string, string]): void => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rr * 1.4)
+    g.addColorStop(0,    palette[0])
+    g.addColorStop(0.35, palette[1])
+    g.addColorStop(0.7,  palette[2])
+    g.addColorStop(1,    palette[3])
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.arc(x, y, rr * 1.4, 0, Math.PI * 2); ctx.fill()
+  }
+  drawCore(x1, y1, r1, [
+    'rgba(255,245,215,1)',
+    'rgba(255,200,140,0.95)',
+    'rgba(255,140,80,0.45)',
+    'rgba(220,90,40,0)',
+  ])
+  drawCore(x2, y2, r2, [
+    'rgba(255,235,200,1)',
+    'rgba(255,170,110,0.95)',
+    'rgba(255,110,70,0.45)',
+    'rgba(180,60,40,0)',
+  ])
+
+  applyCircularFade(ctx, cx, cy, cx, 0.78)
+}
+
+/* --------------------------------------------------------------------------
+ * 7. QUASAR — jet asymmetry + accent hue + accretion disc tilt
+ * -------------------------------------------------------------------------- */
+
+const drawQuasar: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  const asym = rngRange(rng, 1.5, 3.0)
+  const accents = [
+    { stop1: 'rgba(120,255,255,0.8)', stop2: 'rgba(80,200,240,0)' },
+    { stop1: 'rgba(255,120,255,0.8)', stop2: 'rgba(220,80,200,0)' },
+    { stop1: 'rgba(255,235,140,0.8)', stop2: 'rgba(220,180,80,0)' },
+  ] as const
+  const accent = rngPick(rng, accents)
+  const tilt = rng() * Math.PI
+
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4)
+  halo.addColorStop(0,    'rgba(255,220,255,0.85)')
+  halo.addColorStop(0.25, 'rgba(220,150,240,0.45)')
+  halo.addColorStop(0.6,  'rgba(160,80,220,0.18)')
+  halo.addColorStop(1,    'rgba(80,30,160,0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(tilt)
+  ctx.globalCompositeOperation = 'lighter'
+  const disc = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.8)
+  disc.addColorStop(0,    'rgba(255,210,140,0)')
+  disc.addColorStop(0.3,  'rgba(255,180,110,0.6)')
+  disc.addColorStop(0.55, 'rgba(255,210,160,0.85)')
+  disc.addColorStop(0.8,  'rgba(220,140,100,0.35)')
+  disc.addColorStop(1,    'rgba(120,40,30,0)')
+  ctx.scale(1, 0.32)
+  ctx.fillStyle = disc
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.8, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(tilt + Math.PI / 2)
+  ctx.globalCompositeOperation = 'lighter'
+  const baseLen = r * 4.0
+  const lens = [baseLen * Math.sqrt(asym), baseLen / Math.sqrt(asym)]
+  for (let i = 0; i < 2; i++) {
+    const sign = i === 0 ? 1 : -1
+    const tx = 0, ty = sign * lens[i]
+    const g = ctx.createLinearGradient(0, 0, tx, ty)
+    g.addColorStop(0,    'rgba(255,255,255,0.95)')
+    g.addColorStop(0.4,  'rgba(255,210,255,0.45)')
+    g.addColorStop(0.8,  'rgba(220,140,240,0.15)')
+    g.addColorStop(1,    'rgba(180,80,220,0)')
+    ctx.fillStyle = g
+    const w = r * 0.4
+    ctx.beginPath()
+    ctx.moveTo(-w * 0.3, 0)
+    ctx.lineTo(-w * 1.0, ty)
+    ctx.lineTo( w * 1.0, ty)
+    ctx.lineTo( w * 0.3, 0)
+    ctx.closePath(); ctx.fill()
+    const ag = ctx.createLinearGradient(0, 0, tx, ty)
+    ag.addColorStop(0,    accent.stop1)
+    ag.addColorStop(0.5,  accent.stop1.replace(/,0\.8\)/, ',0.4)'))
+    ag.addColorStop(1,    accent.stop2)
+    ctx.strokeStyle = ag
+    ctx.lineWidth = 1.4
+    ctx.beginPath()
+    ctx.moveTo(-w * 0.3, 0); ctx.lineTo(-w * 1.0, ty)
+    ctx.moveTo( w * 0.3, 0); ctx.lineTo( w * 1.0, ty)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4)
+  core.addColorStop(0,    'rgba(255,255,255,1)')
+  core.addColorStop(0.35, 'rgba(255,225,255,0.95)')
+  core.addColorStop(0.7,  'rgba(220,150,240,0.4)')
+  core.addColorStop(1,    'rgba(160,60,220,0)')
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2); ctx.fill()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.7)
+}
+
+/* --------------------------------------------------------------------------
+ * 8. BLACK HOLE — ring tilt + asymmetric brightness + photon-sphere thickness
+ * -------------------------------------------------------------------------- */
+
+const drawBlackHole: ThemedDrawer = (ctx, cx, cy, r, rng) => {
+  const tilt = rng() * Math.PI
+  const asymPhase = rng() * Math.PI * 2
+  const innerR = rngRange(rng, 0.92, 1.00) * r
+  const ringW  = rngRange(rng, 0.4, 0.6) * r
+
+  const warp = ctx.createRadialGradient(cx, cy, r * 1.3, cx, cy, r * 3.5)
+  warp.addColorStop(0,    'rgba(80,40,100,0.55)')
+  warp.addColorStop(0.45, 'rgba(50,25,80,0.30)')
+  warp.addColorStop(0.8,  'rgba(20,10,50,0.10)')
+  warp.addColorStop(1,    'rgba(0,0,0,0)')
+  ctx.fillStyle = warp
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate(tilt)
+  ctx.globalCompositeOperation = 'lighter'
+
+  const outerR = innerR + ringW
+  const baseRing = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR)
+  baseRing.addColorStop(0,    'rgba(255,140,40,0)')
+  baseRing.addColorStop(0.45, 'rgba(255,170,70,0.7)')
+  baseRing.addColorStop(0.6,  'rgba(255,210,130,0.95)')
+  baseRing.addColorStop(1,    'rgba(255,140,40,0)')
+  ctx.fillStyle = baseRing
+  ctx.beginPath(); ctx.arc(0, 0, outerR, 0, Math.PI * 2); ctx.fill()
+
+  const halfStart = asymPhase - Math.PI / 2
+  const ARC_SEGS = 14
+  for (let i = 0; i < ARC_SEGS; i++) {
+    const t0 = halfStart + (i / ARC_SEGS) * Math.PI
+    const t1 = halfStart + ((i + 1) / ARC_SEGS) * Math.PI
+    const mid = (i + 0.5) / ARC_SEGS
+    const k = Math.sin(mid * Math.PI)
+    const a = 0.55 * k
+    const segGrad = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR)
+    segGrad.addColorStop(0,   'rgba(255,200,120,0)')
+    segGrad.addColorStop(0.5, `rgba(255,230,160,${a})`)
+    segGrad.addColorStop(0.7, `rgba(255,250,200,${a * 1.5})`)
+    segGrad.addColorStop(1,   'rgba(255,200,120,0)')
+    ctx.fillStyle = segGrad
+    ctx.beginPath()
+    ctx.arc(0, 0, outerR, t0, t1)
+    ctx.arc(0, 0, innerR, t1, t0, true)
+    ctx.closePath(); ctx.fill()
+  }
+
+  const tiltSquish = 0.55
+  ctx.save()
+  ctx.scale(1, tiltSquish)
+  ctx.strokeStyle = 'rgba(255,220,140,0.55)'
+  ctx.lineWidth = ringW * 0.18
+  ctx.beginPath()
+  ctx.arc(0, 0, (innerR + outerR) / 2 / tiltSquish, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+
+  ctx.restore()
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.fillStyle = 'rgba(0,0,0,1)'
+  ctx.beginPath(); ctx.arc(cx, cy, innerR * 0.92, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+
+  applyCircularFade(ctx, cx, cy, cx, 0.78)
+}
+
+/* --------------------------------------------------------------------------
+ * 9. NEBULA — FBM density field + colour ramp + hot-spot pinpoints (v5)
+ * -------------------------------------------------------------------------- */
+
+const drawNebula: ThemedDrawer = (ctx, cx, cy, _r, rng) => {
+  const palettePool: RGB[] = [
+    [140, 80, 220],   // purple
+    [60, 110, 230],   // blue
+    [220, 100, 160],  // pink
+    [230, 80, 220],   // magenta
+    [80, 220, 230],   // cyan
+    [120, 230, 110],  // electric green
+    [240, 220, 80],   // gold yellow
+    [240, 130, 50],   // deep orange
+    [60, 200, 180],   // teal
+  ]
+  const promote = rng() < 0.4
+  const colors = pickN(palettePool, promote ? 4 : 3, rng)
+  // Pad rng() consumption so downstream offsets/freq stay stable across 3-vs-4
+  if (!promote) rng()
+
+  const ox = rngRange(rng, -100, 100)
+  const oy = rngRange(rng, -100, 100)
+  const theta = rng() * Math.PI * 2
+  const cosT = Math.cos(theta), sinT = Math.sin(theta)
+  const freq = rngRange(rng, 2.0, 3.5)
+  const seed = hashStr(`${ox}:${oy}:${theta}`) | 0
+
+  const c0 = colors[0]
+  const c1 = colors[1]
+  const c2 = colors[2]
+  const cMid: RGB = colors.length >= 4 ? mix(c1, colors[3], 0.5) : c1
+  const ramp = buildRamp([
+    { d: 0.00, rgba: [0, 0, 0, 0] },
+    { d: 0.20, rgba: [c0[0], c0[1], c0[2], 0.25 * 255] },
+    { d: 0.40, rgba: [cMid[0], cMid[1], cMid[2], 0.55 * 255] },
+    { d: 0.60, rgba: [...mix(c2, [255, 220, 220], 0.5) as RGB, 0.85 * 255] as [number, number, number, number] },
+    { d: 0.80, rgba: [255, 240, 230, 0.98 * 255] },
+    { d: 1.00, rgba: [255, 255, 255, 1.0 * 255] },
+  ])
+
+  const W = ctx.canvas.width, H = ctx.canvas.height
+  const half = Math.min(W, H) / 2
+  const NW = Math.max(48, Math.floor(W / 2))
+  const NH = Math.max(48, Math.floor(H / 2))
+  const noiseCanvas = document.createElement('canvas')
+  noiseCanvas.width = NW
+  noiseCanvas.height = NH
+  const nctx = noiseCanvas.getContext('2d')!
+  const img = nctx.createImageData(NW, NH)
+  const data = img.data
+
+  const ncx = NW / 2, ncy = NH / 2
+  const nr = Math.min(NW, NH) / 2
+
+  for (let py = 0; py < NH; py++) {
+    for (let px = 0; px < NW; px++) {
+      const dx = (px - ncx) / nr
+      const dy = (py - ncy) / nr
+      const sx = (dx * cosT - dy * sinT) + ox
+      const sy = (dx * sinT + dy * cosT) + oy
+      let density = fbm2D(sx * freq, sy * freq, 5, 2.0, 0.5, seed)
+      const dist2 = dx * dx + dy * dy
+      const fall = Math.max(0, 1 - dist2)
+      density *= fall * fall * Math.sqrt(fall)
+      const c = ramp(Math.min(1, Math.max(0, density)))
+      const idx = (py * NW + px) * 4
+      data[idx]     = c[0]
+      data[idx + 1] = c[1]
+      data[idx + 2] = c[2]
+      data[idx + 3] = c[3]
+    }
+  }
+  nctx.putImageData(img, 0, 0)
+
+  ctx.save()
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(noiseCanvas, 0, 0, W, H)
+  ctx.restore()
+
+  const hotCount = 3 + Math.floor(rng() * 4) // 3..6
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < hotCount; i++) {
+    let px = cx, py = cy
+    let tries = 0
+    while (tries < 8) {
+      const ang = rng() * Math.PI * 2
+      const radial = Math.sqrt(rng()) * 0.85
+      px = cx + Math.cos(ang) * radial * half
+      py = cy + Math.sin(ang) * radial * half
+      const dx = (px - cx) / half
+      const dy = (py - cy) / half
+      const sx = (dx * cosT - dy * sinT) + ox
+      const sy = (dx * sinT + dy * cosT) + oy
+      const density = fbm2D(sx * freq, sy * freq, 5, 2.0, 0.5, seed)
+      tries++
+      if (density >= 0.55) break
+    }
+    const pr = rngRange(rng, 1.5, 3.5)
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, pr * 2)
+    grad.addColorStop(0,   'rgba(255,250,240,1)')
+    grad.addColorStop(0.4, 'rgba(255,235,220,0.7)')
+    grad.addColorStop(1,   'rgba(255,200,180,0)')
+    ctx.fillStyle = grad
+    ctx.beginPath(); ctx.arc(px, py, pr * 2, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+
+  applyCircularFade(ctx, cx, cy, half, 0.55)
+}
+
+/* --------------------------------------------------------------------------
+ * Default drawer for cluster-hue / no-type stars
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Soft warm/cool generic glow — used when the star has no `star_type` and
+ * no auto-default. The bucket-sprite path (`getStarSprite`) still owns
+ * default cluster-hue rendering for now; this is the fallback if a future
+ * call site routes through `getTypedStarSprite` with no type.
+ */
+const drawDefault: ThemedDrawer = (ctx, cx, cy, r) => {
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.0)
+  halo.addColorStop(0,    'rgba(220,235,255,0.7)')
+  halo.addColorStop(0.4,  'rgba(120,160,220,0.25)')
+  halo.addColorStop(1,    'rgba(40,60,120,0)')
+  ctx.fillStyle = halo
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.2)
+  core.addColorStop(0,   'rgba(255,255,255,1)')
+  core.addColorStop(0.5, 'rgba(220,235,255,0.85)')
+  core.addColorStop(1,   'rgba(140,180,240,0)')
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2); ctx.fill()
+  applyCircularFade(ctx, cx, cy, cx, 0.82)
+}
+
+export const jwstDrawers = {
+  'red-giant': drawRedGiant,
+  'blue-supergiant': drawBlueSupergiant,
+  'white-dwarf': drawWhiteDwarf,
+  'neutron-star': drawNeutronStar,
+  'pulsar': drawPulsar,
+  'binary': drawBinary,
+  'quasar': drawQuasar,
+  'black-hole': drawBlackHole,
+  'nebula': drawNebula,
+} as const
+
+export const jwstDefaultDrawer: ThemedDrawer = drawDefault

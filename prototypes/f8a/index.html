@@ -1,0 +1,2244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Star Palace — F8a Procedural Star Variation</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0a0d1a;
+    --bg-soft: #11152a;
+    --panel: #161a30;
+    --ink: #e7ecf6;
+    --ink-dim: #a4adc6;
+    --accent: #ffe066;
+    --accent-dim: #cfb24a;
+    --rule: #232846;
+    --hot: #ff8a65;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Subtle starfield background; CSS-only so no extra script cost */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,0.6), transparent 60%),
+      radial-gradient(1px 1px at 78% 32%, rgba(255,255,255,0.5), transparent 60%),
+      radial-gradient(1px 1px at 33% 71%, rgba(255,255,255,0.5), transparent 60%),
+      radial-gradient(1px 1px at 88% 84%, rgba(255,255,255,0.6), transparent 60%),
+      radial-gradient(1px 1px at 56% 12%, rgba(255,255,255,0.4), transparent 60%),
+      radial-gradient(1px 1px at 22% 92%, rgba(255,255,255,0.45), transparent 60%),
+      radial-gradient(1200px 800px at 65% 35%, rgba(80,60,160,0.18), transparent 60%),
+      radial-gradient(900px 600px at 25% 85%, rgba(40,80,160,0.12), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #app {
+    position: relative;
+    z-index: 1;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .slide {
+    flex: 1 1 auto;
+    padding: 32px 48px 16px 48px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideIn 220ms ease-out;
+  }
+  .slide.active { display: flex; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  h1 {
+    font-size: 38px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin: 0 0 6px 0;
+    color: var(--ink);
+  }
+  h2 {
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    margin: 0 0 14px 0;
+    color: var(--ink);
+  }
+  h2 .accent { color: var(--accent); }
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: 17px;
+    margin: 0 0 24px 0;
+    max-width: 880px;
+    line-height: 1.5;
+  }
+  .caption {
+    color: var(--ink-dim);
+    font-size: 16px;
+    margin: 0 0 18px 0;
+    max-width: 980px;
+    line-height: 1.5;
+  }
+  .caption strong { color: var(--accent); font-weight: 500; }
+
+  /* Footer / nav */
+  footer {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+    border-top: 1px solid var(--rule);
+    background: rgba(10,13,26,0.85);
+    font-size: 13px;
+    color: var(--ink-dim);
+  }
+  .nav-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .nav-btn {
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--rule);
+    padding: 7px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .nav-btn:hover { background: #1d2245; border-color: var(--accent-dim); }
+  .nav-btn:disabled { opacity: 0.35; cursor: default; }
+
+  .counter { font-variant-numeric: tabular-nums; }
+
+  .nav-hint {
+    position: fixed;
+    bottom: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    background: rgba(20,24,46,0.85);
+    color: var(--ink-dim);
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    border: 1px solid var(--rule);
+    transition: opacity 400ms ease;
+  }
+  .nav-hint.hidden { opacity: 0; pointer-events: none; }
+
+  /* Layout helpers */
+  .row { display: flex; gap: 16px; align-items: stretch; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .grow { flex: 1 1 auto; min-height: 0; }
+
+  /* Sprite grid */
+  .grid-wrap {
+    background: linear-gradient(180deg, #0a0d1a 0%, #0f1226 60%, #0a0d1a 100%);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .grid {
+    display: grid;
+    gap: 10px;
+  }
+  .grid-cell {
+    background: var(--bg);
+    border-radius: 6px;
+    width: 100%;
+    aspect-ratio: 1;
+    display: block;
+  }
+  .grid-cell canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: auto;
+  }
+  .row-label {
+    color: var(--ink-dim);
+    font-size: 13px;
+    margin: 4px 0 6px 4px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+
+  .feature-panel {
+    flex: 0 0 320px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 22px;
+    color: var(--ink);
+  }
+  .feature-panel h3 {
+    margin: 0 0 14px 0;
+    font-size: 18px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .feature-panel ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 18px 0;
+  }
+  .feature-panel li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .feature-panel li:last-child { border-bottom: none; }
+  .feature-panel .feat-name {
+    color: var(--ink);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .feature-panel .feat-range {
+    color: var(--ink-dim);
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+  }
+  .regen-btn {
+    background: var(--accent);
+    color: #1a1500;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    font-family: inherit;
+    width: 100%;
+    transition: background 120ms ease;
+  }
+  .regen-btn:hover { background: #ffea80; }
+
+  /* Code blocks */
+  pre.code {
+    background: #060816;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 16px 20px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #c8d2ee;
+    margin: 0;
+    overflow: auto;
+    max-width: 900px;
+  }
+  .code .kw { color: #c792ea; }
+  .code .fn { color: #82aaff; }
+  .code .num { color: #f78c6c; }
+  .code .str { color: #c3e88d; }
+  .code .com { color: #5d6789; font-style: italic; }
+
+  /* Cost cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 980px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 28px 24px;
+    text-align: center;
+  }
+  .card .card-num {
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .card .card-label {
+    font-size: 14px;
+    color: var(--ink);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .card .card-desc { font-size: 13px; color: var(--ink-dim); line-height: 1.4; }
+
+  /* Mini sky composite */
+  .sky-wrap {
+    background: linear-gradient(180deg, #06081a 0%, #0a0d1a 100%);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 6px;
+    position: relative;
+  }
+  .sky-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+  }
+  .sky-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 0 0 12px 0;
+  }
+  .sky-toggle button {
+    background: transparent;
+    color: var(--ink-dim);
+    border: none;
+    padding: 8px 18px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .sky-toggle button.active {
+    background: var(--accent);
+    color: #1a1500;
+    font-weight: 600;
+  }
+  .sky-label { color: var(--ink-dim); font-size: 13px; margin-right: 12px; }
+
+  /* Type-bundle grids (slide 9, 10) */
+  .bundle { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .bundle-block { display: flex; flex-direction: column; }
+  .bundle-block h3 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Title slide special */
+  .title-block {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding-bottom: 80px;
+  }
+  .title-block h1 {
+    font-size: 68px;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, #ffe066 0%, #ff8a65 60%, #c792ea 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1.1;
+  }
+  .title-block .subtitle {
+    font-size: 22px;
+    max-width: 760px;
+    color: var(--ink);
+  }
+  .title-block .nav-prompt {
+    margin-top: 56px;
+    font-size: 14px;
+    color: var(--ink-dim);
+  }
+
+  /* Recommendation slide */
+  .rec-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0 24px 0;
+    max-width: 980px;
+  }
+  .rec-step {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .rec-step.first { border-color: var(--accent-dim); color: var(--accent); }
+  .rec-arrow { color: var(--ink-dim); align-self: center; font-size: 14px; }
+
+  .limit-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-width: 880px;
+  }
+  .limit-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .limit-list li::before {
+    content: '— ';
+    color: var(--ink-dim);
+  }
+
+  /* Helpful labels above grids */
+  .grid-with-label {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Slides injected by JS -->
+  <main id="slides"></main>
+  <div id="navHint" class="nav-hint">press <strong style="color:var(--accent)">→</strong> for next</div>
+  <footer>
+    <div class="counter"><span id="counter">1 / 13</span></div>
+    <div class="nav-buttons">
+      <button class="nav-btn" id="prevBtn">← Prev</button>
+      <button class="nav-btn" id="nextBtn">Next →</button>
+    </div>
+    <div style="opacity:0.6">F8a procedural star variation · prototype</div>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+ * Star Palace F8a prototype — single-file demo deck
+ * ----------------------------------------------------------------
+ *  - Mulberry32 PRNG seeded from FNV-1a hash of star id
+ *  - LRU sprite cache (cap 500)
+ *  - "Current" drawers mirror src/renderer/.../sprites.ts byte-similar
+ *  - "Procedural" drawers add 2-3 hash-driven features per type
+ *
+ *  Order of rng() calls inside each procedural drawer is documented
+ *  inline; reordering reseeds downstream features.
+ * ============================================================ */
+
+/* ---------- PRNG + cache foundations ---------- */
+
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seedFromId(id) {
+  let s = hashStr(id) >>> 0;
+  return function rng() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rngRange = (rng, lo, hi) => lo + rng() * (hi - lo);
+const rngPick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+/* ---------- FBM noise + ramp helpers (used by nebula drawer) ----------
+ * Per-id 2D value noise. The `seed` arg perturbs the integer grid so each
+ * sprite samples a different "patch" of the same continuous noise function.
+ *
+ * Used by the v5 nebula drawer:
+ *   density(p) = Σ amp_i · smoothNoise(p · freq_i)         // FBM core
+ *   colour(p)  = ramp(density)                              // density → RGBA
+ *
+ * Cost: ~5 noise samples × ~10 ops per pixel. At half-resolution that's
+ * ~5–15 ms per nebula sprite on commodity hardware; sprites are LRU-cached
+ * so the cost is amortised over scroll.
+ */
+
+function hash2(xi, yi, seed) {
+  // Cheap integer hash via Math.imul. Returns float in [0, 1).
+  let h = (xi | 0) ^ Math.imul(yi | 0, 0x27d4eb2d) ^ (seed | 0);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  h = h ^ (h >>> 16);
+  return ((h >>> 0) & 0xffffff) / 0x1000000;
+}
+
+function smoothNoise2D(x, y, seed) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  // smoothstep on the fractional coords for C1 continuity
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi,     yi,     seed);
+  const b = hash2(xi + 1, yi,     seed);
+  const c = hash2(xi,     yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+  // bilinear interpolation
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+function fbm2D(x, y, octaves, lacunarity, gain, seed) {
+  let amp = 1, freq = 1, sum = 0, total = 0;
+  for (let i = 0; i < octaves; i++) {
+    sum += amp * smoothNoise2D(x * freq, y * freq, seed + i * 1013);
+    total += amp;
+    amp *= gain;
+    freq *= lacunarity;
+  }
+  return sum / total; // normalised to [0, 1]
+}
+
+/** Fisher-Yates partial shuffle: returns a new array of n distinct picks. */
+function pickN(arr, n, rng) {
+  const idxs = arr.map((_, i) => i);
+  const take = Math.min(n, idxs.length);
+  for (let i = 0; i < take; i++) {
+    const j = i + Math.floor(rng() * (idxs.length - i));
+    const tmp = idxs[i]; idxs[i] = idxs[j]; idxs[j] = tmp;
+  }
+  return idxs.slice(0, take).map(i => arr[i]);
+}
+
+/** Linear blend of two RGB triples. t=0 → a, t=1 → b. */
+function mix(a, b, t = 0.5) {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
+}
+
+/**
+ * Build a piecewise-linear colour ramp from sorted {d, rgba} stops.
+ * Returns (density) → [r, g, b, a] with each channel in 0..255.
+ * Stops outside [0,1] are tolerated; the function clamps the input.
+ */
+function buildRamp(stops) {
+  // Defensive sort (caller usually passes sorted but cost is negligible)
+  const s = stops.slice().sort((p, q) => p.d - q.d);
+  return function (d) {
+    if (d <= s[0].d) return s[0].rgba;
+    if (d >= s[s.length - 1].d) return s[s.length - 1].rgba;
+    for (let i = 0; i < s.length - 1; i++) {
+      const lo = s[i], hi = s[i + 1];
+      if (d <= hi.d) {
+        const t = (d - lo.d) / (hi.d - lo.d || 1);
+        return [
+          lo.rgba[0] + (hi.rgba[0] - lo.rgba[0]) * t,
+          lo.rgba[1] + (hi.rgba[1] - lo.rgba[1]) * t,
+          lo.rgba[2] + (hi.rgba[2] - lo.rgba[2]) * t,
+          lo.rgba[3] + (hi.rgba[3] - lo.rgba[3]) * t,
+        ];
+      }
+    }
+    return s[s.length - 1].rgba;
+  };
+}
+
+class LRUSpriteCache {
+  constructor(cap) { this.cap = cap; this.map = new Map(); }
+  get(k) {
+    const v = this.map.get(k);
+    if (!v) return null;
+    this.map.delete(k); this.map.set(k, v);
+    return v;
+  }
+  set(k, v) {
+    if (this.map.has(k)) this.map.delete(k);
+    this.map.set(k, v);
+    while (this.map.size > this.cap) {
+      const first = this.map.keys().next().value;
+      if (first === undefined) break;
+      this.map.delete(first);
+    }
+  }
+  size() { return this.map.size; }
+  clear() { this.map.clear(); }
+}
+
+const TYPED_CACHE = new LRUSpriteCache(500);
+
+/* ---------- Sprite rendering harness ---------- */
+
+const TYPED_SCALE = {
+  'red-giant': 1.7,
+  'blue-supergiant': 1.7,
+  'white-dwarf': 0.6,
+  'neutron-star': 0.85,
+  'pulsar': 1.15,
+  'binary': 1.2,
+  'quasar': 1.0,
+  'black-hole': 1.4,
+  'nebula': 2.4,
+};
+
+const HALO_FACTOR = 3.5;
+const SIZE_RADII = [3, 4.5, 6, 8, 11, 16, 22];
+function spriteCoreRadius(sb) {
+  const i = Math.max(0, Math.min(SIZE_RADII.length - 1, sb));
+  return SIZE_RADII[i];
+}
+
+/** Render a typed star sprite into its own offscreen canvas. */
+function renderTypedSprite(type, sizeBucket, starId, mode) {
+  const baseR = spriteCoreRadius(sizeBucket) * TYPED_SCALE[type];
+  const haloFactor = type === 'nebula' ? 2.6
+                   : type === 'quasar' ? 4.5
+                   : type === 'pulsar' ? 3.8
+                   : HALO_FACTOR;
+  const half = Math.ceil(baseR * haloFactor);
+  const size = half * 2;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const cx = half, cy = half;
+  const rng = mode === 'proc' ? seedFromId(starId) : null;
+
+  const drawer = (mode === 'proc' ? PROC_DRAWERS : CURRENT_DRAWERS)[type];
+  drawer(ctx, cx, cy, baseR, rng, sizeBucket);
+  return c;
+}
+
+/** Cache wrapper. Key uses a 12-bit hash bucket of the id (per the plan). */
+function getTypedStarSprite(type, sizeBucket, starId, mode) {
+  const hashBucket = mode === 'proc' ? (hashStr(starId) & 0xFFF) : 0;
+  const key = `${mode}|${type}|${sizeBucket}|${hashBucket}`;
+  const cached = TYPED_CACHE.get(key);
+  if (cached) return cached;
+  const sprite = renderTypedSprite(type, sizeBucket, starId, mode);
+  TYPED_CACHE.set(key, sprite);
+  return sprite;
+}
+
+/* ============================================================
+ *  CURRENT (deterministic) drawers — mirror sprites.ts
+ *  Used for "before" comparisons. No rng.
+ * ============================================================ */
+
+const CURRENT_DRAWERS = {
+  'red-giant': function(ctx, cx, cy, r) {
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2);
+    halo.addColorStop(0, 'rgba(255,200,150,0.85)');
+    halo.addColorStop(0.18, 'rgba(255,140,80,0.55)');
+    halo.addColorStop(0.55, 'rgba(180,50,30,0.18)');
+    halo.addColorStop(1, 'rgba(120,20,10,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.3);
+    core.addColorStop(0, 'rgba(255,230,200,1)');
+    core.addColorStop(0.4, 'rgba(255,160,90,0.95)');
+    core.addColorStop(1, 'rgba(220,80,40,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.3, 0, Math.PI * 2); ctx.fill();
+  },
+
+  'blue-supergiant': function(ctx, cx, cy, r, _rng, sizeBucket) {
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2);
+    halo.addColorStop(0, 'rgba(220,235,255,0.9)');
+    halo.addColorStop(0.18, 'rgba(120,160,255,0.55)');
+    halo.addColorStop(0.55, 'rgba(40,70,200,0.18)');
+    halo.addColorStop(1, 'rgba(0,10,80,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const reach = r * 3.0;
+    const lineWidth = sizeBucket >= 4 ? 1.6 : 1.3;
+    for (const ang of [0, Math.PI / 3, (Math.PI * 2) / 3]) {
+      const dx = Math.cos(ang) * reach;
+      const dy = Math.sin(ang) * reach;
+      const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+      grad.addColorStop(0, 'rgba(120,160,255,0)');
+      grad.addColorStop(0.45, 'rgba(220,235,255,0.85)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.55, 'rgba(220,235,255,0.85)');
+      grad.addColorStop(1, 'rgba(120,160,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
+    }
+    ctx.restore();
+
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.3);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(0.45, 'rgba(180,210,255,0.95)');
+    core.addColorStop(1, 'rgba(60,120,220,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.3, 0, Math.PI * 2); ctx.fill();
+  },
+
+  'white-dwarf': function(ctx, cx, cy, r) {
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.6, 'rgba(220,230,255,0.7)');
+    grad.addColorStop(1, 'rgba(180,200,240,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2); ctx.fill();
+  },
+
+  'neutron-star': function(ctx, cx, cy, r) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const reach = r * 5;
+    for (const ang of [0, Math.PI / 3, (Math.PI * 2) / 3]) {
+      const dx = Math.cos(ang) * reach;
+      const dy = Math.sin(ang) * reach;
+      const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+      grad.addColorStop(0, 'rgba(220,220,255,0)');
+      grad.addColorStop(0.48, 'rgba(255,255,255,0.95)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.52, 'rgba(255,255,255,0.95)');
+      grad.addColorStop(1, 'rgba(220,220,255,0)');
+      ctx.strokeStyle = grad; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
+    }
+    ctx.restore();
+
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.6);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(0.4, 'rgba(255,255,255,0.85)');
+    core.addColorStop(1, 'rgba(200,210,255,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.fill();
+  },
+
+  'pulsar': function(ctx, cx, cy, r) {
+    // Static halo + bright core. In production the rotating beam is per-frame.
+    // For demo "current" we draw a fixed symmetric beam pair so it reads like a pulsar.
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.5);
+    halo.addColorStop(0, 'rgba(180,220,255,0.6)');
+    halo.addColorStop(0.4, 'rgba(120,180,240,0.18)');
+    halo.addColorStop(1, 'rgba(80,140,210,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // symmetric beam pair (no rng)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const beamLen = r * 4.5;
+    for (const sign of [-1, 1]) {
+      const tx = cx + sign * beamLen, ty = cy;
+      const g = ctx.createLinearGradient(cx, cy, tx, ty);
+      g.addColorStop(0, 'rgba(200,230,255,0.95)');
+      g.addColorStop(0.4, 'rgba(140,200,255,0.4)');
+      g.addColorStop(1, 'rgba(80,140,220,0)');
+      ctx.fillStyle = g;
+      const w = r * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - w * 0.3);
+      ctx.lineTo(tx, ty - w);
+      ctx.lineTo(tx, ty + w);
+      ctx.lineTo(cx, cy + w * 0.3);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.2);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(0.5, 'rgba(220,235,255,0.85)');
+    core.addColorStop(1, 'rgba(150,200,255,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2); ctx.fill();
+  },
+
+  'binary': function(ctx, cx, cy, r) {
+    const offset = r * 1.2;
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.5);
+    halo.addColorStop(0, 'rgba(255,210,170,0.5)');
+    halo.addColorStop(0.4, 'rgba(255,170,120,0.15)');
+    halo.addColorStop(1, 'rgba(180,80,60,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    for (const sign of [-1, 1]) {
+      const x = cx + sign * offset;
+      const grad = ctx.createRadialGradient(x, cy, 0, x, cy, r * 1.1);
+      grad.addColorStop(0, 'rgba(255,240,210,1)');
+      grad.addColorStop(0.5, 'rgba(255,180,120,0.9)');
+      grad.addColorStop(1, 'rgba(220,90,50,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(x, cy, r * 1.1, 0, Math.PI * 2); ctx.fill();
+    }
+  },
+
+  'quasar': function(ctx, cx, cy, r) {
+    // Static core + halo + symmetric jets (in prod, jets shimmer per-frame).
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4);
+    halo.addColorStop(0, 'rgba(255,200,255,0.8)');
+    halo.addColorStop(0.3, 'rgba(220,140,240,0.4)');
+    halo.addColorStop(1, 'rgba(120,40,180,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const jetLen = r * 4.0;
+    for (const sign of [-1, 1]) {
+      const ty = cy + sign * jetLen;
+      const g = ctx.createLinearGradient(cx, cy, cx, ty);
+      g.addColorStop(0, 'rgba(255,255,255,0.85)');
+      g.addColorStop(0.5, 'rgba(255,200,255,0.35)');
+      g.addColorStop(1, 'rgba(180,80,220,0)');
+      ctx.fillStyle = g;
+      const w = r * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(cx - w * 0.3, cy);
+      ctx.lineTo(cx - w, ty);
+      ctx.lineTo(cx + w, ty);
+      ctx.lineTo(cx + w * 0.3, cy);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(0.4, 'rgba(255,210,255,0.95)');
+    core.addColorStop(1, 'rgba(220,140,240,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2); ctx.fill();
+  },
+
+  'black-hole': function(ctx, cx, cy, r) {
+    const warp = ctx.createRadialGradient(cx, cy, r * 1.3, cx, cy, r * 3.5);
+    warp.addColorStop(0, 'rgba(60,30,80,0.5)');
+    warp.addColorStop(0.7, 'rgba(30,15,60,0.2)');
+    warp.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = warp;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const ringGrad = ctx.createRadialGradient(cx, cy, r * 0.95, cx, cy, r * 1.45);
+    ringGrad.addColorStop(0, 'rgba(255,140,40,0)');
+    ringGrad.addColorStop(0.4, 'rgba(255,180,80,0.95)');
+    ringGrad.addColorStop(0.6, 'rgba(255,220,140,1)');
+    ringGrad.addColorStop(1, 'rgba(255,140,40,0)');
+    ctx.fillStyle = ringGrad;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.45, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.95, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  },
+
+  'nebula': function(ctx, cx, cy, r) {
+    const layers = [
+      [120, 80, 200],
+      [60, 110, 200],
+      [200, 100, 130],
+    ];
+    for (const [rC, gC, bC] of layers) {
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4);
+      grad.addColorStop(0, `rgba(${rC},${gC},${bC},0.35)`);
+      grad.addColorStop(0.5, `rgba(${rC},${gC},${bC},0.12)`);
+      grad.addColorStop(1, `rgba(${rC},${gC},${bC},0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+  },
+};
+
+/* ============================================================
+ *  PROCEDURAL drawers — F8a per-type variation
+ *  Each drawer pulls rng() in a fixed order; reordering reseeds
+ *  downstream features. Comments tag the call order.
+ * ============================================================ */
+
+/**
+ * Cross-cutting circular alpha fade. Call at the end of every drawer so the
+ * square sprite canvas reads as a round glowing object on the dark space bg.
+ * `innerStop` controls how far out the fully-opaque zone extends (0..1 of half).
+ * Bigger value = more interior brightness, more abrupt edge.
+ */
+function applyCircularFade(ctx, cx, cy, half, innerStop = 0.85) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-in';
+  const mask = ctx.createRadialGradient(cx, cy, 0, cx, cy, half);
+  mask.addColorStop(0,         'rgba(0,0,0,1)');
+  mask.addColorStop(innerStop, 'rgba(0,0,0,1)');
+  mask.addColorStop(Math.min(0.999, innerStop + (1 - innerStop) * 0.8), 'rgba(0,0,0,0.3)');
+  mask.addColorStop(1,         'rgba(0,0,0,0)');
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+}
+
+const PROC_DRAWERS = {
+
+  /* 1. RED GIANT — convection mottling + solar prominences + limb darkening */
+  'red-giant': function(ctx, cx, cy, r, rng) {
+    // base halo (no rng) — multi-stop, additive-ready palette
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2);
+    halo.addColorStop(0,    'rgba(255,210,160,0.85)');
+    halo.addColorStop(0.18, 'rgba(255,150,90,0.55)');
+    halo.addColorStop(0.40, 'rgba(220,90,50,0.30)');
+    halo.addColorStop(0.65, 'rgba(160,40,30,0.14)');
+    halo.addColorStop(1,    'rgba(110,20,10,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Convection mottling — additive blobs over the disc
+    // rng() ord: A) blob count, B..) per-blob {angle, radial-pos, size, alpha}
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const blobCount = 8 + Math.floor(rng() * 7); // 8..14
+    for (let i = 0; i < blobCount; i++) {
+      // rejection sample inside unit disc (deterministic, but limited tries)
+      let bx = 0, by = 0, ok = false;
+      for (let t = 0; t < 6; t++) {
+        const u = rng() * 2 - 1, v = rng() * 2 - 1;
+        if (u*u + v*v < 0.85) { bx = u; by = v; ok = true; break; }
+      }
+      if (!ok) { bx = 0; by = 0; }
+      const sz = rngRange(rng, 0.15, 0.40) * r;
+      const a = rngRange(rng, 0.18, 0.45);
+      const px = cx + bx * r * 0.85;
+      const py = cy + by * r * 0.85;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, sz);
+      g.addColorStop(0,    `rgba(255,235,200,${a})`);
+      g.addColorStop(0.5,  `rgba(255,170,90,${a*0.6})`);
+      g.addColorStop(1,    'rgba(255,120,40,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Limb darkening (no rng) — thin dark ring at r*1.0 for spherical solidity
+    const limb = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.05);
+    limb.addColorStop(0,    'rgba(0,0,0,0)');
+    limb.addColorStop(0.7,  'rgba(80,20,10,0.0)');
+    limb.addColorStop(0.92, 'rgba(60,15,5,0.45)');
+    limb.addColorStop(1,    'rgba(20,5,0,0)');
+    ctx.fillStyle = limb;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2); ctx.fill();
+
+    // Prominences — 2..4 arcing flares from the limb
+    // rng() ord: count, then per-prominence {angle, length, drift}
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const promCount = 2 + Math.floor(rng() * 3); // 2..4
+    for (let i = 0; i < promCount; i++) {
+      const ang = rng() * Math.PI * 2;
+      const length = rngRange(rng, 1.15, 1.55);
+      const drift  = rngRange(rng, -0.6, 0.6);
+      const sx = cx + Math.cos(ang) * r * 0.98;
+      const sy = cy + Math.sin(ang) * r * 0.98;
+      const cpAng = ang + drift;
+      const cpx = cx + Math.cos(cpAng) * r * 1.65;
+      const cpy = cy + Math.sin(cpAng) * r * 1.65;
+      const ex = cx + Math.cos(ang + drift * 1.4) * r * length;
+      const ey = cy + Math.sin(ang + drift * 1.4) * r * length;
+
+      // Subdivide bezier to taper line-width and alpha smoothly
+      const STEPS = 14;
+      let prevX = sx, prevY = sy;
+      for (let k = 1; k <= STEPS; k++) {
+        const t = k / STEPS;
+        const it = 1 - t;
+        const nx = it*it*sx + 2*it*t*cpx + t*t*ex;
+        const ny = it*it*sy + 2*it*t*cpy + t*t*ey;
+        const lw = (1 - t * 0.7) * Math.max(1.0, r * 0.10);
+        const a = (1 - t * 0.85) * 0.7;
+        const g = ctx.createLinearGradient(prevX, prevY, nx, ny);
+        g.addColorStop(0, `rgba(255,210,140,${a})`);
+        g.addColorStop(1, `rgba(255,140,80,${a*0.6})`);
+        ctx.strokeStyle = g;
+        ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(prevX, prevY); ctx.lineTo(nx, ny); ctx.stroke();
+        prevX = nx; prevY = ny;
+      }
+    }
+    ctx.restore();
+
+    // Final core layer to keep the disc bright after subtractive limb darkening
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.9);
+    core.addColorStop(0,   'rgba(255,235,210,0.85)');
+    core.addColorStop(0.6, 'rgba(255,170,100,0.30)');
+    core.addColorStop(1,   'rgba(255,140,80,0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    applyCircularFade(ctx, cx, cy, cx, 0.78);
+  },
+
+  /* 2. BLUE SUPERGIANT — spike count + halo eccentricity + spike base angle */
+  'blue-supergiant': function(ctx, cx, cy, r, rng, sizeBucket) {
+    // rng() ord: A) spike count, B) halo squish, C) halo tilt, D) spike base angle
+    const spikeWeights = [
+      { n: 4, w: 0.55 },
+      { n: 6, w: 0.30 },
+      { n: 8, w: 0.15 },
+    ];
+    const u = rng();
+    let acc = 0, spikeCount = 4;
+    for (const { n, w } of spikeWeights) { acc += w; if (u <= acc) { spikeCount = n; break; } }
+
+    const squish = rngRange(rng, 0.75, 1.25);   // halo eccentricity
+    const tilt   = rng() * Math.PI;             // halo + spike rotation
+    const base   = rng() * (Math.PI / spikeCount);
+
+    // Halo (eccentric) — multi-stop, complementary cool->warm rim accent
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.scale(squish, 1 / squish);
+    const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 3.2);
+    halo.addColorStop(0,    'rgba(230,240,255,0.95)');
+    halo.addColorStop(0.15, 'rgba(160,190,255,0.6)');
+    halo.addColorStop(0.40, 'rgba(80,120,230,0.35)');
+    halo.addColorStop(0.70, 'rgba(40,70,180,0.15)');
+    halo.addColorStop(1,    'rgba(0,10,80,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(0, 0, r * 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Spikes — additive, rotated by base angle
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt + base);
+    ctx.globalCompositeOperation = 'screen';
+    const reach = r * 3.0;
+    const lineWidth = sizeBucket >= 4 ? 1.6 : 1.3;
+    for (let i = 0; i < spikeCount; i++) {
+      const ang = (i / spikeCount) * Math.PI; // pairs across centre
+      const dx = Math.cos(ang) * reach;
+      const dy = Math.sin(ang) * reach;
+      const grad = ctx.createLinearGradient(-dx, -dy, dx, dy);
+      grad.addColorStop(0,    'rgba(120,160,255,0)');
+      grad.addColorStop(0.45, 'rgba(220,235,255,0.85)');
+      grad.addColorStop(0.5,  'rgba(255,255,255,1)');
+      grad.addColorStop(0.55, 'rgba(220,235,255,0.85)');
+      grad.addColorStop(1,    'rgba(120,160,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath(); ctx.moveTo(-dx, -dy); ctx.lineTo(dx, dy); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Bright core, slightly warm-tinted at centre for chromatic depth
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4);
+    core.addColorStop(0,    'rgba(255,250,235,1)');
+    core.addColorStop(0.30, 'rgba(220,230,255,0.95)');
+    core.addColorStop(0.65, 'rgba(150,180,255,0.55)');
+    core.addColorStop(1,    'rgba(60,120,220,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2); ctx.fill();
+
+    applyCircularFade(ctx, cx, cy, cx, 0.78);
+  },
+
+  /* 3. WHITE DWARF — corona wisps + size jitter */
+  'white-dwarf': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) size jitter, B..) per-wisp {count, angles, lengths}
+    const jitter = rngRange(rng, 0.9, 1.1);
+    r = r * jitter;
+
+    // Disc — multi-stop with subtle warm core, cool halo
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.6);
+    grad.addColorStop(0,    'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(240,245,255,0.85)');
+    grad.addColorStop(0.65, 'rgba(200,220,255,0.4)');
+    grad.addColorStop(1,    'rgba(160,190,240,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.fill();
+
+    // Corona wisps — thin radial lines, additive
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const wispCount = 4 + Math.floor(rng() * 4); // 4..7
+    for (let i = 0; i < wispCount; i++) {
+      const ang = rng() * Math.PI * 2;
+      const lenScale = rngRange(rng, 1.5, 2.4);
+      const inner = r * 1.05;
+      const outer = r * lenScale;
+      const ix = cx + Math.cos(ang) * inner;
+      const iy = cy + Math.sin(ang) * inner;
+      const ox = cx + Math.cos(ang) * outer;
+      const oy = cy + Math.sin(ang) * outer;
+      const g = ctx.createLinearGradient(ix, iy, ox, oy);
+      g.addColorStop(0, 'rgba(220,235,255,0.55)');
+      g.addColorStop(1, 'rgba(160,200,255,0)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ox, oy); ctx.stroke();
+    }
+    ctx.restore();
+
+    applyCircularFade(ctx, cx, cy, cx, 0.82);
+  },
+
+  /* 4. NEUTRON STAR — nucleus of glowing red+grey dots (no rays) */
+  'neutron-star': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) dot count, B) cluster radius jitter,
+    //            C..) per-dot {position (rejection-sampled in disc),
+    //                          color bucket, size, alpha}.
+    // Visual identity: a clump of small glowing circles like protons + neutrons
+    // in a nucleus diagram. Distinct from blue-supergiant spikes.
+
+    // Soft outer halo to unify the cluster
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4);
+    halo.addColorStop(0,    'rgba(255,180,170,0.30)');
+    halo.addColorStop(0.35, 'rgba(220,140,150,0.18)');
+    halo.addColorStop(0.7,  'rgba(160,90,110,0.07)');
+    halo.addColorStop(1,    'rgba(80,40,60,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Faint inner backing so dots read against any underlying gap
+    const back = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.6);
+    back.addColorStop(0,    'rgba(60,30,40,0.85)');
+    back.addColorStop(0.7,  'rgba(40,20,30,0.45)');
+    back.addColorStop(1,    'rgba(20,10,20,0)');
+    ctx.fillStyle = back;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.fill();
+
+    const dotCount = 28 + Math.floor(rng() * 22); // 28..49
+    const clusterR = rngRange(rng, 1.35, 1.7) * r;
+    const minSep   = r * 0.18; // soft Poisson-disc reject distance
+
+    // colour buckets (red ~60% / grey ~40%)
+    const RED  = { core: '255,90,80',   glow: '255,150,120' };
+    const GREY = { core: '220,225,235', glow: '180,190,210' };
+
+    const placed = [];
+    let tries = 0;
+    while (placed.length < dotCount && tries < dotCount * 18) {
+      tries++;
+      // sample inside unit disc with bias toward centre (sqrt for uniform area,
+      // pow > 0.5 biases inward → tighter cluster)
+      const u = rng() * 2 - 1;
+      const v = rng() * 2 - 1;
+      if (u*u + v*v > 1) continue;
+      // pull slightly toward centre to feel "packed" not "scattered"
+      const pullF = 0.85;
+      const px = cx + u * clusterR * pullF;
+      const py = cy + v * clusterR * pullF;
+      // reject if too close to an existing dot
+      let ok = true;
+      for (const p of placed) {
+        const dx = p.x - px, dy = p.y - py;
+        if (dx*dx + dy*dy < minSep * minSep) { ok = false; break; }
+      }
+      if (!ok) continue;
+      const isRed = rng() < 0.6;
+      const dotR = rngRange(rng, 0.12, 0.20) * r;
+      const alpha = rngRange(rng, 0.85, 1.0);
+      placed.push({ x: px, y: py, isRed, dotR, alpha });
+    }
+
+    // draw dots — each = soft outer halo (additive) + bright pinpoint core (over)
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const p of placed) {
+      const palette = p.isRed ? RED : GREY;
+      const haloR = p.dotR * 2.2;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, haloR);
+      g.addColorStop(0,    `rgba(${palette.glow},${0.55 * p.alpha})`);
+      g.addColorStop(0.5,  `rgba(${palette.glow},${0.22 * p.alpha})`);
+      g.addColorStop(1,    `rgba(${palette.glow},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, haloR, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    // bright pinpoint cores (source-over so they punch through cleanly)
+    for (const p of placed) {
+      const palette = p.isRed ? RED : GREY;
+      const cg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.dotR);
+      cg.addColorStop(0,    `rgba(255,255,255,${p.alpha})`);
+      cg.addColorStop(0.35, `rgba(${palette.core},${p.alpha})`);
+      cg.addColorStop(1,    `rgba(${palette.core},0)`);
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.dotR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    applyCircularFade(ctx, cx, cy, cx, 0.85);
+  },
+
+  /* 5. PULSAR — beam tilt + beam asymmetry + intensity ratio + plasma mottling
+   *
+   * v4 resolution bump #2: TYPED_SCALE pulsar 0.9 → 1.15 (+28%), mottle count
+   * 6-10 → 8-14, added 12-20 fine plasma pinpoints (1-2px additive) for
+   * high-zoom turbulence detail, halo extended to 6 stops for finer falloff,
+   * each beam now has a bright narrow core line layered over the wedge for
+   * more depth. Goal: telescope-quality, not bigger.
+   */
+  'pulsar': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) tilt, B) beam misalignment, C) intensity ratio,
+    //            D) mottle count, E..) per-blob {pos, size, alpha, hue},
+    //            F..) per-fine-pinpoint {pos, size, alpha}.
+    const tilt = rng() * Math.PI;
+    const drift = rngRange(rng, -Math.PI / 12, Math.PI / 12);
+    const ratio = rngRange(rng, 0.7, 1.3); // beam-A/beam-B intensity
+
+    // halo — 6 stops for finer falloff (was 4)
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.5);
+    halo.addColorStop(0,    'rgba(210,235,255,0.78)');
+    halo.addColorStop(0.18, 'rgba(170,215,255,0.50)');
+    halo.addColorStop(0.38, 'rgba(130,185,250,0.28)');
+    halo.addColorStop(0.58, 'rgba(95,155,235,0.14)');
+    halo.addColorStop(0.80, 'rgba(60,115,205,0.05)');
+    halo.addColorStop(1,    'rgba(40,80,170,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // Plasma mottling — additive blue/white blobs over the disc.
+    // v4: 8..14 (up from 6..10) — denser turbulence at high zoom.
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const mottleCount = 8 + Math.floor(rng() * 7); // 8..14
+    for (let i = 0; i < mottleCount; i++) {
+      let bx = 0, by = 0, ok = false;
+      for (let t = 0; t < 6; t++) {
+        const u = rng() * 2 - 1, v = rng() * 2 - 1;
+        if (u*u + v*v < 0.85) { bx = u; by = v; ok = true; break; }
+      }
+      if (!ok) { bx = 0; by = 0; }
+      const sz = rngRange(rng, 0.18, 0.42) * r;
+      const a = rngRange(rng, 0.25, 0.55);
+      const px = cx + bx * r * 0.85;
+      const py = cy + by * r * 0.85;
+      // alternating warm-white vs cool-blue cores for chromatic interest
+      const warm = rng() < 0.45;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, sz);
+      if (warm) {
+        g.addColorStop(0,    `rgba(255,250,235,${a})`);
+        g.addColorStop(0.5,  `rgba(190,220,255,${a*0.5})`);
+        g.addColorStop(1,    'rgba(120,170,240,0)');
+      } else {
+        g.addColorStop(0,    `rgba(220,240,255,${a})`);
+        g.addColorStop(0.5,  `rgba(120,180,255,${a*0.6})`);
+        g.addColorStop(1,    'rgba(60,120,220,0)');
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Fine plasma pinpoints — 12..20 small bright dots (1..2px) inside the
+    // core, additive screen blend. Hash-driven positions read as discrete
+    // hot spots at high zoom; at low zoom they just blend into the core
+    // brightness so we don't lose the smooth-disc read.
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const fineCount = 12 + Math.floor(rng() * 9); // 12..20
+    for (let i = 0; i < fineCount; i++) {
+      let bx = 0, by = 0, ok = false;
+      for (let t = 0; t < 6; t++) {
+        const u = rng() * 2 - 1, v = rng() * 2 - 1;
+        if (u*u + v*v < 0.7) { bx = u; by = v; ok = true; break; }
+      }
+      if (!ok) { bx = 0; by = 0; }
+      const px = cx + bx * r * 0.7;
+      const py = cy + by * r * 0.7;
+      const pr = rngRange(rng, 0.6, 1.6); // sub-pixel to ~2px
+      const a = rngRange(rng, 0.55, 0.95);
+      const pg = ctx.createRadialGradient(px, py, 0, px, py, pr * 2);
+      pg.addColorStop(0,   `rgba(255,255,255,${a})`);
+      pg.addColorStop(0.5, `rgba(220,240,255,${a*0.5})`);
+      pg.addColorStop(1,   'rgba(180,220,255,0)');
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(px, py, pr * 2, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Two beams — each is a tapered cone gradient with a bright narrow core
+    // line layered on top for extra depth. Asymmetric brightness preserved.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const beamLen = r * 4.5;
+    const drawBeam = (angle, intensity) => {
+      const tx = cx + Math.cos(angle) * beamLen;
+      const ty = cy + Math.sin(angle) * beamLen;
+      const px = -Math.sin(angle), py = Math.cos(angle);
+
+      // (a) outer wedge — soft halo of the beam
+      const g = ctx.createLinearGradient(cx, cy, tx, ty);
+      const a = Math.min(1, 0.95 * intensity);
+      g.addColorStop(0,    `rgba(220,240,255,${a})`);
+      g.addColorStop(0.35, `rgba(160,210,255,${a*0.55})`);
+      g.addColorStop(0.7,  `rgba(110,170,240,${a*0.18})`);
+      g.addColorStop(1,    'rgba(80,140,220,0)');
+      const w = r * 0.55 * intensity;
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(cx + px * w * 0.25, cy + py * w * 0.25);
+      ctx.lineTo(tx + px * w, ty + py * w);
+      ctx.lineTo(tx - px * w, ty - py * w);
+      ctx.lineTo(cx - px * w * 0.25, cy - py * w * 0.25);
+      ctx.closePath(); ctx.fill();
+
+      // (b) inner-bright core line — much narrower, brighter wedge on top
+      //     of the outer cone for that high-res "telescope" depth.
+      const cw = w * 0.32;
+      const cg = ctx.createLinearGradient(cx, cy, tx, ty);
+      const ca = Math.min(1, 0.85 * intensity);
+      cg.addColorStop(0,    `rgba(255,255,255,${ca})`);
+      cg.addColorStop(0.45, `rgba(220,240,255,${ca*0.5})`);
+      cg.addColorStop(0.85, `rgba(180,220,255,${ca*0.10})`);
+      cg.addColorStop(1,    'rgba(160,210,255,0)');
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.moveTo(cx + px * cw * 0.15, cy + py * cw * 0.15);
+      ctx.lineTo(tx + px * cw, ty + py * cw);
+      ctx.lineTo(tx - px * cw, ty - py * cw);
+      ctx.lineTo(cx - px * cw * 0.15, cy - py * cw * 0.15);
+      ctx.closePath(); ctx.fill();
+    };
+    drawBeam(tilt, ratio);
+    drawBeam(tilt + Math.PI + drift, 2 - ratio); // opposite beam, complementary intensity
+    ctx.restore();
+
+    // Bright tight core (slightly tighter than v2 for more weight)
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.0);
+    core.addColorStop(0,    'rgba(255,255,255,1)');
+    core.addColorStop(0.4,  'rgba(230,245,255,0.95)');
+    core.addColorStop(0.75, 'rgba(180,210,255,0.5)');
+    core.addColorStop(1,    'rgba(120,170,240,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.0, 0, Math.PI * 2); ctx.fill();
+
+    applyCircularFade(ctx, cx, cy, cx, 0.78);
+  },
+
+  /* 6. BINARY — separation + size ratio + orbit angle */
+  'binary': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) separation, B) size ratio, C) orbit axis angle
+    const sep = rngRange(rng, 0.8, 1.6) * r;
+    const ratio = rngRange(rng, 0.5, 1.5); // r2 = r1 * ratio
+    const ax = rng() * Math.PI;
+
+    const ux = Math.cos(ax), uy = Math.sin(ax);
+    const r1 = r * 1.0;
+    const r2 = r * ratio;
+    const x1 = cx - ux * sep, y1 = cy - uy * sep;
+    const x2 = cx + ux * sep, y2 = cy + uy * sep;
+
+    // shared halo, eccentric along the orbit axis
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(ax);
+    const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, (r + sep) * 1.6);
+    halo.addColorStop(0,    'rgba(255,220,180,0.55)');
+    halo.addColorStop(0.35, 'rgba(255,180,130,0.22)');
+    halo.addColorStop(0.7,  'rgba(220,90,60,0.08)');
+    halo.addColorStop(1,    'rgba(120,40,30,0)');
+    ctx.scale(1.4, 0.85);
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(0, 0, (r + sep) * 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Two cores; star A warm-yellow, star B warmer-orange (complementary tint)
+    const drawCore = (x, y, rr, palette) => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rr * 1.4);
+      g.addColorStop(0,    palette[0]);
+      g.addColorStop(0.35, palette[1]);
+      g.addColorStop(0.7,  palette[2]);
+      g.addColorStop(1,    palette[3]);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, rr * 1.4, 0, Math.PI * 2); ctx.fill();
+    };
+    drawCore(x1, y1, r1, [
+      'rgba(255,245,215,1)',
+      'rgba(255,200,140,0.95)',
+      'rgba(255,140,80,0.45)',
+      'rgba(220,90,40,0)'
+    ]);
+    drawCore(x2, y2, r2, [
+      'rgba(255,235,200,1)',
+      'rgba(255,170,110,0.95)',
+      'rgba(255,110,70,0.45)',
+      'rgba(180,60,40,0)'
+    ]);
+
+    applyCircularFade(ctx, cx, cy, cx, 0.78);
+  },
+
+  /* 7. QUASAR — jet asymmetry + accent hue + accretion disc tilt */
+  'quasar': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) jet asymmetry, B) accent hue, C) disc tilt
+    const asym = rngRange(rng, 1.5, 3.0); // ratio of long-jet to short-jet
+    const accents = [
+      { stop1: 'rgba(120,255,255,0.8)', stop2: 'rgba(80,200,240,0)' }, // cyan
+      { stop1: 'rgba(255,120,255,0.8)', stop2: 'rgba(220,80,200,0)' }, // magenta
+      { stop1: 'rgba(255,235,140,0.8)', stop2: 'rgba(220,180,80,0)' }, // yellow
+    ];
+    const accent = rngPick(rng, accents);
+    const tilt = rng() * Math.PI;
+
+    // halo
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.4);
+    halo.addColorStop(0,    'rgba(255,220,255,0.85)');
+    halo.addColorStop(0.25, 'rgba(220,150,240,0.45)');
+    halo.addColorStop(0.6,  'rgba(160,80,220,0.18)');
+    halo.addColorStop(1,    'rgba(80,30,160,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // accretion disc (ellipse) tilted by `tilt`
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.globalCompositeOperation = 'lighter';
+    const disc = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.8);
+    disc.addColorStop(0,    'rgba(255,210,140,0)');
+    disc.addColorStop(0.3,  'rgba(255,180,110,0.6)');
+    disc.addColorStop(0.55, 'rgba(255,210,160,0.85)');
+    disc.addColorStop(0.8,  'rgba(220,140,100,0.35)');
+    disc.addColorStop(1,    'rgba(120,40,30,0)');
+    ctx.scale(1, 0.32);
+    ctx.fillStyle = disc;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // polar jets — two asymmetric cones (always perpendicular to disc tilt)
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt + Math.PI / 2);
+    ctx.globalCompositeOperation = 'lighter';
+    const baseLen = r * 4.0;
+    const lens = [baseLen * Math.sqrt(asym), baseLen / Math.sqrt(asym)];
+    for (let i = 0; i < 2; i++) {
+      const sign = i === 0 ? 1 : -1;
+      const tx = 0, ty = sign * lens[i];
+      // primary jet body (white core)
+      const g = ctx.createLinearGradient(0, 0, tx, ty);
+      g.addColorStop(0,    'rgba(255,255,255,0.95)');
+      g.addColorStop(0.4,  'rgba(255,210,255,0.45)');
+      g.addColorStop(0.8,  'rgba(220,140,240,0.15)');
+      g.addColorStop(1,    'rgba(180,80,220,0)');
+      ctx.fillStyle = g;
+      const w = r * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.3, 0);
+      ctx.lineTo(-w * 1.0, ty);
+      ctx.lineTo(w * 1.0, ty);
+      ctx.lineTo(w * 0.3, 0);
+      ctx.closePath(); ctx.fill();
+      // accent edge (complementary hue) along jet rim
+      const ag = ctx.createLinearGradient(0, 0, tx, ty);
+      ag.addColorStop(0,    accent.stop1);
+      ag.addColorStop(0.5,  accent.stop1.replace(/,0\.8\)/, ',0.4)'));
+      ag.addColorStop(1,    accent.stop2);
+      ctx.strokeStyle = ag;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.3, 0);
+      ctx.lineTo(-w * 1.0, ty);
+      ctx.moveTo(w * 0.3, 0);
+      ctx.lineTo(w * 1.0, ty);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Bright AGN core
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4);
+    core.addColorStop(0,    'rgba(255,255,255,1)');
+    core.addColorStop(0.35, 'rgba(255,225,255,0.95)');
+    core.addColorStop(0.7,  'rgba(220,150,240,0.4)');
+    core.addColorStop(1,    'rgba(160,60,220,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2); ctx.fill();
+
+    applyCircularFade(ctx, cx, cy, cx, 0.7);
+  },
+
+  /* 8. BLACK HOLE — ring tilt + asymmetric brightness + photon-sphere thickness */
+  'black-hole': function(ctx, cx, cy, r, rng) {
+    // rng() ord: A) ring tilt, B) brightness asymmetry, C) inner radius, D) ring width
+    const tilt = rng() * Math.PI;
+    const asymPhase = rng() * Math.PI * 2; // which side is brighter
+    const innerR = rngRange(rng, 0.92, 1.00) * r;
+    const ringW  = rngRange(rng, 0.4, 0.6) * r;
+
+    // outer warp halo (no rng)
+    const warp = ctx.createRadialGradient(cx, cy, r * 1.3, cx, cy, r * 3.5);
+    warp.addColorStop(0,    'rgba(80,40,100,0.55)');
+    warp.addColorStop(0.45, 'rgba(50,25,80,0.30)');
+    warp.addColorStop(0.8,  'rgba(20,10,50,0.10)');
+    warp.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = warp;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+    // accretion ring — drawn in two halves with brightness asymmetry,
+    // composed of stacked arcs to fake the limb-bright Einstein ring.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.globalCompositeOperation = 'lighter';
+
+    const outerR = innerR + ringW;
+    // background full ring (dim base)
+    const baseRing = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
+    baseRing.addColorStop(0,    'rgba(255,140,40,0)');
+    baseRing.addColorStop(0.45, 'rgba(255,170,70,0.7)');
+    baseRing.addColorStop(0.6,  'rgba(255,210,130,0.95)');
+    baseRing.addColorStop(1,    'rgba(255,140,40,0)');
+    ctx.fillStyle = baseRing;
+    ctx.beginPath(); ctx.arc(0, 0, outerR, 0, Math.PI * 2); ctx.fill();
+
+    // brighter half (Doppler beaming) — angular gradient via clipped arc segments
+    const halfStart = asymPhase - Math.PI / 2;
+    const halfEnd   = asymPhase + Math.PI / 2;
+    const ARC_SEGS = 14;
+    for (let i = 0; i < ARC_SEGS; i++) {
+      const t0 = halfStart + (i / ARC_SEGS) * Math.PI;
+      const t1 = halfStart + ((i + 1) / ARC_SEGS) * Math.PI;
+      // intensity peaks in the middle of the arc, fades at the ends
+      const mid = (i + 0.5) / ARC_SEGS;
+      const k = Math.sin(mid * Math.PI); // 0..1
+      const a = 0.55 * k;
+      const segGrad = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
+      segGrad.addColorStop(0,    `rgba(255,200,120,0)`);
+      segGrad.addColorStop(0.5,  `rgba(255,230,160,${a})`);
+      segGrad.addColorStop(0.7,  `rgba(255,250,200,${a*1.5})`);
+      segGrad.addColorStop(1,    `rgba(255,200,120,0)`);
+      ctx.fillStyle = segGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, t0, t1);
+      ctx.arc(0, 0, innerR, t1, t0, true);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // tilted ellipse "front edge" — squish to suggest viewing-angle perspective
+    const tiltSquish = 0.55;
+    ctx.save();
+    ctx.scale(1, tiltSquish);
+    ctx.strokeStyle = 'rgba(255,220,140,0.55)';
+    ctx.lineWidth = ringW * 0.18;
+    ctx.beginPath();
+    ctx.arc(0, 0, (innerR + outerR) / 2 / tiltSquish, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+
+    // Pure-black event horizon (drawn last)
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.beginPath(); ctx.arc(cx, cy, innerR * 0.92, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    applyCircularFade(ctx, cx, cy, cx, 0.78);
+  },
+
+  /* 9. NEBULA — FBM density field + colour ramp + hot-spot pinpoints
+   *
+   * v5: per-pixel Fractional Brownian Motion (5 octaves of value noise) drives
+   * the cloud density. The silhouette emerges naturally from the density-falloff
+   * × radial-falloff product instead of a constructed bezier outline. A 3-of-9
+   * palette pick feeds a piecewise-linear colour ramp (transparent → dark rim →
+   * mid cloud → bright core → hot white). 3-6 small additive hot-spots are
+   * placed at high-density positions to read as embedded stars in the gas.
+   *
+   * Replaces the v4 stack (bezier silhouette, hard clip+wash, optional inner
+   * silhouette, 6-10 wash gradients, 4-8 pinpoints, 2-4 dust lanes, blurred
+   * destination-in mask, filament tendrils). FBM is inherently blended and
+   * has no hard edges anywhere — the same property the v4 mask was trying to
+   * fake.
+   *
+   * Cost: half-resolution sampling (W/2 × H/2) means ~5-15 ms per sprite.
+   * LRU cache means the cost is amortised over scroll.
+   */
+  'nebula': function(ctx, cx, cy, r, rng) {
+    // rng() ord (kept reasonably terse so re-seeding stays predictable):
+    //   A) palette pick (Fisher-Yates 3-of-9 + 1 rng for "promote to 4"),
+    //   B) optional 4th palette index, C) sample offset (ox, oy),
+    //   D) rotation θ, E) freq, F) hot-spot count + per-spot params.
+    //
+    // Wild palette pool — yellows + greens included for weird contrasts.
+    const palettePool = [
+      [140, 80, 220],   // purple
+      [60, 110, 230],   // blue
+      [220, 100, 160],  // pink
+      [230, 80, 220],   // magenta
+      [80, 220, 230],   // cyan
+      [120, 230, 110],  // electric green
+      [240, 220, 80],   // gold yellow
+      [240, 130, 50],   // deep orange
+      [60, 200, 180],   // teal
+    ];
+    const promote = rng() < 0.4;
+    const colors = pickN(palettePool, promote ? 4 : 3, rng);
+    // pickN consumes only `take` rng() calls; pad to a deterministic count
+    // (4) so downstream features (offsets, rotation, freq) stay stable across
+    // 3-vs-4 picks.
+    if (!promote) rng();
+
+    // Per-id sampling perturbation. Big offset range so different ids land in
+    // visually distinct patches of the noise function.
+    const ox = rngRange(rng, -100, 100);
+    const oy = rngRange(rng, -100, 100);
+    const theta = rng() * Math.PI * 2;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+    const freq = rngRange(rng, 2.0, 3.5); // higher = finer turbulence
+    // Seed perturbs the integer noise grid per id. Deriving from ox/oy/theta
+    // is sufficient — they're already rng-driven.
+    const seed = (hashStr(`${ox}:${oy}:${theta}`) | 0);
+
+    // Density → RGBA piecewise-linear ramp. 6 stops:
+    //   0.00  fully transparent (background space shows through)
+    //   0.20  dark rim from colour[0], low alpha (sparse outskirts)
+    //   0.40  mid cloud from colour[1], moderate alpha
+    //   0.60  bright core blend of colour[2] toward warm pink
+    //   0.80  hot near-white pink
+    //   1.00  white peak
+    const c0 = colors[0], c1 = colors[1], c2 = colors[2];
+    // If we have a 4th colour, fold it into the mid stop so promotion shows.
+    const cMid = colors.length >= 4 ? mix(c1, colors[3], 0.5) : c1;
+    const ramp = buildRamp([
+      { d: 0.00, rgba: [0, 0, 0, 0] },
+      { d: 0.20, rgba: [c0[0], c0[1], c0[2], 0.25 * 255] },
+      { d: 0.40, rgba: [cMid[0], cMid[1], cMid[2], 0.55 * 255] },
+      { d: 0.60, rgba: [...mix(c2, [255, 220, 220], 0.5), 0.85 * 255] },
+      { d: 0.80, rgba: [255, 240, 230, 0.98 * 255] },
+      { d: 1.00, rgba: [255, 255, 255, 1.0 * 255] },
+    ]);
+
+    // ---- Render the FBM density field to a half-res ImageData buffer.
+    const W = ctx.canvas.width, H = ctx.canvas.height;
+    const half = Math.min(W, H) / 2;
+    const NW = Math.max(48, Math.floor(W / 2));
+    const NH = Math.max(48, Math.floor(H / 2));
+    const noiseCanvas = document.createElement('canvas');
+    noiseCanvas.width = NW;
+    noiseCanvas.height = NH;
+    const nctx = noiseCanvas.getContext('2d');
+    const img = nctx.createImageData(NW, NH);
+    const data = img.data;
+
+    const ncx = NW / 2, ncy = NH / 2;
+    const nr = Math.min(NW, NH) / 2;
+
+    for (let py = 0; py < NH; py++) {
+      for (let px = 0; px < NW; px++) {
+        // Map pixel → unit-disc coords centred on the noise canvas.
+        const dx = (px - ncx) / nr;
+        const dy = (py - ncy) / nr;
+        // Per-id rotation + offset on the sample point.
+        const sx = (dx * cosT - dy * sinT) + ox;
+        const sy = (dx * sinT + dy * cosT) + oy;
+        // FBM core: 5 octaves, lacunarity 2.0, gain 0.5 (Felipe Gutierrez's
+        // gamedev.SE Q147812 defaults — well-tested).
+        let density = fbm2D(sx * freq, sy * freq, 5, 2.0, 0.5, seed);
+        // Distance falloff. Density goes to 0 at the unit-disc edge so the
+        // silhouette emerges naturally without a clip path. Exponent ~2.5
+        // (= sq * sqrt) gives a soft outer halo with a clear core.
+        const dist2 = dx * dx + dy * dy;
+        const fall = Math.max(0, 1 - dist2);
+        density *= fall * fall * Math.sqrt(fall);
+        // Colour-ramp lookup.
+        const c = ramp(Math.min(1, Math.max(0, density)));
+        const idx = (py * NW + px) * 4;
+        data[idx]     = c[0];
+        data[idx + 1] = c[1];
+        data[idx + 2] = c[2];
+        data[idx + 3] = c[3];
+      }
+    }
+    nctx.putImageData(img, 0, 0);
+
+    // Blit upscaled. Browser bilinear interpolation hides the half-res
+    // sampling and contributes some additional softness — exactly what
+    // a gas cloud should look like.
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(noiseCanvas, 0, 0, W, H);
+    ctx.restore();
+
+    // ---- Hot-spot pinpoints. 3-6 bright stars embedded in the cloud at
+    //      positions where local FBM density is high. Additive blend so
+    //      they pop without occluding the gas behind them.
+    const hotCount = 3 + Math.floor(rng() * 4); // 3..6
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < hotCount; i++) {
+      // Rejection sample: try up to 8 random in-disc positions until we
+      // find one above the density threshold. Falls through with the last
+      // sample if we never beat the threshold (rare, but graceful).
+      let px = cx, py = cy;
+      let tries = 0;
+      while (tries < 8) {
+        const ang = rng() * Math.PI * 2;
+        const radial = Math.sqrt(rng()) * 0.85;
+        px = cx + Math.cos(ang) * radial * half;
+        py = cy + Math.sin(ang) * radial * half;
+        const dx = (px - cx) / half;
+        const dy = (py - cy) / half;
+        const sx = (dx * cosT - dy * sinT) + ox;
+        const sy = (dx * sinT + dy * cosT) + oy;
+        const density = fbm2D(sx * freq, sy * freq, 5, 2.0, 0.5, seed);
+        tries++;
+        if (density >= 0.55) break;
+      }
+      const pr = rngRange(rng, 1.5, 3.5);
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, pr * 2);
+      grad.addColorStop(0,    'rgba(255,250,240,1)');
+      grad.addColorStop(0.4,  'rgba(255,235,220,0.7)');
+      grad.addColorStop(1,    'rgba(255,200,180,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(px, py, pr * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Cross-cutting circular fade — soft inner stop because nebula is huge
+    // & diffuse. The radial-falloff in the FBM pass already handles most of
+    // the silhouette; this is just final cell-edge polish.
+    applyCircularFade(ctx, cx, cy, half, 0.55);
+  },
+};
+
+/* ============================================================
+ *  Slide rendering
+ * ============================================================ */
+
+const TYPES_ALL = ['red-giant', 'blue-supergiant', 'white-dwarf', 'neutron-star',
+                   'pulsar', 'binary', 'quasar', 'black-hole', 'nebula'];
+
+const TYPE_LABELS = {
+  'red-giant': 'Red Giant',
+  'blue-supergiant': 'Blue Supergiant',
+  'white-dwarf': 'White Dwarf',
+  'neutron-star': 'Neutron Star',
+  'pulsar': 'Pulsar',
+  'binary': 'Binary',
+  'quasar': 'Quasar',
+  'black-hole': 'Black Hole',
+  'nebula': 'Nebula',
+};
+
+/** Draw one sprite into a fresh display canvas at `displaySize` px (CSS+DPR). */
+function paintSprite(displaySize, type, sizeBucket, starId, mode) {
+  const dpr = window.devicePixelRatio || 1;
+  const sprite = getTypedStarSprite(type, sizeBucket, starId, mode);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(displaySize * dpr);
+  canvas.height = Math.round(displaySize * dpr);
+  const ctx = canvas.getContext('2d');
+  // black bg matches deck background so additive blends pop correctly
+  ctx.fillStyle = '#0a0d1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // centre the sprite, scale to fit the cell with padding
+  const pad = 0.92;
+  const scale = (canvas.width / sprite.width) * pad;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.scale(scale, scale);
+  ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+  return canvas;
+}
+
+/** Build a 12-cell sprite grid for one type. */
+function buildGrid(parent, type, sizeBucket, mode, idPrefix, count, cols) {
+  parent.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  for (let i = 0; i < count; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell';
+    const id = `${idPrefix}-${i}`;
+    // we need to know cell pixel size; defer to next frame for layout
+    grid.appendChild(cell);
+  }
+  parent.appendChild(grid);
+
+  // After layout, paint each cell
+  requestAnimationFrame(() => {
+    const cells = grid.children;
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const rect = cell.getBoundingClientRect();
+      const px = Math.max(48, Math.floor(rect.width));
+      const id = `${idPrefix}-${i}`;
+      const c = paintSprite(px, type, sizeBucket, id, mode);
+      c.style.width = '100%';
+      c.style.height = '100%';
+      cell.appendChild(c);
+    }
+  });
+}
+
+/** Build a row of N sprites, one type. Used in slide 2 / 3 quick rows. */
+function buildRow(parent, type, sizeBucket, mode, idPrefix, count) {
+  buildGrid(parent, type, sizeBucket, mode, idPrefix, count, count);
+}
+
+/* ---------- Mini sky composite (slide 11) ---------- */
+
+const SKY_W = 1100;
+const SKY_H = 540;
+const SKY_STAR_COUNT = 80;
+
+/** Generate a deterministic list of stars laid out at fixed positions. */
+function generateSky() {
+  const stars = [];
+  const rng = seedFromId('mini-sky-v1');
+  for (let i = 0; i < SKY_STAR_COUNT; i++) {
+    const type = rngPick(rng, TYPES_ALL);
+    const sb = Math.floor(rngRange(rng, 1, 5)); // sizes 1..4
+    // rejection-sample so stars don't crowd the edge
+    const x = rngRange(rng, 60, SKY_W - 60);
+    const y = rngRange(rng, 50, SKY_H - 50);
+    const id = `sky-${i}`;
+    stars.push({ type, sb, x, y, id });
+  }
+  return stars;
+}
+
+const SKY_STARS = generateSky();
+
+function paintSky(canvas, mode) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || SKY_W;
+  const cssH = canvas.clientHeight || SKY_H;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // background
+  const bg = ctx.createLinearGradient(0, 0, 0, cssH);
+  bg.addColorStop(0, '#06081a');
+  bg.addColorStop(1, '#0a0d1a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  // tiny background stars (deterministic, not procedural per-star)
+  const bgRng = seedFromId('mini-sky-bg-v1');
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  for (let i = 0; i < 220; i++) {
+    const x = bgRng() * cssW;
+    const y = bgRng() * cssH;
+    const a = bgRng() * 0.6 + 0.15;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(x, y, bgRng() * 0.9 + 0.2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // typed stars
+  // map each sky position to an actual sprite, scaled to a per-sb display size
+  const sxScale = cssW / SKY_W;
+  const syScale = cssH / SKY_H;
+  for (const s of SKY_STARS) {
+    const sprite = getTypedStarSprite(s.type, s.sb, s.id, mode);
+    // Display size proportional to sizeBucket; clamp for layout
+    const baseDisp = 20 + s.sb * 14; // 34..76 px
+    const dispW = baseDisp * sxScale;
+    const dispH = baseDisp * syScale;
+    ctx.drawImage(
+      sprite,
+      s.x * sxScale - dispW / 2,
+      s.y * syScale - dispH / 2,
+      dispW, dispH
+    );
+  }
+}
+
+/* ============================================================
+ *  Slide definitions
+ * ============================================================ */
+
+const SLIDES = [];
+
+/* Slide 1 — Title */
+SLIDES.push(function renderSlide1(root) {
+  const block = document.createElement('div');
+  block.className = 'title-block';
+  block.innerHTML = `
+    <h1>Procedural Star Variation<br><span style="font-size:0.6em">F8a — Star Palace</span></h1>
+    <p class="subtitle">Each star unique. Same type still readable. A demo to prove the visuals before the build.</p>
+    <p class="nav-prompt">use <strong style="color:var(--accent)">←  →</strong> arrows or the buttons below to step through</p>
+  `;
+  root.appendChild(block);
+});
+
+/* Slide 2 — The problem */
+SLIDES.push(function renderSlide2(root) {
+  root.innerHTML = `
+    <h2>The problem<span class="accent">.</span></h2>
+    <p class="caption">Today, same type + same size renders a <strong>byte-identical sprite</strong>. The sky reads as repeated stamps. Twelve red giants from twelve different files all look like the same red giant.</p>
+    <div class="grid-with-label">
+      <div class="row-label">Current — 12 pulsars</div>
+      <div class="grid-wrap" id="problem-pulsars" style="margin-bottom:14px"></div>
+      <div class="row-label">Current — 12 red giants</div>
+      <div class="grid-wrap" id="problem-reds"></div>
+    </div>
+  `;
+  buildRow(root.querySelector('#problem-pulsars'), 'pulsar', 4, 'current', 'p', 12);
+  buildRow(root.querySelector('#problem-reds'), 'red-giant', 4, 'current', 'r', 12);
+});
+
+/* Slide 3 — The fix */
+SLIDES.push(function renderSlide3(root) {
+  root.innerHTML = `
+    <h2>The fix<span class="accent">.</span></h2>
+    <p class="caption">Hash the star's <code style="color:var(--accent)">id</code> into a deterministic seed. Each drawer pulls a few <code style="color:var(--accent)">rng()</code> values to pick angle, count, asymmetry. <strong>Same id → same star, every time.</strong></p>
+    <div class="row" style="gap: 24px; margin-bottom: 12px;">
+      <pre class="code">
+<span class="com">// FNV-1a hash → mulberry32 PRNG, cheap + deterministic</span>
+<span class="kw">function</span> <span class="fn">seedFromId</span>(id) {
+  <span class="kw">let</span> s = <span class="fn">hashStr</span>(id) >>> <span class="num">0</span>
+  <span class="kw">return function</span> <span class="fn">rng</span>() {
+    s = (s + <span class="num">0x6D2B79F5</span>) >>> <span class="num">0</span>
+    <span class="kw">let</span> t = s
+    t = <span class="fn">Math.imul</span>(t ^ (t >>> <span class="num">15</span>), t | <span class="num">1</span>)
+    t ^= t + <span class="fn">Math.imul</span>(t ^ (t >>> <span class="num">7</span>), t | <span class="num">61</span>)
+    <span class="kw">return</span> ((t ^ (t >>> <span class="num">14</span>)) >>> <span class="num">0</span>) / <span class="num">4294967296</span>
+  }
+}</pre>
+    </div>
+    <div class="grid-with-label">
+      <div class="row-label">Procedural — 12 pulsars (each unique)</div>
+      <div class="grid-wrap" id="fix-pulsars" style="margin-bottom:12px"></div>
+      <div class="row-label">Procedural — 12 red giants (each unique)</div>
+      <div class="grid-wrap" id="fix-reds"></div>
+    </div>
+  `;
+  buildRow(root.querySelector('#fix-pulsars'), 'pulsar', 4, 'proc', 'fp', 12);
+  buildRow(root.querySelector('#fix-reds'), 'red-giant', 4, 'proc', 'fr', 12);
+});
+
+/* Slides 4..8 — Per-type interactive grids */
+
+const TYPE_PANELS = {
+  'red-giant': {
+    title: 'Red Giant',
+    blurb: 'Convection mottling + arcing solar prominences. Limb darkening makes the disc read as spherical, not flat.',
+    features: [
+      ['Convection mottling',  '8–14 additive blobs, size 0.15r–0.40r'],
+      ['Solar prominences',    '2–4 quadratic Bezier flares, length r·1.15–r·1.55'],
+      ['Limb darkening',       'thin dark ring at r·0.92–r·1.05 (constant)'],
+    ],
+    cool: 'Prominence arcs are the only soft non-radial geometry in the sky.',
+  },
+  'nebula': {
+    title: 'Nebula',
+    blurb: 'Per-pixel Fractional Brownian Motion (5 octaves of value noise) drives the cloud density. The silhouette emerges naturally from a density × radial falloff — no constructed bezier, no clip path. A 3-of-9 wild palette (purples + cyans + greens + yellows) feeds a 6-stop colour ramp from transparent edge → dark rim → mid cloud → hot white core. Final pass: 3–6 additive hot-spot pinpoints anchored at high-density positions to read as embedded stars in the gas.',
+    features: [
+      ['FBM density field',    '5 octaves of value noise, lacunarity 2.0, gain 0.5; sampled at half-resolution and upscaled with bilinear interpolation'],
+      ['Per-id sampling',      'unique offset (ox, oy) ∈ ±100, rotation 0–2π, frequency 2.0–3.5; each id lands in a visually distinct patch of the same continuous noise'],
+      ['Wild palette',         'Fisher-Yates pick 3 (sometimes 4) of 9 from {purple, blue, pink, magenta, cyan, green, yellow, orange, teal}'],
+      ['Colour ramp',          '6 piecewise-linear stops: 0.0 transparent → 0.2 dark rim → 0.4 mid cloud → 0.6 bright core → 0.8 hot pink-white → 1.0 white peak'],
+      ['Hot-spot pinpoints',   '3–6 bright additive stars placed at FBM density ≥ 0.55 via rejection sampling (up to 8 tries per spot)'],
+    ],
+    cool: 'No bezier, no clip — every pixel is a smooth function of position. Inherently blended, no hard edges anywhere, weird shapes for free.',
+  },
+  'pulsar': {
+    title: 'Pulsar',
+    blurb: 'Beam axis tilt + asymmetric beam pair + per-beam intensity, with a turbulent plasma surface from additive mottling and fine-detail plasma pinpoints. Each beam now layers a bright narrow inner core line over the soft outer wedge for telescope-quality depth.',
+    features: [
+      ['Beam tilt',            'rotation 0–π'],
+      ['Beam misalignment',    '±π/12 drift on the second beam'],
+      ['Intensity ratio',      'beam-A vs beam-B brightness 0.7–1.3'],
+      ['Beam depth',           'two-pass wedge: soft outer cone + bright narrow inner core line'],
+      ['Plasma mottling',      '8–14 additive blobs, alternating warm-white / cool-blue cores'],
+      ['Fine pinpoints',       '12–20 sub-pixel additive dots inside the core for high-zoom turbulence detail'],
+      ['Halo falloff',         '6 stops (was 4) for finer atmospheric gradient'],
+    ],
+    cool: 'Combined with per-frame rotation in the live app, every pulsar has its own strobe signature.',
+  },
+  'black-hole': {
+    title: 'Black Hole',
+    blurb: 'Tilted accretion ring + Doppler-bright half + variable photon-sphere thickness. Evokes EHT/Interstellar imagery.',
+    features: [
+      ['Ring tilt',            'rotation 0–π plus 0.55× squish (front-edge perspective)'],
+      ['Brightness asymmetry', 'one half ~1.5× brighter (Doppler beaming)'],
+      ['Photon-sphere',        'inner radius 0.92r–1.0r, ring width 0.4r–0.6r'],
+    ],
+    cool: 'Tilted asymmetric ring beats the generic donut from before.',
+  },
+  'blue-supergiant': {
+    title: 'Blue Supergiant',
+    blurb: 'Spike count from {4, 6, 8} (weighted) + eccentric halo + spike rotation. No two same-count instances align identically.',
+    features: [
+      ['Spike count',          '{4, 6, 8} weighted (4 most common, 8 rarest)'],
+      ['Halo eccentricity',    'squish 0.75–1.25, tilt 0–π'],
+      ['Spike base angle',     'rotate by 0 to π/N so pairs vary'],
+    ],
+    cool: 'Ellipsoidal halo + rotated spikes kills the sticker feel.',
+  },
+};
+
+function renderTypeSlide(slideNum, type) {
+  return function(root) {
+    const cfg = TYPE_PANELS[type];
+    let regenSeed = 0;
+    const liItems = cfg.features.map(([n, range]) => `
+      <li><span class="feat-name">${n}</span><span class="feat-range">${range}</span></li>
+    `).join('');
+    root.innerHTML = `
+      <h2>${cfg.title}<span class="accent">.</span></h2>
+      <p class="caption">${cfg.blurb}</p>
+      <div class="row grow" style="gap:18px; min-height:0;">
+        <div class="grid-wrap grow" id="type-grid-${type}" style="display:flex;flex-direction:column;justify-content:center"></div>
+        <div class="feature-panel">
+          <h3>${cfg.title} — variation features</h3>
+          <ul>${liItems}</ul>
+          <button class="regen-btn" id="regen-${type}">Regenerate (new seeds)</button>
+          <p style="font-size:12px;color:var(--ink-dim);margin-top:14px;line-height:1.5;">
+            <strong style="color:var(--accent);font-weight:500">Cool factor:</strong> ${cfg.cool}
+          </p>
+        </div>
+      </div>
+    `;
+    const gridHost = root.querySelector(`#type-grid-${type}`);
+    const paint = () => {
+      buildGrid(gridHost, type, 4, 'proc', `${type}-r${regenSeed}`, 12, 4);
+    };
+    paint();
+    root.querySelector(`#regen-${type}`).addEventListener('click', () => {
+      regenSeed++;
+      paint();
+    });
+  };
+}
+
+SLIDES.push(renderTypeSlide(4, 'red-giant'));
+SLIDES.push(renderTypeSlide(5, 'nebula'));
+SLIDES.push(renderTypeSlide(6, 'pulsar'));
+SLIDES.push(renderTypeSlide(7, 'black-hole'));
+SLIDES.push(renderTypeSlide(8, 'blue-supergiant'));
+
+/* Slide 9 — Neutron star + white dwarf bundle */
+SLIDES.push(function renderSlide9(root) {
+  root.innerHTML = `
+    <h2>Neutron star + white dwarf<span class="accent">.</span></h2>
+    <p class="caption">Smaller types, bundled. Even tiny sprites get distinct silhouettes from spike count, length, and corona wisps.</p>
+    <div class="bundle grow" style="min-height:0">
+      <div class="bundle-block">
+        <h3>Neutron star</h3>
+        <p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px 0;">Nucleus of glowing dots — 28–49 red+grey points, packed inside a tight cluster with a unifying outer halo</p>
+        <div class="grid-wrap grow" id="bundle-neutron"></div>
+      </div>
+      <div class="bundle-block">
+        <h3>White dwarf</h3>
+        <p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px 0;">Corona wisps 4–7 · size jitter 0.9×–1.1×</p>
+        <div class="grid-wrap grow" id="bundle-dwarf"></div>
+      </div>
+    </div>
+  `;
+  buildGrid(root.querySelector('#bundle-neutron'), 'neutron-star', 4, 'proc', 'ns', 12, 4);
+  buildGrid(root.querySelector('#bundle-dwarf'),   'white-dwarf',  4, 'proc', 'wd', 12, 4);
+});
+
+/* Slide 10 — Binary + quasar bundle */
+SLIDES.push(function renderSlide10(root) {
+  root.innerHTML = `
+    <h2>Binary + quasar<span class="accent">.</span></h2>
+    <p class="caption">Lopsided binaries (one giant + one dwarf companion) and asymmetric quasar jets give a strong sense that physics is happening.</p>
+    <div class="bundle grow" style="min-height:0">
+      <div class="bundle-block">
+        <h3>Binary</h3>
+        <p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px 0;">Separation 0.8r–1.6r · size ratio 0.5–1.5 · orbit angle 0–π</p>
+        <div class="grid-wrap grow" id="bundle-binary"></div>
+      </div>
+      <div class="bundle-block">
+        <h3>Quasar</h3>
+        <p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px 0;">Jet asymmetry 1.5–3× · accent {cyan, magenta, yellow} · disc tilt</p>
+        <div class="grid-wrap grow" id="bundle-quasar"></div>
+      </div>
+    </div>
+  `;
+  buildGrid(root.querySelector('#bundle-binary'), 'binary', 4, 'proc', 'bn', 12, 4);
+  buildGrid(root.querySelector('#bundle-quasar'), 'quasar', 4, 'proc', 'qs', 12, 4);
+});
+
+/* Slide 11 — Mini sky composite (toggle) */
+SLIDES.push(function renderSlide11(root) {
+  root.innerHTML = `
+    <h2>Cumulative effect<span class="accent">.</span></h2>
+    <p class="caption">A patch of sky with ~80 mixed-type stars. Toggle to feel the difference cumulatively, not just per-sprite.</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span class="sky-label">Show:</span>
+      <div class="sky-toggle" id="sky-toggle">
+        <button data-mode="current" class="active">Current</button>
+        <button data-mode="proc">Procedural</button>
+      </div>
+      <span style="font-size:12px;color:var(--ink-dim);" id="sky-mode-label">current — repeated stamps</span>
+    </div>
+    <div class="sky-wrap grow"><canvas id="sky-canvas"></canvas></div>
+  `;
+  const canvas = root.querySelector('#sky-canvas');
+  const label = root.querySelector('#sky-mode-label');
+  let mode = 'current';
+
+  const paint = () => paintSky(canvas, mode);
+
+  const toggle = root.querySelector('#sky-toggle');
+  toggle.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    mode = btn.dataset.mode;
+    [...toggle.children].forEach(b => b.classList.toggle('active', b === btn));
+    label.textContent = mode === 'current' ? 'current — repeated stamps' : 'procedural — every star unique';
+    paint();
+  });
+
+  // initial paint after layout
+  requestAnimationFrame(() => paint());
+});
+
+/* Slide 12 — Cost */
+SLIDES.push(function renderSlide12(root) {
+  root.innerHTML = `
+    <h2>Cost<span class="accent">.</span></h2>
+    <p class="caption">Bounded cache, deterministic re-render, no animation cost change. Within renderer memory budget.</p>
+    <div class="cards">
+      <div class="card">
+        <div class="card-num">500</div>
+        <div class="card-label">LRU cap</div>
+        <div class="card-desc">Working set across all 9 typed sprites. Eviction = next render rebuilds.</div>
+      </div>
+      <div class="card">
+        <div class="card-num">~25 MB</div>
+        <div class="card-label">Memory ceiling</div>
+        <div class="card-desc">500 sprites × ~50 KB each. Well under the 200 MB renderer budget.</div>
+      </div>
+      <div class="card">
+        <div class="card-num">0 ms</div>
+        <div class="card-label">Same-id reroll</div>
+        <div class="card-desc">A star's look is fixed forever by its id. No drift on rename or re-embed.</div>
+      </div>
+    </div>
+    <p class="caption" style="margin-top:24px;font-size:14px;">
+      Animation paths (pulsar rotation, quasar shimmer) keep their existing per-frame layer over the cached static sprite — F8a doesn't add per-frame work.
+    </p>
+  `;
+});
+
+/* Slide 13 — Recommendation */
+SLIDES.push(function renderSlide13(root) {
+  const steps = [
+    'foundation', 'red giant', 'nebula', 'pulsar', 'black hole',
+    'blue supergiant', 'neutron + white dwarf', 'binary + quasar', 'docs',
+  ];
+  const stepHtml = steps.map((s, i) =>
+    `<div class="rec-step${i === 0 ? ' first' : ''}">${i+1}. ${s}</div>` +
+    (i < steps.length - 1 ? '<div class="rec-arrow">→</div>' : '')
+  ).join('');
+  root.innerHTML = `
+    <h2>Ship it<span class="accent">?</span></h2>
+    <p class="caption"><strong>Recommendation: ship F8a in 9 commits</strong> per the plan. Each commit is its own visual review gate; if any looks wrong, revert that commit and continue.</p>
+    <div class="rec-flow">${stepHtml}</div>
+    <h3 style="margin:18px 0 8px 0;font-size:18px;color:var(--accent);font-weight:600;">Known limitations</h3>
+    <ul class="limit-list">
+      <li><strong>PRNG order coupling:</strong> reordering rng() calls inside a drawer reseeds downstream features. Drawers must keep call order stable across edits.</li>
+      <li><strong>No reroll:</strong> a star's look is fixed by its id forever. Out of scope per spec.</li>
+      <li><strong>Cache thrash on extreme zoom:</strong> if the user pans across many stars in a short window, LRU cap of 500 may evict + re-render. Bump to 1000 if profiling shows churn.</li>
+      <li><strong>Canvas2D only:</strong> no GPU compositing path. Animation stays in the existing per-frame layer over cached static sprites.</li>
+    </ul>
+    <p class="caption" style="margin-top:30px;font-size:15px;color:var(--accent)">
+      Estimated cost: ~1 day of focused work. Visual quality bar: this deck.
+    </p>
+  `;
+});
+
+/* ============================================================
+ *  Slide controller
+ * ============================================================ */
+
+const slidesHost = document.getElementById('slides');
+const counterEl = document.getElementById('counter');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const navHint = document.getElementById('navHint');
+
+let current = 0;
+const cache = new Map(); // slideIdx -> rendered DOM
+
+function renderSlide(idx) {
+  if (idx < 0 || idx >= SLIDES.length) return;
+  current = idx;
+
+  // Clear active
+  [...slidesHost.children].forEach(c => c.classList.remove('active'));
+
+  let slideEl = cache.get(idx);
+  if (!slideEl) {
+    slideEl = document.createElement('section');
+    slideEl.className = 'slide';
+    SLIDES[idx](slideEl);
+    slidesHost.appendChild(slideEl);
+    cache.set(idx, slideEl);
+  } else {
+    // re-trigger animation
+    slideEl.style.animation = 'none';
+    void slideEl.offsetWidth;
+    slideEl.style.animation = '';
+  }
+  slideEl.classList.add('active');
+
+  counterEl.textContent = `${idx + 1} / ${SLIDES.length}`;
+  prevBtn.disabled = idx === 0;
+  nextBtn.disabled = idx === SLIDES.length - 1;
+}
+
+function go(delta) {
+  const next = Math.min(SLIDES.length - 1, Math.max(0, current + delta));
+  if (next === current) return;
+  hideHint();
+  renderSlide(next);
+}
+
+function hideHint() {
+  if (!navHint.classList.contains('hidden')) {
+    navHint.classList.add('hidden');
+  }
+}
+
+prevBtn.addEventListener('click', () => go(-1));
+nextBtn.addEventListener('click', () => go(1));
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+    e.preventDefault(); go(1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault(); go(-1);
+  } else if (e.key === 'Home') {
+    e.preventDefault(); renderSlide(0);
+  } else if (e.key === 'End') {
+    e.preventDefault(); renderSlide(SLIDES.length - 1);
+  }
+});
+
+// boot
+renderSlide(0);
+</script>
+</body>
+</html>

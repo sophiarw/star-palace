@@ -11,6 +11,7 @@ import type { VimAction } from './hooks/useVimMode'
 import PCDial from './components/PCDial/PCDial'
 import { usePcDial } from './hooks/usePcDial'
 import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
+import { useTheme } from './hooks/useTheme'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -90,6 +91,19 @@ export default function App() {
   }, [])
 
   const pcDial = usePcDial()
+  const themeCtx = useTheme()
+
+  // F11 — propagate active theme into CSS so chrome (HoverCard ring,
+  // DetailPanel pin badge, SearchBar highlight, StarMap selection ring)
+  // can read --starpalace-accent / --starpalace-font without needing the
+  // theme object in every leaf component.
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--starpalace-accent', themeCtx.theme.ui.accentColor)
+    root.style.setProperty('--starpalace-font', themeCtx.theme.ui.fontStack)
+    root.style.setProperty('--starpalace-title-transform', themeCtx.theme.ui.titleTransform ?? 'none')
+    root.style.setProperty('--starpalace-title-letter-spacing', themeCtx.theme.ui.titleLetterSpacing ?? 'normal')
+  }, [themeCtx.theme])
 
   // F9: each star's displayed position is its local PCA position (or daemon-
   // provided fallback) + its galaxy's origin offset. Galaxies live at distinct
@@ -206,6 +220,7 @@ export default function App() {
         onSelect={handleSelect}
         vimAction={vimAction}
         onHoveredChange={setHoveredId}
+        theme={themeCtx.theme}
         onPinFile={(id, wx, wy) => {
           pcDial.pinFile(id, wx, wy).catch(err => console.warn('pinFile failed:', err))
         }}
@@ -225,7 +240,14 @@ export default function App() {
         onChange={pcDial.setAxes}
       />
 
-      <StatsBar stats={stats} starCount={stars.length} vimMode={mode} />
+      <StatsBar
+        stats={stats}
+        starCount={stars.length}
+        vimMode={mode}
+        themes={themeCtx.available}
+        currentThemeId={themeCtx.theme.id}
+        onThemeChange={themeCtx.setTheme}
+      />
 
       <GalaxyPanel
         galaxies={galaxies}

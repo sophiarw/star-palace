@@ -12,13 +12,21 @@
   --text: #c8dff5;
   --text-muted: #4a6a8a;
   --accent: #4a9eff;
-  --accent-warm: #ffe066;
+  /* F11 — theme-driven defaults; useTheme writes the live values from the
+     active Theme.ui at mount + on each switch. */
+  --starpalace-accent: #ffe066;
+  --starpalace-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --starpalace-title-transform: none;
+  --starpalace-title-letter-spacing: normal;
+  --accent-warm: var(--starpalace-accent);
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* F11 — chrome font stack tracks the active theme. JWST is the system
+     stack; vapor swaps in VT323/Courier. */
+  font-family: var(--starpalace-font);
   height: 100vh;
   overflow: hidden;
 }
@@ -338,22 +346,25 @@ body {
 }
 
 .detail-panel-pin-status {
-  color: #ffe066;
+  color: var(--starpalace-accent);
   font-size: 12px;
 }
 
 .detail-panel-pin-unpin {
-  background: rgba(255, 224, 102, 0.12);
-  border: 1px solid rgba(255, 224, 102, 0.4);
+  /* color-mix gives us alpha-tinted backgrounds without pre-baking rgba()
+     for every theme. Falls back gracefully to bare accent if color-mix
+     isn't supported (Safari < 16.2). */
+  background: color-mix(in srgb, var(--starpalace-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 40%, transparent);
   border-radius: 6px;
-  color: #ffe066;
+  color: var(--starpalace-accent);
   font-size: 11px;
   padding: 3px 8px;
   cursor: pointer;
 }
 
 .detail-panel-pin-unpin:hover {
-  background: rgba(255, 224, 102, 0.22);
+  background: color-mix(in srgb, var(--starpalace-accent) 22%, transparent);
 }
 
 .detail-panel-pin-hint {
@@ -596,7 +607,95 @@ body {
 }
 
 .stats-bar-mode--search {
-  color: #ffe066;
+  color: var(--starpalace-accent);
+}
+
+/* F11 — theme picker dropdown inside the stats bar. Inline so the bar stays
+   bottom-left. Menu pops upward (bar sits at the bottom of the viewport). */
+
+.stats-bar-theme {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.stats-bar-theme-button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--starpalace-accent) 35%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  text-transform: var(--starpalace-title-transform);
+  letter-spacing: var(--starpalace-title-letter-spacing);
+}
+
+.stats-bar-theme-button:hover {
+  border-color: var(--starpalace-accent);
+}
+
+.stats-bar-theme-label {
+  color: var(--starpalace-accent);
+  font-weight: 600;
+}
+
+.stats-bar-theme-caret {
+  color: var(--text-muted);
+  font-size: 9px;
+  margin-left: 2px;
+}
+
+.stats-bar-theme-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 240px;
+  background: rgba(8, 18, 36, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  list-style: none;
+  z-index: 95;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.stats-bar-theme-menu li { margin: 0; }
+
+.stats-bar-theme-menu button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stats-bar-theme-menu button:hover {
+  background: color-mix(in srgb, var(--starpalace-accent) 14%, transparent);
+}
+
+.stats-bar-theme-menu button[aria-current="true"] {
+  background: color-mix(in srgb, var(--starpalace-accent) 18%, transparent);
+}
+
+.stats-bar-theme-menu-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--starpalace-accent);
+}
+
+.stats-bar-theme-menu-desc {
+  font-size: 10.5px;
+  color: var(--text-muted);
 }
 
 /* Cheatsheet panel */
