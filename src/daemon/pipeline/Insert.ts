@@ -11,6 +11,30 @@ import type { WalkOptions } from '../index/walker'
 import type { UsageMetadata } from '../index/usageMetadata'
 import { computeImportanceScore } from './importanceScore'
 
+// F17 — minimum gap between progress emits. Walker tries to fire after every
+// file but coalesces events that land inside the same 100 ms window so a
+// 1500-file index doesn't flood the SSE channel. The final-frame emit on
+// completion bypasses this.
+const PROGRESS_THROTTLE_MS = 100
+
+// F17 — pluggable progress reporter. Pipeline-side stays unaware of SSE /
+// transport so unit tests can pass a no-op reporter (or capture calls) and
+// the daemon can wire the live progressStore through `index.ts`.
+export interface ProgressReporter {
+  // Per-file tick. Pipeline emits with the latest counters and the path it's
+  // currently working on; reporter decides whether to forward to subscribers.
+  tick(payload: {
+    scanned: number
+    indexed: number
+    skipped: number
+    errors: number
+    currentPath: string
+  }): void
+  // Cooperative cancel check. Returning true tells the walker to stop after
+  // the current file commits (no in-flight rollback).
+  shouldCancel(): boolean
+}
+
 export interface InsertPipelineOptions {
   db: FileIndex
   hnsw: HnswIndex
@@ -20,13 +44,17 @@ export interface InsertPipelineOptions {
   // F9: when set, every file inserted by this run is assigned to this galaxy
   // and its file ID is salted with the galaxy id (see fileIdFromPath).
   galaxyId?: number
+  // F17: optional progress hook. Unset for legacy callers (CLI script + tests
+  // that just want stats). When set, pipeline calls `tick()` per file and
+  // honors `shouldCancel()` for early termination.
+  progress?: ProgressReporter
 }
 
 export async function indexPath(
   rootPath: string,
   opts: InsertPipelineOptions
 ): Promise<WalkStats> {
-  const { db, hnsw, embedEngine, relayouter, galaxyId } = opts
+  const { db, hnsw, embedEngine, relayouter, galaxyId, progress } = opts
   const start = Date.now()
   const stats: WalkStats = { scanned: 0, indexed: 0, skipped: 0, errors: 0, durationMs: 0 }
 
@@ -38,7 +66,25 @@ export async function indexPath(
   }
   const walker = await walkDirectory(rootPath, walkOpts)
 
+  // F17 — local throttle wrapper. Reporter still runs on every walker step
+  // (so cancel checks are responsive) but `tick()` is debounced to ~10 Hz.
+  let lastEmitAt = 0
+  function maybeEmit(currentPath: string, force = false): void {
+    if (!progress) return
+    const now = Date.now()
+    if (!force && now - lastEmitAt < PROGRESS_THROTTLE_MS) return
+    lastEmitAt = now
+    progress.tick({
+      scanned: stats.scanned,
+      indexed: stats.indexed,
+      skipped: stats.skipped,
+      errors: stats.errors,
+      currentPath,
+    })
+  }
+
   for await (const { node, content, usage } of walker) {
+    if (progress?.shouldCancel()) break
     stats.scanned++
     try {
       await insertOne(node, content, { db, hnsw, embedEngine, relayouter, galaxyId, usage })
@@ -47,6 +93,7 @@ export async function indexPath(
       stats.errors++
       console.error(`Error indexing ${node.path}:`, err)
     }
+    maybeEmit(node.path)
   }
 
   // Check if this batch crossed the layout threshold for the first time

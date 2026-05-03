@@ -14,6 +14,8 @@ import { PC_COUNT } from './layout/Pca'
 import { projectOnAxis } from './math/pinMath'
 import { LAYOUT_THRESHOLD } from '../shared/types'
 import { indexPath } from './pipeline/Insert'
+import { progressStore } from './index/progressStore'
+import type { ProgressState } from './index/progressStore'
 import type { MapStats, ViewportResult, SearchResult, FileContent, StarType, CollectionKind } from '../shared/types'
 import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES, isStarType } from '../shared/types'
 
@@ -101,21 +103,132 @@ app.get('/api/health', async (_req, res) => {
 // F9: a request body with `galaxyName` creates / reuses that named galaxy.
 // Without one we default to basename(path) so each indexed root becomes its
 // own galaxy automatically.
-app.post('/api/index', async (req, res) => {
+//
+// F17 — non-blocking: the response returns `{ jobId, galaxyId, galaxyName }`
+// synchronously so the renderer can subscribe to `/api/index/progress` before
+// the walker has emitted its first event. The actual walk runs detached; final
+// stats arrive on the SSE stream's terminal frame (status='done'). This
+// breaks the previous behaviour of returning `{ scanned, indexed, ... }` from
+// the POST itself — callers (CLI script in particular) now read final stats
+// via SSE or poll `progressStore.get(jobId)`.
+app.post('/api/index', (req, res) => {
   const { path: rootPath, galaxyName } = req.body as { path?: string; galaxyName?: string }
   if (!rootPath) return res.status(400).json({ error: 'path required' })
+
+  const fallbackName = basename(rootPath) || rootPath
+  const name = ((galaxyName ?? '').trim() || fallbackName).slice(0, 80)
+  let galaxy
   try {
-    const fallbackName = basename(rootPath) || rootPath
-    const name = ((galaxyName ?? '').trim() || fallbackName).slice(0, 80)
-    const galaxy = db.getOrCreateGalaxy(rootPath, name)
-    const stats = await indexPath(rootPath, {
-      db, hnsw, embedEngine, relayouter, galaxyId: galaxy.id,
-    })
-    hnsw.save()
-    res.json({ ...stats, galaxyId: galaxy.id, galaxyName: galaxy.name })
+    galaxy = db.getOrCreateGalaxy(rootPath, name)
   } catch (err) {
-    res.status(500).json({ error: String(err) })
+    return res.status(500).json({ error: String(err) })
   }
+
+  // Register the job + capture the jobId BEFORE returning so the renderer can
+  // open the SSE connection knowing the store has an entry. The walk itself
+  // runs after the response — see the .then() chain below.
+  const jobId = progressStore.start({ galaxyId: galaxy.id, galaxyName: galaxy.name })
+
+  // Detach: don't await. Errors land in the progressStore as the terminal
+  // 'error' frame so SSE subscribers see the failure cause.
+  void indexPath(rootPath, {
+    db, hnsw, embedEngine, relayouter, galaxyId: galaxy.id,
+    progress: {
+      tick: payload => progressStore.update(jobId, payload),
+      shouldCancel: () => progressStore.isCancelled(jobId),
+    },
+  }).then(stats => {
+    hnsw.save()
+    const cancelled = progressStore.isCancelled(jobId)
+    progressStore.finish(jobId, {
+      status: cancelled ? 'cancelled' : 'done',
+      scanned: stats.scanned,
+      indexed: stats.indexed,
+      skipped: stats.skipped,
+      errors: stats.errors,
+      total: stats.scanned,  // by walk-end, total === scanned
+    })
+  }).catch(err => {
+    progressStore.finish(jobId, {
+      status: 'error',
+      errorMessage: String(err),
+    })
+  })
+
+  res.json({ jobId, galaxyId: galaxy.id, galaxyName: galaxy.name })
+})
+
+// --- F17: SSE progress stream for a single index job ---
+// Subscribes to progressStore and streams every state mutation as a JSON
+// payload over Server-Sent Events. Stream terminates when the job hits a
+// terminal status (done / error / cancelled) or after PROGRESS_IDLE_TIMEOUT_MS
+// of no updates (defensive backstop in case the walker hangs).
+const PROGRESS_IDLE_TIMEOUT_MS = 60_000
+
+app.get('/api/index/progress', (req, res) => {
+  const jobId = (req.query.jobId as string | undefined) ?? ''
+  if (!jobId) return res.status(400).json({ error: 'jobId required' })
+
+  const initial = progressStore.get(jobId)
+  if (!initial) return res.status(404).json({ error: 'unknown jobId' })
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')  // disable nginx buffering if reverse-proxied
+  res.flushHeaders?.()
+
+  let closed = false
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+  function send(state: ProgressState): void {
+    if (closed) return
+    res.write(`data: ${JSON.stringify(state)}\n\n`)
+  }
+
+  function close(): void {
+    if (closed) return
+    closed = true
+    if (idleTimer) clearTimeout(idleTimer)
+    unsubscribe()
+    try { res.end() } catch { /* already torn down */ }
+  }
+
+  function bumpIdle(): void {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = setTimeout(close, PROGRESS_IDLE_TIMEOUT_MS)
+    if (typeof idleTimer.unref === 'function') idleTimer.unref()
+  }
+
+  // Push the current state as the first frame so a late subscriber doesn't
+  // sit blank until the next walker tick.
+  send(initial)
+  bumpIdle()
+  if (initial.status !== 'running') {
+    // Job already finished before the subscriber arrived (cleanup hasn't run
+    // yet). Send the terminal frame, then close.
+    setImmediate(close)
+  }
+
+  const unsubscribe = progressStore.subscribe(jobId, state => {
+    send(state)
+    bumpIdle()
+    if (state.status !== 'running') setImmediate(close)
+  })
+
+  req.on('close', close)
+  req.on('error', close)
+})
+
+// --- F17: cancel an in-flight index job ---
+// Flips the cooperative abort flag in the progressStore. The walker checks it
+// between files; in-flight per-file work completes (so we never leave a
+// half-written DB row), then the loop breaks and `progressStore.finish` runs
+// with status='cancelled'.
+app.delete('/api/index/progress/:jobId', (req, res) => {
+  const ok = progressStore.cancel(req.params.jobId)
+  if (!ok) return res.status(404).json({ error: 'unknown or already-finished jobId' })
+  res.json({ ok: true })
 })
 
 // --- Galaxies (F9) ---

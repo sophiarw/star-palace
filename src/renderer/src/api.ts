@@ -147,17 +147,17 @@ export async function fetchGalaxies(): Promise<GalaxySummary[]> {
   return data.galaxies
 }
 
-export interface IndexResult {
-  scanned: number
-  indexed: number
-  skipped: number
-  errors: number
-  durationMs: number
-  galaxyId?: number
-  galaxyName?: string
+// F17 — `POST /api/index` is now non-blocking; it returns synchronously with
+// a `jobId` so the renderer can subscribe to `/api/index/progress?jobId=…`
+// before the walker fires its first event. Final stats (scanned/indexed/...)
+// arrive on the SSE stream's terminal frame, not the POST response.
+export interface IndexJobHandle {
+  jobId: string
+  galaxyId: number
+  galaxyName: string
 }
 
-export async function indexPath(path: string, galaxyName?: string): Promise<IndexResult> {
+export async function startIndex(path: string, galaxyName?: string): Promise<IndexJobHandle> {
   const res = await fetch(`${BASE}/api/index`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -165,9 +165,44 @@ export async function indexPath(path: string, galaxyName?: string): Promise<Inde
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`indexPath: ${res.status} ${text}`)
+    throw new Error(`startIndex: ${res.status} ${text}`)
   }
   return res.json()
+}
+
+// F17 — DELETE the live progress entry to cooperatively cancel the walker.
+export async function cancelIndex(jobId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/index/progress/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE',
+  })
+  // Treat 404 as success — the job already finished or was never created;
+  // either way the UI's intent ("stop indexing") is satisfied.
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`cancelIndex: ${res.status}`)
+  }
+}
+
+// F17 — SSE event payload mirrors ProgressState in the daemon.
+export interface IndexProgressEvent {
+  jobId: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  scanned: number
+  indexed: number
+  skipped: number
+  errors: number
+  total: number | null
+  currentPath: string | null
+  startedAt: number
+  lastUpdateAt: number
+  finishedAt: number | null
+  errorMessage: string | null
+  galaxyId: number | null
+  galaxyName: string | null
+}
+
+export function indexProgressUrl(jobId: string): string {
+  const params = new URLSearchParams({ jobId })
+  return `${BASE}/api/index/progress?${params}`
 }
 
 // F5 — Collections
