@@ -56,10 +56,18 @@ export class OllamaClient {
   }
 }
 
-function truncateText(text: string): string {
-  if (Buffer.byteLength(text, 'utf8') <= MAX_TEXT_BYTES) return text
-  // truncate to MAX_TEXT_BYTES by char count (approximate; UTF-8 avg ~1.2 bytes/char)
-  return text.slice(0, MAX_TEXT_BYTES)
+// Truncate to at most MAX_TEXT_BYTES of UTF-8 bytes, ending on a codepoint
+// boundary. The previous implementation truncated by char count, which under-
+// or over-shot the byte budget on multi-byte scripts (CJK, emoji) and could
+// leave Ollama with a half-truncated codepoint at the tail.
+export function truncateText(text: string): string {
+  const buf = Buffer.from(text, 'utf8')
+  if (buf.length <= MAX_TEXT_BYTES) return text
+  let end = MAX_TEXT_BYTES
+  // Back up past any UTF-8 continuation byte (10xxxxxx) so the cut never
+  // bisects a multi-byte codepoint.
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
+  return buf.toString('utf8', 0, end)
 }
 
 export function cosine(a: Float32Array, b: Float32Array): number {

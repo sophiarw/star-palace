@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { OllamaClient, cosine, normalizeEmbedding } from '../../src/daemon/embedding/OllamaClient'
+import { OllamaClient, cosine, normalizeEmbedding, truncateText } from '../../src/daemon/embedding/OllamaClient'
 import { EmbeddingEngine } from '../../src/daemon/embedding/EmbeddingEngine'
-import { EMBED_DIM } from '../../src/shared/types'
+import { EMBED_DIM, MAX_TEXT_BYTES } from '../../src/shared/types'
 
 function makeEmbedding(dim = EMBED_DIM, seed = 1.0): Float32Array {
   const v = new Float32Array(dim)
@@ -84,6 +84,46 @@ describe('normalizeEmbedding', () => {
     const n = normalizeEmbedding(v)
     const norm = Math.sqrt(n.reduce((s, x) => s + x * x, 0))
     expect(norm).toBeCloseTo(1.0)
+  })
+})
+
+describe('truncateText', () => {
+  it('returns input unchanged when under the byte limit', () => {
+    const s = 'hello world'
+    expect(truncateText(s)).toBe(s)
+  })
+
+  it('cuts ASCII strictly to MAX_TEXT_BYTES', () => {
+    const s = 'a'.repeat(MAX_TEXT_BYTES + 100)
+    const out = truncateText(s)
+    expect(Buffer.byteLength(out, 'utf8')).toBe(MAX_TEXT_BYTES)
+  })
+
+  it('never bisects a multi-byte codepoint (emoji)', () => {
+    const emoji = '😀'  // 4 bytes in UTF-8
+    const s = emoji.repeat(Math.ceil(MAX_TEXT_BYTES / 4) + 10)
+    const out = truncateText(s)
+    const bytes = Buffer.byteLength(out, 'utf8')
+    expect(bytes).toBeLessThanOrEqual(MAX_TEXT_BYTES)
+    // Decoding must be lossless — no replacement chars introduced
+    expect(out).not.toContain('�')
+    // Re-encoding the decoded string yields the same bytes
+    expect(Buffer.from(out, 'utf8').length).toBe(bytes)
+  })
+
+  it('handles CJK script (3 bytes/char) cleanly', () => {
+    const s = '中'.repeat(Math.ceil(MAX_TEXT_BYTES / 3) + 5)
+    const out = truncateText(s)
+    expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(MAX_TEXT_BYTES)
+    expect(out).not.toContain('�')
+  })
+
+  it('cuts mixed ASCII + UTF-8 at a codepoint boundary', () => {
+    const head = 'a'.repeat(MAX_TEXT_BYTES - 2)
+    const tail = '😀😀😀'
+    const out = truncateText(head + tail)
+    expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(MAX_TEXT_BYTES)
+    expect(out).not.toContain('�')
   })
 })
 
