@@ -10,9 +10,13 @@ interface Props {
   onClose?: () => void
   onSubmit?: () => void
   inputRef?: React.RefObject<HTMLInputElement>
+  // F5 — bubble the live query text up so the CollectionsPanel can offer
+  // "Save current search as collection" with a sensible default name and so
+  // dynamic-collection creation can capture the query string.
+  onQueryChange?: (query: string) => void
 }
 
-export default function SearchBar({ value, onValueChange, onResults, onClear, onClose, onSubmit, inputRef }: Props) {
+export default function SearchBar({ value, onValueChange, onResults, onClear, onClose, onSubmit, inputRef, onQueryChange }: Props) {
   const [searching, setSearching] = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const internalRef = useRef<HTMLInputElement>(null)
@@ -28,6 +32,7 @@ export default function SearchBar({ value, onValueChange, onResults, onClear, on
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value
     onValueChange(q)
+    onQueryChange?.(q)
 
     if (debounce.current) clearTimeout(debounce.current)
 
@@ -47,12 +52,13 @@ export default function SearchBar({ value, onValueChange, onResults, onClear, on
         setSearching(false)
       }
     }, 300)
-  }, [onResults, onClear, onValueChange])
+  }, [onResults, onClear, onValueChange, onQueryChange])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       onValueChange('')
+      onQueryChange?.('')
       onClear()
       onClose?.()
       return
@@ -61,7 +67,7 @@ export default function SearchBar({ value, onValueChange, onResults, onClear, on
       e.preventDefault()
       onSubmit?.()
     }
-  }, [onClear, onClose, onSubmit, onValueChange])
+  }, [onClear, onClose, onSubmit, onValueChange, onQueryChange])
 
   return (
     <div className="search-bar">
