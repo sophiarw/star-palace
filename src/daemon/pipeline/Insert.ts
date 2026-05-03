@@ -9,6 +9,7 @@ import { K_NEAREST, ISOLATION_THRESHOLD } from '../../shared/types'
 import { walkDirectory } from '../index/walker'
 import type { WalkOptions } from '../index/walker'
 import type { UsageMetadata } from '../index/usageMetadata'
+import { computeImportanceScore } from './importanceScore'
 
 export interface InsertPipelineOptions {
   db: FileIndex
@@ -91,6 +92,14 @@ export async function insertOne(
 
   const pos = embedResult ? relayouter.projectOne(embedResult.embedding, node.id) : null
 
+  // F10 — resolve the usage signals once outside the tx so the same values
+  // feed both the upsert columns and the importance-score computation.
+  // Carry-forward when the walker didn't provide any (direct insertOne()
+  // callers like single-file API endpoints) so a re-index doesn't wipe a
+  // previously-recorded signal. Use ?? not || so 0 is preserved.
+  const effectiveOsUseCount = usage?.osUseCount ?? existing?.osUseCount ?? null
+  const effectiveOsLastUsed = usage?.osLastUsed ?? existing?.osLastUsed ?? null
+
   const writeAll = db.db.transaction(() => {
     db.upsert({
       id: node.id,
@@ -129,11 +138,18 @@ export async function insertOne(
       // elsewhere). When the caller didn't provide any (e.g. test paths
       // that build a node by hand), carry forward whatever the existing
       // row had so a re-index doesn't wipe a previously-recorded signal.
-      osUseCount: usage?.osUseCount ?? existing?.osUseCount ?? null,
-      osLastUsed: usage?.osLastUsed ?? existing?.osLastUsed ?? null,
-      // importance_score is computed in commit 4. For now it stays whatever
-      // the existing row had (NULL on first insert).
-      importanceScore: existing?.importanceScore ?? null,
+      osUseCount: effectiveOsUseCount,
+      osLastUsed: effectiveOsLastUsed,
+      // F10 — denormalised composite. Recomputed every walker pass (cheap;
+      // no embed call) so percentile buckets in the renderer stay current.
+      // Cloud-platform stars with no Spotlight + no atime degenerate to
+      // viewCount alone.
+      importanceScore: computeImportanceScore({
+        viewCount: existing?.viewCount ?? 0,
+        osUseCount: effectiveOsUseCount,
+        osLastUsed: effectiveOsLastUsed,
+        now,
+      }),
     })
 
     if (!embedResult) return
