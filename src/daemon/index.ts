@@ -153,9 +153,12 @@ app.post('/api/file/:id/open', async (req, res) => {
 })
 
 // --- Force relayout ---
-app.post('/api/relayout', async (_req, res) => {
+// Relayouter.train() is intentionally synchronous (PCA + DB tx run in-process)
+// so the handler doesn't need `await`; we keep the handler async only because
+// Express types tolerate it.
+app.post('/api/relayout', (_req, res) => {
   try {
-    await relayouter.train()
+    relayouter.train()
     hnsw.save()
     res.json({ ok: true, layoutVersion: relayouter.currentVersion, nodeCount: db.countWithEmbeddings() })
   } catch (err) {
