@@ -43,6 +43,7 @@ const SPRITE_HIGHLIGHT_PULSE = 0.35  // extra scale at pulse peak
 const SPRITE_SELECTED_SCALE = 2.0
 const SPRITE_SELECTED_BOOST_ALPHA = 0.6  // additive re-draw of sprite for brightness pop
 const SPRITE_NEIGHBOR_SCALE = 1.6
+const SPRITE_NEIGHBOR_BOOST_ALPHA = 0.35  // smaller pop than selected, so neighbors stay visible without competing
 const SEARCH_PULSE_MS = 200
 const CULL_MARGIN = 48
 const ZOOM_MAX = 100
@@ -512,6 +513,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         }
 
         if (isNeighbor && !isSelected) {
+          // Brightness boost: same additive sprite re-draw treatment as the selected
+          // star, lower alpha so the selected one still wins. Keeps neighbors as bright
+          // as the selected at every zoom level — without them, the selected star's
+          // halo dominates at high exposure and neighbors fade into the background.
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.globalAlpha = SPRITE_NEIGHBOR_BOOST_ALPHA * exposure
+          ctx.drawImage(sprite, sx - drawW / 2, sy - drawH / 2, drawW, drawH)
+
           ctx.globalCompositeOperation = 'source-over'
           ctx.strokeStyle = NEIGHBOR_RING_COLOR
           ctx.lineWidth = 1.5
