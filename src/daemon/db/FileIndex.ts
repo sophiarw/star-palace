@@ -14,6 +14,12 @@ export interface IndexedFile extends FileNode {
   viewCount: number
   isPinned: boolean
   starType: StarType | null
+  // F4: pin coefficients in embedding-delta space (all NULL until pinned).
+  pinAlpha: number | null
+  pinBeta: number | null
+  pinAxisA: number | null
+  pinAxisB: number | null
+  pinnedAt: number | null
 }
 
 export interface FileIndexOptions {
@@ -94,6 +100,25 @@ export class FileIndex {
       this.db.exec(`ALTER TABLE files ADD COLUMN star_type TEXT;`)
     }
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_star_type ON files(star_type);`)
+
+    // F4 — pin coefficients (embedding-delta). All NULL until the user pins
+    // a file. is_pinned existed pre-F4 (boot-time scaffold) so we leave it.
+    if (!this.hasColumn('files', 'pin_alpha')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN pin_alpha REAL;`)
+    }
+    if (!this.hasColumn('files', 'pin_beta')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN pin_beta REAL;`)
+    }
+    if (!this.hasColumn('files', 'pin_axis_a')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN pin_axis_a INTEGER;`)
+    }
+    if (!this.hasColumn('files', 'pin_axis_b')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN pin_axis_b INTEGER;`)
+    }
+    if (!this.hasColumn('files', 'pinned_at')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN pinned_at INTEGER;`)
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_is_pinned ON files(is_pinned);`)
   }
 
   private hasColumn(table: string, col: string): boolean {
@@ -175,6 +200,66 @@ export class FileIndex {
 
   setStarType(id: string, starType: StarType | null): void {
     this.db.prepare(`UPDATE files SET star_type = ? WHERE id = ?`).run(starType, id)
+  }
+
+  // F4 — pin/unpin. Atomic; overwrites any prior pin coefficients.
+  setPin(id: string, alpha: number, beta: number, axisA: number, axisB: number, at: number): void {
+    this.db.prepare(`
+      UPDATE files SET
+        is_pinned   = 1,
+        pin_alpha   = ?,
+        pin_beta    = ?,
+        pin_axis_a  = ?,
+        pin_axis_b  = ?,
+        pinned_at   = ?
+      WHERE id = ?
+    `).run(alpha, beta, axisA, axisB, at, id)
+  }
+
+  clearPin(id: string): void {
+    this.db.prepare(`
+      UPDATE files SET
+        is_pinned   = 0,
+        pin_alpha   = NULL,
+        pin_beta    = NULL,
+        pin_axis_a  = NULL,
+        pin_axis_b  = NULL,
+        pinned_at   = NULL
+      WHERE id = ?
+    `).run(id)
+  }
+
+  // F4 — list every currently-pinned file (used by Relayouter for sign-flip).
+  listPinned(): IndexedFile[] {
+    const rows = this.db.prepare(`SELECT * FROM files WHERE is_pinned = 1`).all() as DbRow[]
+    return rows.map(rowToFile)
+  }
+
+  // F4 — atomic per-file α/β rewrite, used after a PCA retrain when an axis
+  // sign-flipped. `flips[k] === -1` flips the sign on any pinned file whose
+  // pin_axis_a or pin_axis_b equals k. `flips[k] === 0` is "axis unstable"
+  // (close eigenvalues swapped order); leave the offset as-is and log.
+  applyPinSignFlips(flips: number[]): void {
+    if (flips.length === 0) return
+    const pinned = this.listPinned()
+    if (pinned.length === 0) return
+    const updateStmt = this.db.prepare(`
+      UPDATE files SET pin_alpha = ?, pin_beta = ? WHERE id = ?
+    `)
+    const tx = this.db.transaction(() => {
+      for (const f of pinned) {
+        if (f.pinAxisA === null || f.pinAxisB === null || f.pinAlpha === null || f.pinBeta === null) continue
+        const flipA = flips[f.pinAxisA] ?? 1
+        const flipB = flips[f.pinAxisB] ?? 1
+        if (flipA === 0 || flipB === 0) {
+          console.warn(`[F4] pin axis unstable for file ${f.id} (axisA=${f.pinAxisA} flip=${flipA}, axisB=${f.pinAxisB} flip=${flipB}); leaving offsets`)
+          continue
+        }
+        if (flipA === 1 && flipB === 1) continue  // no change
+        updateStmt.run(f.pinAlpha * flipA, f.pinBeta * flipB, f.id)
+      }
+    })
+    tx()
   }
 
   get(id: string): IndexedFile | null {
@@ -342,6 +427,11 @@ interface DbRow {
   view_count: number
   is_pinned: number
   star_type: string | null
+  pin_alpha: number | null
+  pin_beta: number | null
+  pin_axis_a: number | null
+  pin_axis_b: number | null
+  pinned_at: number | null
 }
 
 interface EdgeRow {
@@ -397,6 +487,11 @@ function rowToFile(row: DbRow): IndexedFile {
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
     starType: row.star_type as StarType | null,
+    pinAlpha: row.pin_alpha,
+    pinBeta: row.pin_beta,
+    pinAxisA: row.pin_axis_a,
+    pinAxisB: row.pin_axis_b,
+    pinnedAt: row.pinned_at,
   }
 }
 
@@ -420,6 +515,11 @@ function rowToStar(row: DbRow): Star {
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
     starType: row.star_type as StarType | null,
+    pinAlpha: row.pin_alpha,
+    pinBeta: row.pin_beta,
+    pinAxisA: row.pin_axis_a,
+    pinAxisB: row.pin_axis_b,
+    pinnedAt: row.pinned_at,
   }
 }
 

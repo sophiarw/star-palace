@@ -24,6 +24,11 @@ function makeFile(overrides: Partial<IndexedFile> = {}): Omit<IndexedFile, 'isSt
     viewCount: 0,
     isPinned: false,
     starType: null,
+    pinAlpha: null,
+    pinBeta: null,
+    pinAxisA: null,
+    pinAxisB: null,
+    pinnedAt: null,
     ...overrides,
   }
 }
@@ -133,5 +138,94 @@ describe('FileIndex', () => {
     // Re-upsert as if a re-index happened
     idx.upsert(makeFile({ id: 'tag2', path: '/t2', size: 200 }))
     expect(idx.get('tag2')!.starType).toBe('quasar')
+  })
+
+  it('round-trips pin coefficients via setPin/clearPin', () => {
+    idx.upsert(makeFile({ id: 'pin1', path: '/p1' }))
+    expect(idx.get('pin1')!.isPinned).toBe(false)
+    expect(idx.get('pin1')!.pinAlpha).toBeNull()
+
+    idx.setPin('pin1', 1.5, -2.3, 0, 1, 1234)
+    const pinned = idx.get('pin1')!
+    expect(pinned.isPinned).toBe(true)
+    expect(pinned.pinAlpha).toBeCloseTo(1.5)
+    expect(pinned.pinBeta).toBeCloseTo(-2.3)
+    expect(pinned.pinAxisA).toBe(0)
+    expect(pinned.pinAxisB).toBe(1)
+    expect(pinned.pinnedAt).toBe(1234)
+
+    idx.clearPin('pin1')
+    const unpinned = idx.get('pin1')!
+    expect(unpinned.isPinned).toBe(false)
+    expect(unpinned.pinAlpha).toBeNull()
+    expect(unpinned.pinBeta).toBeNull()
+    expect(unpinned.pinAxisA).toBeNull()
+    expect(unpinned.pinAxisB).toBeNull()
+    expect(unpinned.pinnedAt).toBeNull()
+  })
+
+  it('overwrites prior pin coefficients on re-pin', () => {
+    idx.upsert(makeFile({ id: 'pin2', path: '/p2' }))
+    idx.setPin('pin2', 1, 2, 0, 1, 100)
+    idx.setPin('pin2', 7, 8, 2, 3, 200)
+    const re = idx.get('pin2')!
+    expect(re.pinAlpha).toBeCloseTo(7)
+    expect(re.pinBeta).toBeCloseTo(8)
+    expect(re.pinAxisA).toBe(2)
+    expect(re.pinAxisB).toBe(3)
+    expect(re.pinnedAt).toBe(200)
+  })
+
+  it('listPinned returns only pinned files', () => {
+    idx.upsert(makeFile({ id: 'a', path: '/a' }))
+    idx.upsert(makeFile({ id: 'b', path: '/b' }))
+    idx.upsert(makeFile({ id: 'c', path: '/c' }))
+    idx.setPin('a', 1, 0, 0, 1, 1)
+    idx.setPin('c', 0, 1, 0, 1, 2)
+    const pinned = idx.listPinned()
+    expect(pinned).toHaveLength(2)
+    expect(pinned.map(f => f.id).sort()).toEqual(['a', 'c'])
+  })
+
+  it('applyPinSignFlips negates α/β when its axis flipped sign', () => {
+    idx.upsert(makeFile({ id: 'a', path: '/a' }))
+    idx.upsert(makeFile({ id: 'b', path: '/b' }))
+    idx.setPin('a', 3, 5, 0, 1, 1)  // α on axis 0, β on axis 1
+    idx.setPin('b', 7, 9, 2, 3, 2)  // α on axis 2, β on axis 3
+
+    // Flip axes 0 and 3; leave 1 and 2 alone
+    idx.applyPinSignFlips([-1, 1, 1, -1])
+
+    const fa = idx.get('a')!
+    expect(fa.pinAlpha).toBeCloseTo(-3)  // axis 0 flipped
+    expect(fa.pinBeta).toBeCloseTo(5)    // axis 1 stable
+
+    const fb = idx.get('b')!
+    expect(fb.pinAlpha).toBeCloseTo(7)   // axis 2 stable
+    expect(fb.pinBeta).toBeCloseTo(-9)   // axis 3 flipped
+  })
+
+  it('applyPinSignFlips skips unstable axes (flip == 0)', () => {
+    idx.upsert(makeFile({ id: 'u', path: '/u' }))
+    idx.setPin('u', 4, 6, 0, 1, 1)
+    // Axis 0 marked unstable; offsets must NOT be touched (best-effort policy)
+    idx.applyPinSignFlips([0, -1])
+    const f = idx.get('u')!
+    expect(f.pinAlpha).toBeCloseTo(4)
+    expect(f.pinBeta).toBeCloseTo(6)
+  })
+
+  it('upsert does not clear pin coefficients on re-index', () => {
+    idx.upsert(makeFile({ id: 'p', path: '/p' }))
+    idx.setPin('p', 1.1, 2.2, 0, 1, 99)
+    idx.upsert(makeFile({ id: 'p', path: '/p', size: 999 }))  // re-index
+    const f = idx.get('p')!
+    expect(f.isPinned).toBe(true)
+    expect(f.pinAlpha).toBeCloseTo(1.1)
+    expect(f.pinBeta).toBeCloseTo(2.2)
+    expect(f.pinAxisA).toBe(0)
+    expect(f.pinAxisB).toBe(1)
+    expect(f.pinnedAt).toBe(99)
+    expect(f.size).toBe(999)
   })
 })

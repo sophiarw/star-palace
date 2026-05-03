@@ -56,6 +56,11 @@ beforeAll(() => {
       viewCount: 0,
       isPinned: false,
       starType: null,
+      pinAlpha: null,
+      pinBeta: null,
+      pinAxisA: null,
+      pinAxisB: null,
+      pinnedAt: null,
     })
     hnsw.addPoint(emb, `seed${i}`)
   }

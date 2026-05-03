@@ -38,6 +38,12 @@ export interface Star extends FileNode {
   viewCount: number
   isPinned: boolean
   starType: StarType | null  // manual override; null = default cluster-hue rendering
+  // F4 — pin coefficients (embedding-delta). All NULL when not pinned.
+  pinAlpha: number | null
+  pinBeta: number | null
+  pinAxisA: number | null  // PC index 0..7 active at pin time (X)
+  pinAxisB: number | null  // PC index 0..7 active at pin time (Y)
+  pinnedAt: number | null
 }
 
 export const STAR_TYPES = [
