@@ -936,7 +936,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const canvas = canvasRef.current
     if (!canvas) return
     const w = canvas.clientWidth, h = canvas.clientHeight
-    const factor = e.deltaY < 0 ? 1.1 : 0.9
+    const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
     const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camRef.current.zoom * factor))
     // Zoom towards cursor

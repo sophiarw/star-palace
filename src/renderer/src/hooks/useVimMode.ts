@@ -29,9 +29,9 @@ interface UseVimModeOptions {
 
 // Velocity in screen pixels per second. StarMap divides by zoom so screen-
 // space pan speed stays constant regardless of how zoomed in the camera is.
-const PAN_VEL_SLOW = 600    // hjkl
-const PAN_VEL_FAST = 2400   // HJKL (4×)
-const ZOOM_FACTOR = 1.2
+const PAN_VEL_SLOW = 300    // hjkl
+const PAN_VEL_FAST = 1200   // HJKL (4×)
+const ZOOM_FACTOR = 1.1
 
 // Maps each pan key to its (vx, vy) contribution. Held keys sum, so
 // h+j → diagonal down-left.
