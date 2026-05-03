@@ -57,6 +57,9 @@ export const STAR_TYPES = [
   'red-giant',
   'blue-supergiant',
   'white-dwarf',
+  // F10 — sun-like middle-of-the-lifecycle star, sits between white-dwarf
+  // (small/cool) and red-giant (large/warm) in the usage-mode classifier.
+  'main-sequence',
   'neutron-star',
   'pulsar',
   'binary',
