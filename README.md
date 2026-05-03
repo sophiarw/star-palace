@@ -40,21 +40,40 @@ extensions like `.py`, `.csv`, `.yaml`, `.sql`, `.go`, `.rb`).
 
 ## Usage
 
+### Camera + selection
+
 | Action | How |
 |---|---|
-| Pan | Drag, or `h` / `j` / `k` / `l` (50 wu); `H J K L` (200 wu) |
+| Pan | Drag, or `h` / `j` / `k` / `l` (held = continuous); `H J K L` (4× speed) |
 | Zoom | Scroll wheel, or `+` / `-` |
 | Fit all stars | `gg` |
 | Fit selected cluster | `gh` |
 | Hover a star | See file metadata in the hover card |
 | Click / Enter | Select hovered star → DetailPanel opens with content + neighbors |
-| Search | Type in the search bar, or press `/` to focus it |
+| Search | `Cmd+F` / `Ctrl+F` to toggle the search bar (or click it) |
 | Cycle search results | `n` / `N` |
 | Open file in default app | `o` (selected star) |
+| Reveal in OS file explorer | `O` (capital — Finder / Explorer / file manager) |
 | Star-type dropdown | `t` (open) / `T` (cycle forward) |
-| PC dial (X/Y axes) | Top-left selectors — pick any two of the top 8 PCs |
+| Pin a star to a position | Shift + drag the hovered star |
 | Toggle cheatsheet | `?` |
-| Esc | Leave search / clear selection |
+| Toggle Collections sidebar | `c` |
+| Focus Galaxy panel path input | `i` |
+| Toggle perf overlay | `Shift+P` (FPS, p99, dropped frames — see [Performance](#performance)) |
+| Esc | Cancel pin-drag / leave search / clear selection / clear active collection |
+
+### Top bar (StatsBar)
+
+- **Color by** — `Type` uses the auto/manual star type; `Usage` buckets by the daemon's `importance_score`.
+- **Quality** — `Low` / `Med` / `High` / `Ultra` LOD setting. See [Performance](#performance).
+- **Theme** — dropdown picker. Ships with `jwst` (deep-space realism) and `vapor` (synthwave). Per-theme procedural drawers + chrome.
+
+### Panels
+
+- **PC dial** (top-left) — pick any two of the top 8 principal components for the X/Y axes. Layout is precomputed; flipping axes only re-projects, no re-train.
+- **Galaxy panel** (top-right) — index a folder as a galaxy; one row per indexed root with live progress, hide/show toggle, and "fly to" button.
+- **Collections sidebar** (left, toggle with `c`) — static (explicit member list) or dynamic (saved query) groups. Active collection draws a constellation-style hull on the map and dims non-members.
+- **DetailPanel** (right, opens on selection) — file content viewer (markdown / code / image), neighbor list, star-type override, pin/unpin, "remove from collection" when one is active.
 
 ## Index your own files
 
@@ -81,6 +100,51 @@ Daemon (port 7373)          Renderer (port 5173)
 ```
 
 See `CLAUDE.md` for internals, schema invariants, and extension guide.
+
+## Features
+
+Per-feature spec lives in `REQUIREMENTS.md` (search by `F<N>` ID). Quick index:
+
+| ID | Feature | Surface |
+|---|---|---|
+| F1 | Search pop + zoom-aware exposure | Search bar + camera animation |
+| F2 | Auto star types (extension → type) | StarMap + Type pill |
+| F3 | PC dial (top-8 components) | PCDial top-left |
+| F4 | Manual reposition + pin | Shift-drag a star; DetailPanel unpin |
+| F5 | Virtual collections (static + dynamic) | Collections sidebar (`c`) |
+| F6 | Vim mode | Cheatsheet (`?`) |
+| F8a/b | Procedural per-file graphics | Per-id sprite jitter, baked at draw time |
+| F9 | Galaxies (multi-root indexing) | Galaxy panel |
+| F10 | Usage-driven classification | StatsBar `Color by: Usage` |
+| F11 | Theme selector | StatsBar Theme dropdown |
+| F12 | Selection pulse animation | Selected star breathes |
+| F14 | Reveal in OS file explorer | `O` (capital) |
+| F15 | Reduced halo glow | Always-on |
+| F16 | Galaxy visibility toggle | Galaxy panel hide/show |
+| F17 | Live indexing progress (SSE) | Galaxy panel progress fill |
+
+## Performance
+
+The renderer ships an interactive perf overlay. Press `Shift+P` to toggle.
+Captured per frame: avg / p50 / p99 / worst ms, FPS, dropped frames (>33 ms),
+rAF-skipped count, **interacting-only** subset (mouse drag / vim pan / pin
+drag / wheel within 200 ms), and the visible-star count from the most
+recent draw. `reset` clears the buffer; `copy` puts a plain-text summary
+on the clipboard and dumps to console.
+
+Quality presets (StatsBar):
+
+| Quality | Far-star sprites | Far-star fallback | Pulsar/quasar beams | Backing-store DPR cap |
+|---|---|---|---|---|
+| `low` | cheap < 18 px | dot < 3 px | skip < 12 px | 1.0 |
+| `medium` | cheap < 12 px | sprite | skip < 8 px | 1.5 |
+| `high` (default) | cheap < 6 px | sprite | always | 2.0 |
+| `ultra` | always full | sprite | always | uncapped |
+
+Focused stars (selected / hovered / neighbor / search hit) always render
+at full quality regardless of preset, so the file you're acting on never
+degrades. CLAUDE.md has the implementation index (spatial grid, dirty-flag
+rAF, sprite LOD cache, position-delta refetch, idle prebuild, frame metrics).
 
 ## Development
 

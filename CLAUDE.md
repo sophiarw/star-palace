@@ -91,9 +91,41 @@ empty.
 
 ## Renderer hot-paths
 
-- `src/renderer/src/components/StarMap/StarMap.tsx` — canvas draw loop. Backing-store sized to `window.innerWidth × devicePixelRatio` so retina displays render crisp; mouse handlers read `canvas.clientWidth` (CSS pixels).
+- `src/renderer/src/components/StarMap/StarMap.tsx` — canvas draw loop. Backing-store sized to `window.innerWidth × effectiveDpr`; `effectiveDpr` is `min(window.devicePixelRatio, qualityCap)` (see [Renderer perf gates](#renderer-perf-gates)). Mouse handlers read `canvas.clientWidth` (CSS pixels).
 - `src/renderer/src/components/StarMap/coords.ts` — pure `worldToScreen`/`screenToWorld` (separated from StarMap so the math is unit-testable in node).
-- `src/renderer/src/hooks/useVimMode.ts` — keybindings: `h/j/k/l` pan, `gg` fit-all, `gh` fit-cluster, `n/N` cycle search hits, `o` open file, `t/T` star type, `?` cheatsheet, `/` focus search. The full table lives in `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx`.
+- `src/renderer/src/components/StarMap/spatialGrid.ts` — pure 100-world-unit cell grid; the draw loop iterates only cells overlapping the viewport instead of every star.
+- `src/renderer/src/hooks/useVimMode.ts` — keybindings. Full table lives in `src/renderer/src/components/Cheatsheet/Cheatsheet.tsx` and the README. Hovered-id is consumed via a `getHoveredId()` getter (the hovered id lives in a ref in `App.tsx` to avoid 60 Hz full-app re-renders during pan).
+
+## Renderer perf gates
+
+Index of the mechanisms that keep the canvas at 60 fps under user load. Each is wired into `StarMap.tsx`'s rAF loop unless noted.
+
+- **Spatial grid** — `spatialGrid.ts`. Built once per `stars` mutation; iterating cells in viewport bounds drops main + label passes from O(N) to O(visible_cells).
+- **Dirty-flag rAF gate** — `dirtyRef` + `lastCamSnapRef` in `StarMap.tsx`. Skips `draw()` when nothing changed and no continuous animation is running. Continuous = selection pulse, search pulse < 200 ms, any pulsar/quasar in scene, vim pan velocity, pin drag.
+- **Sprite LOD cache** — `sprites.ts`. `getStarSprite(...,  lod)` and `getTypedStarSprite(..., lod)` accept `'cheap' | 'full'`; cache key carries the lod suffix so both tiers coexist. Cheap default = halo+core only (skip diffraction spikes); cheap typed = per-type tinted halo+core, no procedural drawer.
+- **Quality-driven LOD swap** — `lodFor(spritePx, focused)` in the main pass. Focused stars (selected / hovered / neighbor / highlighted) are pinned to `'full'`. Quality table lives in the README.
+- **Far-out tiny-dot fallback** — at quality `low` and on-screen radius < 3 px, a 1.4-px arc fill replaces the sprite blit entirely.
+- **Backing-store DPR cap** — `resize()` in `StarMap.tsx` clamps `dpr = min(devicePixelRatio, qualityCap)`. `low`=1.0, `medium`=1.5, `high`=2.0, `ultra`=∞. Re-runs on quality flip.
+- **Position-delta refetch** — `GET /api/map/positions?since=N` (`src/daemon/index.ts`) returns only rows whose `layout_version > N`. Renderer (`App.tsx pollStats`) patches existing stars in place by id; unchanged rows keep their object identity so `rawStarsById` / `projectedStars` / `starsById` only rebuild moved entries.
+- **Idle sprite prebuild** — `requestIdleCallback` chain in the `stars` useEffect, 40 stars per tick. Spreads first-paint procedural-sprite cost off the main paint frame.
+- **Hover ref (no React state)** — `hoveredIdRef` in `App.tsx`; `useVimMode` consumes via `getHoveredId()`. Avoids 60+ Hz App re-renders on cursor motion.
+- **JWST nebula FBM cap** — `themes/jwst/drawers.ts`. Image-data buffer capped at 56² pixels; bilinear up-scale via `drawImage` to the sprite size. Dropped peak first-build cost ~60% with no visible change.
+- **Per-id memoised lookups** — `tempBucketCacheRef`, `jitterCacheRef` in `StarMap.tsx` so `tempBucketFor` / `defaultJitterFor` aren't re-hashed every visible frame.
+- **O(1) raw-stars id lookup** — `rawStarsById` in `App.tsx` replaces `stars.find` in `galaxyOffsetForStarId` and `projectedHighlights`.
+
+## Frame metrics + perf overlay
+
+- `src/renderer/src/lib/frameMetrics.ts` — module-level singleton, ring buffer of last 240 frame deltas. Written from the rAF loop once per drawn frame. `recordSkipped()` increments a separate counter for rAF-skipped (dirty=false) frames so we can see how often the gate fires. Tracks: delta ms, interacting flag (mouse drag / vim pan / pin drag / wheel within 200 ms — distinct from animation), most-recent visible-star count.
+- `snapshot()` derives FPS, p50 / p99 / worst ms, dropped (> 33 ms) count, interacting-only avg + p99.
+- `src/renderer/src/components/PerfOverlay/PerfOverlay.tsx` — fixed bottom-left overlay, polls snapshot every 250 ms. Toggle via `Shift+P` (registered in `App.tsx`; suppressed when an input has focus). `reset` clears the buffer; `copy` writes a plain-text summary to clipboard + console. Hidden by default — zero cost when off.
+
+## User-facing toggles (renderer)
+
+Each persists in `localStorage` under its own versioned key. All three follow the `useTheme.ts` pattern (corrupt values → default + clear).
+
+- `useGraphicsQuality.ts` — `low | medium | high | ultra`, default `high`. Drives every gate in [Renderer perf gates](#renderer-perf-gates).
+- `useTheme.ts` — `jwst | vapor`. Drives typed-sprite drawers and chrome (font, accent colour, optional canvas overlay).
+- `useClassificationMode.ts` — `type | usage`. `usage` routes `effectiveStarType` through `usageStarType.ts` percentile buckets on `importance_score`.
 
 ## Test runner caveat
 
