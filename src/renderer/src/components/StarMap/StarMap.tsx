@@ -1562,19 +1562,22 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       return
     }
 
-    // Hover detection
+    // Hover detection — O(visible cells) via the spatial grid instead of
+    // a linear scan over the full star list. At 6.9k stars × 60 mousemove
+    // events / s the linear scan was 30–300 ms / s of main-thread time
+    // during pan; bounded grid query trims it to a handful of cells.
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
     let closest: string | null = null
-    let closestDist = 25 / camRef.current.zoom  // pick radius in world units
-
-    for (const star of starsRef.current) {
+    const pickR = 25 / camRef.current.zoom  // world-unit pick radius
+    let closestDist = pickR
+    forEachStarInBounds(gridRef.current, wx - pickR, wy - pickR, wx + pickR, wy + pickR, star => {
       const dx = star.x - wx, dy = star.y - wy
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist < closestDist) {
-        closestDist = dist
+      const d2 = dx * dx + dy * dy
+      if (d2 < closestDist * closestDist) {
+        closestDist = Math.sqrt(d2)
         closest = star.id
       }
-    }
+    })
 
     setHoveredId(closest)
     if (closest) setHoverPos({ x: e.clientX, y: e.clientY })
@@ -1599,16 +1602,16 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const [wx, wy] = screenToWorld(e.clientX, e.clientY, camRef.current, w, h)
 
     let clicked: string | null = null
-    let closestDist = 20 / camRef.current.zoom
-
-    for (const star of starsRef.current) {
+    const pickR = 20 / camRef.current.zoom
+    let closestDist = pickR
+    forEachStarInBounds(gridRef.current, wx - pickR, wy - pickR, wx + pickR, wy + pickR, star => {
       const dx = star.x - wx, dy = star.y - wy
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist < closestDist) {
-        closestDist = dist
+      const d2 = dx * dx + dy * dy
+      if (d2 < closestDist * closestDist) {
+        closestDist = Math.sqrt(d2)
         clicked = star.id
       }
-    }
+    })
 
     onSelect(clicked)
   }, [onSelect])
