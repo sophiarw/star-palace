@@ -73,17 +73,31 @@ describe('StarPca', () => {
 
   it('scalePositions maps to [-range/2, range/2]', () => {
     const positions: [number, number][] = [[0, 0], [1, 1], [2, 2], [-1, -1]]
-    const scaled = scalePositions(positions, 1000)
+    const { scaled, params } = scalePositions(positions, 1000)
     const xs = scaled.map(([x]) => x)
     const ys = scaled.map(([, y]) => y)
     expect(Math.min(...xs)).toBeCloseTo(-500)
     expect(Math.max(...xs)).toBeCloseTo(500)
     expect(Math.min(...ys)).toBeCloseTo(-500)
     expect(Math.max(...ys)).toBeCloseTo(500)
+    expect(params.outputRange).toBe(1000)
+    expect(params.scale).toBeGreaterThan(0)
   })
 
   it('scalePositions handles empty input', () => {
-    expect(scalePositions([])).toEqual([])
+    const { scaled } = scalePositions([])
+    expect(scaled).toEqual([])
+  })
+
+  it('applyScale is the per-point form of scalePositions', async () => {
+    const { applyScale } = await import('../../src/daemon/layout/Pca')
+    const positions: [number, number][] = [[0, 0], [1, 1], [2, 2], [-1, -1]]
+    const { scaled, params } = scalePositions(positions, 1000)
+    for (let i = 0; i < positions.length; i++) {
+      const reapplied = applyScale(positions[i], params)
+      expect(reapplied[0]).toBeCloseTo(scaled[i][0])
+      expect(reapplied[1]).toBeCloseTo(scaled[i][1])
+    }
   })
 
   it('keeps top-PC_COUNT components when dim is large', () => {

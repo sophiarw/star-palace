@@ -1,5 +1,5 @@
 import type { FileIndex } from '../db/FileIndex'
-import { StarPca, scalePositions, type PcaModel } from './Pca'
+import { StarPca, scalePositions, applyScale, type PcaModel } from './Pca'
 import { recomputeClusters, updateClusterCentroids } from './clustering'
 import { detectSignFlips } from '../math/pinMath'
 import { LAYOUT_THRESHOLD, type ProjectionFile } from '../../shared/types'
@@ -33,10 +33,21 @@ export class Relayouter {
     return this.pca !== null
   }
 
-  // Project a single embedding using the current model (no re-fit)
+  // Project a single embedding using the current model (no re-fit). Applies
+  // the train-time scale transform when available so post-train inserts land
+  // in the same world-unit range as the training set instead of clustering at
+  // raw PCA scale near the origin.
   projectOne(embedding: Float32Array): [number, number] | null {
     if (!this.pca) return null
-    return this.pca.project(embedding)
+    const raw = this.pca.project(embedding)
+    const s = this.pca.scale
+    return s ? applyScale(raw, s) : raw
+  }
+
+  // True when the loaded model predates per-axis scale persistence and a
+  // one-shot retrain is needed to upgrade it. Daemon startup checks this.
+  get needsScaleMigration(): boolean {
+    return this.pca !== null && this.pca.scale === null
   }
 
   get componentCount(): number {
@@ -94,9 +105,13 @@ export class Relayouter {
       this.db.applyPinSignFlips(flips)
     }
 
-    // Project all and scale to [-500, 500]
+    // Project all and scale to [-500, 500]. Capture the linear transform on
+    // the PCA model so projectOne (single-file inserts after training) can
+    // apply the same transform — without it, post-train files land at raw
+    // PCA scale (~±1) and visually stack at the world origin.
     const rawPositions = embeddings.map(e => this.pca!.project(e))
-    const scaled = scalePositions(rawPositions, 1000)
+    const { scaled, params } = scalePositions(rawPositions, 1000)
+    this.pca.setScale(params)
 
     this.layoutVersion++
 

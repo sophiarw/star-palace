@@ -2,23 +2,46 @@ import { PCA } from 'ml-pca'
 
 export const PC_COUNT = 8
 
+export interface ScaleParams {
+  minX: number
+  minY: number
+  scale: number
+  outputRange: number
+}
+
 export interface PcaModel {
   components: number[][]  // [K x dim] eigenvectors (rows = PCs)
   mean: number[]          // [dim] column means
   componentCount: number
+  // Linear transform that mapped the training set into [-outputRange/2,
+  // outputRange/2]. Persisted so post-train inserts can apply the same
+  // transform to single embeddings (otherwise they'd land at raw PCA scale,
+  // ~±1, and stack at the world origin). Optional for back-compat: legacy
+  // models without scale trigger a one-shot retrain at daemon startup.
+  scale?: ScaleParams
 }
 
 export class StarPca {
   private components: number[][]
   private mean: number[]
+  private scaleParams: ScaleParams | null = null
 
-  private constructor(components: number[][], mean: number[]) {
+  private constructor(components: number[][], mean: number[], scale: ScaleParams | null = null) {
     this.components = components
     this.mean = mean
+    this.scaleParams = scale
   }
 
   get componentCount(): number {
     return this.components.length
+  }
+
+  get scale(): ScaleParams | null {
+    return this.scaleParams
+  }
+
+  setScale(s: ScaleParams): void {
+    this.scaleParams = s
   }
 
   static train(embeddings: Float32Array[]): StarPca {
@@ -91,6 +114,7 @@ export class StarPca {
       components: this.components,
       mean: this.mean,
       componentCount: this.components.length,
+      ...(this.scaleParams ? { scale: this.scaleParams } : {}),
     }
   }
 
@@ -103,15 +127,22 @@ export class StarPca {
     if (!payload.components || !payload.mean) {
       throw new Error('PcaModel missing components or mean')
     }
-    return new StarPca(payload.components, payload.mean)
+    return new StarPca(payload.components, payload.mean, payload.scale ?? null)
   }
+}
+
+export interface ScaledPositions {
+  scaled: [number, number][]
+  params: ScaleParams
 }
 
 export function scalePositions(
   positions: [number, number][],
   outputRange = 1000
-): [number, number][] {
-  if (positions.length === 0) return []
+): ScaledPositions {
+  if (positions.length === 0) {
+    return { scaled: [], params: { minX: 0, minY: 0, scale: 1, outputRange } }
+  }
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const [x, y] of positions) {
     if (x < minX) minX = x
@@ -122,8 +153,14 @@ export function scalePositions(
   const rangeX = maxX - minX || 1
   const rangeY = maxY - minY || 1
   const scale = outputRange / Math.max(rangeX, rangeY)
-  return positions.map(([x, y]) => [
-    (x - minX) * scale - outputRange / 2,
-    (y - minY) * scale - outputRange / 2,
-  ])
+  const params: ScaleParams = { minX, minY, scale, outputRange }
+  const scaled = positions.map<[number, number]>(([x, y]) => applyScale([x, y], params))
+  return { scaled, params }
+}
+
+export function applyScale(p: [number, number], s: ScaleParams): [number, number] {
+  return [
+    (p[0] - s.minX) * s.scale - s.outputRange / 2,
+    (p[1] - s.minY) * s.scale - s.outputRange / 2,
+  ]
 }

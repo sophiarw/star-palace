@@ -36,17 +36,26 @@ relayouter.loadExisting()
 
 // F3 migration: if persisted model has fewer than PC_COUNT components, retrain
 // once at startup so /api/map/projection can serve the full PC matrix.
-if (
+//
+// Scale migration: legacy PcaModel JSON predates per-axis scale persistence.
+// projectOne returns raw PCA values without that scale, so post-train inserts
+// would land at sub-unit coords (visually stacked at the world origin). One
+// retrain rewrites every position with the new transform and persists scale.
+const needsRetrain =
   relayouter.isReady &&
-  relayouter.componentCount < PC_COUNT &&
-  db.countWithEmbeddings() >= LAYOUT_THRESHOLD
-) {
-  console.log(`[F3] Upgrading PCA from ${relayouter.componentCount} → ${PC_COUNT} components…`)
+  db.countWithEmbeddings() >= LAYOUT_THRESHOLD &&
+  (relayouter.componentCount < PC_COUNT || relayouter.needsScaleMigration)
+
+if (needsRetrain) {
+  const reason = relayouter.componentCount < PC_COUNT
+    ? `components ${relayouter.componentCount} → ${PC_COUNT}`
+    : 'missing scale params'
+  console.log(`[layout] Retraining PCA (${reason})…`)
   try {
     relayouter.train()
-    console.log(`[F3] Upgrade complete (componentCount=${relayouter.componentCount}).`)
+    console.log(`[layout] Retrain complete.`)
   } catch (err) {
-    console.warn(`[F3] Upgrade failed: ${String(err)}`)
+    console.warn(`[layout] Retrain failed: ${String(err)}`)
   }
 }
 
