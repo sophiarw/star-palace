@@ -289,13 +289,17 @@ const TYPED_SCALE: Record<StarType, number> = {
 // misses per pan; this sizing keeps the working set resident across
 // pan/zoom and makes second theme flip ~free.
 //
-// F-NEXT-A — sprites now bake at effective DPR; a DPR=2 sprite uses 4× the
-// bytes of the previous DPR=1 bake. Halve entry cap to 2000 and raise byte
-// cap to 144 MB so the working set still fits at retina without unbounded
-// memory growth. The byte cap dominates at high DPR; entry cap dominates at
-// DPR=1 (e.g. external 1× monitor).
-const TYPED_CACHE_CAP = 2000
-const TYPED_CACHE_BYTE_CAP = 144 * 1024 * 1024
+// F-NEXT-A — sprites now bake at effective DPR; a DPR=2 sprite uses ~4×
+// the bytes of the previous DPR=1 bake. The plan's first cut halved the
+// entry cap (4000→2000) on the assumption byte cap would dominate, but in
+// practice the working set at retina with ~4.7k visible stars exceeded
+// both ceilings and the cache thrashed at ~38% hit rate (~115k misses per
+// pan). Restored entry cap to 4000 and bumped byte cap to 512 MB so the
+// full visible working set stays resident at DPR=2. Byte cap dominates at
+// retina (4000 × ~100 KB ≈ 400 MB), entry cap dominates at DPR=1 (e.g.
+// external 1× monitor) where each sprite is ~25 KB.
+const TYPED_CACHE_CAP = 4000
+const TYPED_CACHE_BYTE_CAP = 512 * 1024 * 1024
 const typedCache = new ThemeAwareSpriteCache<string>(TYPED_CACHE_CAP, TYPED_CACHE_BYTE_CAP)
 
 // Notify the cache when the active theme changes so its eviction loop
