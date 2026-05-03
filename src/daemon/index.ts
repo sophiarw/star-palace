@@ -448,16 +448,31 @@ app.post('/api/relayout', (_req, res) => {
 
 // --- Search ---
 app.post('/api/search', async (req, res) => {
-  const { query, limit } = req.body as { query?: string; limit?: number }
+  const { query, limit, collectionId } = req.body as { query?: string; limit?: number; collectionId?: number }
   if (!query) return res.status(400).json({ error: 'query required' })
 
   try {
+    // F5 — when collectionId is supplied, filter KNN hits to members of that
+    // collection before constructing SearchResult. We fetch the member set
+    // once and increase the KNN fetch by 5× so the post-filter still has a
+    // chance of returning `limit` hits when the collection is small relative
+    // to the corpus. Membership is bounded by collection_members rows so the
+    // multiplier stays cheap even at scale.
+    let memberSet: Set<string> | null = null
+    if (collectionId !== undefined && collectionId !== null) {
+      const coll = db.getCollection(collectionId)
+      if (!coll) return res.status(404).json({ error: 'collection not found' })
+      memberSet = new Set(db.getCollectionMembers(collectionId))
+    }
+
     const embedResult = await embedEngine.embed(query)
-    const k = limit ?? 20
+    const limitN = limit ?? 20
+    const k = memberSet ? limitN * 5 : limitN
     const knnResults = hnsw.searchKNN(embedResult.embedding, k)
 
     const results: SearchResult[] = []
     for (const r of knnResults) {
+      if (memberSet && !memberSet.has(r.id)) continue
       const file = db.get(r.id)
       if (!file || file.x === null || file.y === null) continue
       results.push({
@@ -468,6 +483,7 @@ app.post('/api/search', async (req, res) => {
         name: file.name,
         path: file.path,
       })
+      if (results.length >= limitN) break
     }
     res.json({ results })
   } catch (err) {
