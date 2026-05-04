@@ -161,6 +161,19 @@ export interface SearchResult {
   score: number
   name: string
   path: string
+  // F9 — galaxy id so non-renderer consumers can apply the per-galaxy
+  // origin offset; the renderer also reads this from /api/galaxies and
+  // joins on the result list.
+  galaxyId: number | null
+  // F4 — pin coefficients on the file at search time. The renderer's
+  // pcDial re-projects pinned files locally; surfacing the coefficients
+  // here lets non-renderer clients reproduce the visual location
+  // without a second round-trip. NULL when the file isn't pinned.
+  isPinned: boolean
+  pinAlpha: number | null
+  pinBeta: number | null
+  pinAxisA: number | null
+  pinAxisB: number | null
 }
 
 // F3/F4 — payload of `/api/map/projection`. One entry per file with an

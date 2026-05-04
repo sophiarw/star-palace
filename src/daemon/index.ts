@@ -75,6 +75,27 @@ export const app = express()
 app.use(cors())
 app.use(express.json({ limit: '5mb' }))
 
+// B10 — body-parser surfaces SyntaxError/PayloadTooLargeError as Express's
+// default HTML stack-trace page (which leaks absolute paths). Convert to a
+// small JSON 400 so clients get a stable contract.
+app.use((
+  err: { type?: string; status?: number; message?: string } | null,
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void => {
+  if (!err) return next()
+  if (err.type === 'entity.parse.failed') {
+    res.status(400).json({ error: 'invalid JSON body' })
+    return
+  }
+  if (err.type === 'entity.too.large') {
+    res.status(413).json({ error: 'request body too large' })
+    return
+  }
+  next(err)
+})
+
 // --- Health ---
 // Cache Ollama availability for OLLAMA_HEALTH_TTL_MS so the renderer's 10 s
 // poll doesn't fire a 3 s blocking probe every tick when Ollama is slow or
@@ -604,47 +625,114 @@ app.post('/api/relayout', (_req, res) => {
 
 // --- Search ---
 app.post('/api/search', async (req, res) => {
-  const { query, limit, collectionId } = req.body as { query?: string; limit?: number; collectionId?: number }
-  if (!query) return res.status(400).json({ error: 'query required' })
+  const body = req.body as { query?: unknown; limit?: unknown; collectionId?: unknown }
+
+  // B3, B5 — query must be a non-empty string. Anything else (arrays,
+  // numbers, booleans, objects, whitespace-only) is a 400, not a 500.
+  if (typeof body.query !== 'string' || body.query.trim() === '') {
+    return res.status(400).json({ error: 'query must be a non-empty string' })
+  }
+  const query = body.query
+
+  // B4, B6 — limit must be a non-negative integer if supplied.
+  let limitN = 20
+  if (body.limit !== undefined && body.limit !== null) {
+    if (typeof body.limit !== 'number' || !Number.isFinite(body.limit) ||
+        !Number.isInteger(body.limit) || body.limit < 0) {
+      return res.status(400).json({ error: 'limit must be a non-negative integer' })
+    }
+    limitN = body.limit
+  }
+
+  // B7 — collectionId must be a non-negative integer if supplied.
+  let collectionId: number | null = null
+  if (body.collectionId !== undefined && body.collectionId !== null) {
+    if (typeof body.collectionId !== 'number' || !Number.isInteger(body.collectionId) ||
+        body.collectionId < 0) {
+      return res.status(400).json({ error: 'collectionId must be a non-negative integer' })
+    }
+    collectionId = body.collectionId
+  }
 
   try {
-    // F5 — when collectionId is supplied, filter KNN hits to members of that
-    // collection before constructing SearchResult. We fetch the member set
-    // once and increase the KNN fetch by 5× so the post-filter still has a
-    // chance of returning `limit` hits when the collection is small relative
-    // to the corpus. Membership is bounded by collection_members rows so the
-    // multiplier stays cheap even at scale.
+    if (limitN === 0) return res.json({ results: [] })
+
     let memberSet: Set<string> | null = null
-    if (collectionId !== undefined && collectionId !== null) {
+    if (collectionId !== null) {
       const coll = db.getCollection(collectionId)
       if (!coll) return res.status(404).json({ error: 'collection not found' })
       memberSet = new Set(db.getCollectionMembers(collectionId))
     }
 
     const embedResult = await embedEngine.embed(query)
-    const limitN = limit ?? 20
-    const k = memberSet ? limitN * 5 : limitN
-    const knnResults = hnsw.searchKNN(embedResult.embedding, k)
+    const queryVec = embedResult.embedding
 
     const results: SearchResult[] = []
-    for (const r of knnResults) {
-      if (memberSet && !memberSet.has(r.id)) continue
-      const file = db.get(r.id)
-      if (!file || file.x === null || file.y === null) continue
-      results.push({
-        id: r.id,
-        x: file.x,
-        y: file.y,
-        score: 1 - r.distance,
-        name: file.name,
-        path: file.path,
-      })
-      if (results.length >= limitN) break
+    if (memberSet) {
+      // B1 — collection-scoped: score every member directly so members ranked
+      // deeper than the global HNSW's top-k still surface. Collections are
+      // bounded by their member count, so the dot-product loop is cheap even
+      // for the largest cohorts. Embeddings are L2-normalised (see
+      // EmbeddingEngine.embed) so the dot product equals cosine similarity.
+      const scored: { id: string; score: number }[] = []
+      for (const id of memberSet) {
+        const file = db.get(id)
+        if (!file || file.x === null || file.y === null || !file.embedding) continue
+        let dot = 0
+        const v = file.embedding
+        for (let i = 0; i < v.length; i++) dot += queryVec[i] * v[i]
+        scored.push({ id, score: dot })
+      }
+      scored.sort((a, b) => b.score - a.score)
+      for (const s of scored.slice(0, limitN)) {
+        const file = db.get(s.id)!
+        results.push({
+          id: s.id,
+          x: file.x!,
+          y: file.y!,
+          score: s.score,
+          name: file.name,
+          path: file.path,
+          galaxyId: file.galaxyId,
+          isPinned: file.isPinned,
+          pinAlpha: file.pinAlpha,
+          pinBeta: file.pinBeta,
+          pinAxisA: file.pinAxisA,
+          pinAxisB: file.pinAxisB,
+        })
+      }
+    } else {
+      const knnResults = hnsw.searchKNN(queryVec, limitN)
+      for (const r of knnResults) {
+        const file = db.get(r.id)
+        if (!file || file.x === null || file.y === null) continue
+        results.push({
+          id: r.id,
+          x: file.x,
+          y: file.y,
+          score: 1 - r.distance,
+          name: file.name,
+          path: file.path,
+          galaxyId: file.galaxyId,
+          isPinned: file.isPinned,
+          pinAlpha: file.pinAlpha,
+          pinBeta: file.pinBeta,
+          pinAxisA: file.pinAxisA,
+          pinAxisB: file.pinAxisB,
+        })
+        if (results.length >= limitN) break
+      }
     }
     res.json({ results })
   } catch (err) {
     res.status(500).json({ error: String(err) })
   }
+})
+
+// B11 — non-POST methods on /api/search should be 405, not Express's HTML 404.
+app.all('/api/search', (_req, res) => {
+  res.set('Allow', 'POST')
+  res.status(405).json({ error: 'method not allowed; use POST' })
 })
 
 // --- File metadata ---
