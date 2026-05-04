@@ -424,7 +424,7 @@ export default function App() {
     }
   }, [experimentPreview, rawStarsById, galaxyOffsetById, themeCtx.theme.ui.accentColor])
 
-  const { mode } = useVimMode({
+  const { mode, cycleSearch } = useVimMode({
     onAction: dispatchVimAction,
     onToggleSearch: handleToggleSearch,
     onEscape: handleEscape,
@@ -481,6 +481,10 @@ export default function App() {
           onClose={handleCloseSearch}
           onSubmit={handleHideSearch}
           collections={collections.collections}
+          // B12 — wire only when there are hits, so 'n'/'N' typed in an empty
+          // search bar (or before any results) still types literally.
+          onCycleNext={projectedHighlights.length > 0 ? () => cycleSearch(1) : undefined}
+          onCyclePrev={projectedHighlights.length > 0 ? () => cycleSearch(-1) : undefined}
         />
       )}
 

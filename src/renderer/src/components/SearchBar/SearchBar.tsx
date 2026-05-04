@@ -18,6 +18,14 @@ interface Props {
   // collection id. Optional so call sites without a collections cache (e.g.
   // tests) still compile.
   collections?: CollectionSummary[]
+  // B12 — when set, n / N inside the focused input cycle search hits
+  // instead of typing the literal letter into the query. Wired to the same
+  // cycle helper the global vim listener uses (single source of truth) so
+  // the index stays consistent across input-focused and bar-hidden modes.
+  // Caller passes undefined when no hits are present so 'n'/'N' as part of
+  // a query (e.g. "neutron") still types normally.
+  onCycleNext?: () => void
+  onCyclePrev?: () => void
 }
 
 // F5 — parse a leading `c:foo ` or `#foo ` token off a search string. The
@@ -45,7 +53,7 @@ function parsePrefix(raw: string): ParsedPrefix | null {
 
 export default function SearchBar({
   value, onValueChange, onResults, onClear, onClose, onSubmit, inputRef, onQueryChange,
-  collections,
+  collections, onCycleNext, onCyclePrev,
 }: Props) {
   const [searching, setSearching] = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -123,8 +131,19 @@ export default function SearchBar({
     if (e.key === 'Enter') {
       e.preventDefault()
       onSubmit?.()
+      return
     }
-  }, [onClear, onClose, onSubmit, onValueChange, onQueryChange])
+    // B12 — intercept n / N when the parent has search hits to cycle.
+    // preventDefault stops the input from accepting the keystroke;
+    // stopPropagation is unneeded because the window-level vim listener
+    // early-returns whenever an input is focused (useVimMode.ts:99-112),
+    // but we'd still call it if that ever changes.
+    if ((e.key === 'n' || e.key === 'N') && (onCycleNext || onCyclePrev)) {
+      e.preventDefault()
+      if (e.key === 'n') onCycleNext?.()
+      else onCyclePrev?.()
+    }
+  }, [onClear, onClose, onSubmit, onValueChange, onQueryChange, onCycleNext, onCyclePrev])
 
   // Badge: show the resolved collection (green) or the unresolved name (red)
   // so the user sees instantly whether their prefix actually filtered.

@@ -67,13 +67,18 @@ export function useVimMode({
   onToggleCheatsheet,
   onOpenTypeDropdown,
   onToggleCollections,
-}: UseVimModeOptions): { mode: VimMode; setMode: (m: VimMode) => void } {
+}: UseVimModeOptions): { mode: VimMode; setMode: (m: VimMode) => void; cycleSearch: (dir: 1 | -1) => void } {
   const [mode, setMode] = useState<VimMode>('normal')
   const modeRef = useRef<VimMode>('normal')
   const lastKeyRef = useRef<string>('')
   const lastKeyTimeRef = useRef<number>(0)
   const searchIndexRef = useRef<number>(-1)
   const heldPanKeysRef = useRef<Set<string>>(new Set())
+  // Latest highlight list, captured by ref so cycleSearch (called from
+  // outside the listener via the returned callback) sees the same payload
+  // the keyboard handler would.
+  const highlightsRef = useRef<{ id: string; x: number; y: number }[]>(searchHighlights)
+  highlightsRef.current = searchHighlights
 
   const setModeSync = useCallback((m: VimMode) => {
     modeRef.current = m
@@ -89,6 +94,19 @@ export function useVimMode({
   useEffect(() => {
     searchIndexRef.current = -1
   }, [highlightsKey])
+
+  // Single source of truth for n/N cycling. Both the window-level keyboard
+  // handler and the SearchBar's intercepted-input n/N path call this so the
+  // index never drifts between the two entry points.
+  const cycleSearch = useCallback((dir: 1 | -1) => {
+    const hits = highlightsRef.current
+    if (hits.length === 0) return
+    const len = hits.length
+    searchIndexRef.current = ((searchIndexRef.current + dir) % len + len) % len
+    const hit = hits[searchIndexRef.current]
+    onSelectStar(hit.id)
+    onAction({ type: 'panTo', wx: hit.x, wy: hit.y })
+  }, [onAction, onSelectStar])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -185,25 +203,14 @@ export function useVimMode({
             e.preventDefault()
             onEscape()
             break
-          case 'n': {
+          case 'n':
             e.preventDefault()
-            if (searchHighlights.length === 0) break
-            searchIndexRef.current = (searchIndexRef.current + 1) % searchHighlights.length
-            const hitN = searchHighlights[searchIndexRef.current]
-            onSelectStar(hitN.id)
-            onAction({ type: 'panTo', wx: hitN.x, wy: hitN.y })
+            cycleSearch(1)
             break
-          }
-          case 'N': {
+          case 'N':
             e.preventDefault()
-            if (searchHighlights.length === 0) break
-            const len = searchHighlights.length
-            searchIndexRef.current = ((searchIndexRef.current - 1) + len) % len
-            const hitPrev = searchHighlights[searchIndexRef.current]
-            onSelectStar(hitPrev.id)
-            onAction({ type: 'panTo', wx: hitPrev.x, wy: hitPrev.y })
+            cycleSearch(-1)
             break
-          }
           case 'Enter':
             e.preventDefault()
             if (getHoveredId() !== null) {
@@ -282,16 +289,15 @@ export function useVimMode({
         }
         if (key === 'n' || key === 'N') {
           e.preventDefault()
-          if (searchHighlights.length === 0) return
-          if (key === 'n') {
-            searchIndexRef.current = (searchIndexRef.current + 1) % searchHighlights.length
-          } else {
-            const len = searchHighlights.length
-            searchIndexRef.current = ((searchIndexRef.current - 1) + len) % len
-          }
-          const hit = searchHighlights[searchIndexRef.current]
-          onSelectStar(hit.id)
-          onAction({ type: 'panTo', wx: hit.x, wy: hit.y })
+          cycleSearch(key === 'n' ? 1 : -1)
+          return
+        }
+        // B8 — Enter selects the hovered star (cheatsheet promises this).
+        // Mirrors the normal-mode binding so the user can keep search
+        // highlights up after Cmd+F-hide and still grab a star with Enter.
+        if (key === 'Enter') {
+          e.preventDefault()
+          if (getHoveredId() !== null) onSelectHovered()
           return
         }
       }
@@ -336,12 +342,12 @@ export function useVimMode({
     getHoveredId,
     selectedId,
     selectedStar,
-    searchHighlights,
+    cycleSearch,
     onStarTypeChange,
     onToggleCheatsheet,
     onOpenTypeDropdown,
     onToggleCollections,
   ])
 
-  return { mode, setMode: setModeSync }
+  return { mode, setMode: setModeSync, cycleSearch }
 }
