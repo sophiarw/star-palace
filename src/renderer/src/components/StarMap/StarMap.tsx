@@ -1127,41 +1127,22 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.globalAlpha = exposure
 
       if (animType === 'pulsar') {
-        if (activeTheme.id === 'jwst') {
-          // JWST pulsar: gentle additive brightness pulse, no rotating beam.
-          // Slow sinusoid (~5 s period) on a soft halo, low depth so the
-          // star reads as "alive" without spinning. Per-id phase offset
-          // keeps neighbouring pulsars from beating in sync.
-          const PERIOD_S = 5
-          const phase = tNow * (Math.PI * 2 / PERIOD_S) + phaseOffset * Math.PI * 2
-          const pulse01 = 0.5 + 0.5 * Math.sin(phase)
-          const a = 0.10 + pulse01 * 0.20  // 0.10 .. 0.30, very gentle
-          const reach = r * 1.8
-          const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, reach)
-          grad.addColorStop(0,    `rgba(230,242,255,${a})`)
-          grad.addColorStop(0.5,  `rgba(170,210,255,${a * 0.4})`)
-          grad.addColorStop(1,    'rgba(120,170,240,0)')
-          ctx.fillStyle = grad
-          ctx.beginPath(); ctx.arc(sx, sy, reach, 0, Math.PI * 2); ctx.fill()
-        } else {
-          // Other themes keep the rotating-beam animation.
-          const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
-          const reach = r * 6
-          const dx = Math.cos(angle) * reach
-          const dy = Math.sin(angle) * reach
-          const grad = ctx.createLinearGradient(sx - dx, sy - dy, sx + dx, sy + dy)
-          grad.addColorStop(0, 'rgba(180,220,255,0)')
-          grad.addColorStop(0.45, 'rgba(220,235,255,0.55)')
-          grad.addColorStop(0.5, 'rgba(255,255,255,0.95)')
-          grad.addColorStop(0.55, 'rgba(220,235,255,0.55)')
-          grad.addColorStop(1, 'rgba(180,220,255,0)')
-          ctx.strokeStyle = grad
-          ctx.lineWidth = 1.4
-          ctx.beginPath()
-          ctx.moveTo(sx - dx, sy - dy)
-          ctx.lineTo(sx + dx, sy + dy)
-          ctx.stroke()
-        }
+        const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
+        const reach = r * 6
+        const dx = Math.cos(angle) * reach
+        const dy = Math.sin(angle) * reach
+        const grad = ctx.createLinearGradient(sx - dx, sy - dy, sx + dx, sy + dy)
+        grad.addColorStop(0, 'rgba(180,220,255,0)')
+        grad.addColorStop(0.45, 'rgba(220,235,255,0.55)')
+        grad.addColorStop(0.5, 'rgba(255,255,255,0.95)')
+        grad.addColorStop(0.55, 'rgba(220,235,255,0.55)')
+        grad.addColorStop(1, 'rgba(180,220,255,0)')
+        ctx.strokeStyle = grad
+        ctx.lineWidth = 1.4
+        ctx.beginPath()
+        ctx.moveTo(sx - dx, sy - dy)
+        ctx.lineTo(sx + dx, sy + dy)
+        ctx.stroke()
       } else {
         // quasar: two opposing jets shimmering on a vertical-ish axis with mild precession
         const baseAngle = Math.PI / 2 + Math.sin((tNow * 0.3 + phaseOffset) * Math.PI * 2) * 0.12
