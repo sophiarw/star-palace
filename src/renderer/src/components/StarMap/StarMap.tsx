@@ -1132,18 +1132,20 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.globalAlpha = exposure
 
       if (activeTheme.id === 'jwst' || activeTheme.id === 'vapor') {
-        // Gentle additive brightness pulse — replaces the rotating-beam
-        // animation. Slow sinusoid (~5 s period) on a soft halo, low depth
-        // so the star reads as "alive" without spinning. Per-id phase
+        // Slow additive brightness pulse — replaces the rotating-beam
+        // animation. Soft halo on ~4 s sinusoid; depth tuned so the
+        // breath survives the zoom-driven `globalAlpha = exposure`
+        // multiplier (which can drop to ~0.5 at fit-all on JWST/Vapor)
+        // and is still perceptible at moderate zoom. Per-id phase
         // offset keeps neighbouring pulsars from beating in sync.
-        const PERIOD_S = 5
+        const PERIOD_S = 4
         const phase = tNow * (Math.PI * 2 / PERIOD_S) + phaseOffset * Math.PI * 2
         const pulse01 = 0.5 + 0.5 * Math.sin(phase)
-        const a = 0.15 + pulse01 * 0.30  // 0.10 .. 0.30, very gentle
-        const reach = r * 1.8
+        const a = 0.22 + pulse01 * 0.45  // 0.22 .. 0.67 pre-exposure
+        const reach = r * 2.4
         const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, reach)
-        grad.addColorStop(0,    `rgba(230,242,255,${a})`)
-        grad.addColorStop(0.5,  `rgba(170,210,255,${a * 0.4})`)
+        grad.addColorStop(0,    `rgba(235,245,255,${a})`)
+        grad.addColorStop(0.5,  `rgba(170,210,255,${a * 0.45})`)
         grad.addColorStop(1,    'rgba(120,170,240,0)')
         ctx.fillStyle = grad
         ctx.beginPath(); ctx.arc(sx, sy, reach, 0, Math.PI * 2); ctx.fill()
