@@ -24,6 +24,7 @@ const SEARCH_BINDINGS: Binding[] = [
 
 const SELECTION_BINDINGS: Binding[] = [
   { key: 'Enter', desc: 'Select hovered star (or hide search bar when typing)' },
+  { key: '← / →', desc: 'Cycle selected star through its nearest neighbours' },
   { key: 'o', desc: 'Open selected in default app' },
   { key: 'O', desc: 'Reveal selected file in file explorer' },
   { key: 't', desc: 'Open star-type dropdown' },

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { Star, Cluster, MapStats, SearchResult, StarType, GalaxySummary } from '@shared/types'
 import { CONSTELLATION_PALETTE } from '@shared/types'
-import { fetchAll, fetchStats, fetchGalaxies, getCollection, fetchPositionsSince } from './api'
+import { fetchAll, fetchStats, fetchGalaxies, getCollection, fetchPositionsSince, fetchNeighborhood } from './api'
 import StarMap from './components/StarMap/StarMap'
 import SearchBar from './components/SearchBar/SearchBar'
 import StatsBar from './components/StatsBar/StatsBar'
@@ -326,6 +326,49 @@ export default function App() {
     setSelectedId(id)
   }, [])
 
+  // Left/Right arrow keys cycle through the selected star's nearest neighbours
+  // (the same list the DetailPanel shows under "Nearby stars"). The cycle is
+  // sticky: once entered via Right/Left, subsequent arrow presses stay within
+  // the original source's neighbourhood rather than walking the graph. Any
+  // other selection path (click, vim Enter, search auto-pan) resets the
+  // context — see the useEffect on `selectedId` below.
+  const neighborNavRef = useRef<{
+    sourceId: string | null
+    neighbors: string[]
+    idx: number
+  }>({ sourceId: null, neighbors: [], idx: 0 })
+
+  useEffect(() => {
+    if (!selectedId) {
+      neighborNavRef.current = { sourceId: null, neighbors: [], idx: 0 }
+      return
+    }
+    const ctx = neighborNavRef.current
+    const cycleList = ctx.sourceId ? [ctx.sourceId, ...ctx.neighbors] : []
+    if (cycleList[ctx.idx] === selectedId) {
+      // Came from our cycle helper; keep context intact.
+      return
+    }
+    // External selection: reset the context to the new source and refetch.
+    neighborNavRef.current = { sourceId: selectedId, neighbors: [], idx: 0 }
+    fetchNeighborhood(selectedId)
+      .then(h => {
+        if (neighborNavRef.current.sourceId !== selectedId) return
+        neighborNavRef.current.neighbors = h.neighbors.map(n => n.file.id)
+      })
+      .catch(() => { /* network blip; cycle just no-ops until next selection */ })
+  }, [selectedId])
+
+  const handleCycleNeighbor = useCallback((dir: 1 | -1) => {
+    const ctx = neighborNavRef.current
+    if (!ctx.sourceId) return
+    const list = [ctx.sourceId, ...ctx.neighbors]
+    if (list.length < 2) return
+    const newIdx = ((ctx.idx + dir) % list.length + list.length) % list.length
+    ctx.idx = newIdx
+    setSelectedId(list[newIdx])
+  }, [])
+
   const handleEscape = useCallback(() => {
     setSelectedId(null)
     setHighlights([])
@@ -438,6 +481,7 @@ export default function App() {
     onToggleCheatsheet: handleToggleCheatsheet,
     onOpenTypeDropdown: handleOpenTypeDropdown,
     onToggleCollections: handleToggleCollections,
+    onCycleNeighbor: handleCycleNeighbor,
   })
 
   const showEmpty = stars.length === 0

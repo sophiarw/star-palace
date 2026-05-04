@@ -32,6 +32,11 @@ interface UseVimModeOptions {
   // App owns the visibility state so it can also be toggled via the panel's
   // own close button.
   onToggleCollections: () => void
+  // Left / Right arrow keys cycle the selected star through its nearest
+  // neighbours (the same list shown in DetailPanel under "Nearby stars").
+  // Caller owns the cycle state + the underlying setSelectedId; the hook
+  // just forwards direction.
+  onCycleNeighbor: (dir: 1 | -1) => void
 }
 
 // Velocity in screen pixels per second. StarMap divides by zoom so screen-
@@ -67,6 +72,7 @@ export function useVimMode({
   onToggleCheatsheet,
   onOpenTypeDropdown,
   onToggleCollections,
+  onCycleNeighbor,
 }: UseVimModeOptions): { mode: VimMode; setMode: (m: VimMode) => void; cycleSearch: (dir: 1 | -1) => void } {
   const [mode, setMode] = useState<VimMode>('normal')
   const modeRef = useRef<VimMode>('normal')
@@ -202,6 +208,16 @@ export function useVimMode({
           case 'Escape':
             e.preventDefault()
             onEscape()
+            break
+          case 'ArrowRight':
+            // Cycle selected star through its nearest-neighbour list. No-op
+            // when nothing is selected.
+            e.preventDefault()
+            if (selectedId) onCycleNeighbor(1)
+            break
+          case 'ArrowLeft':
+            e.preventDefault()
+            if (selectedId) onCycleNeighbor(-1)
             break
           case 'n':
             e.preventDefault()
@@ -347,6 +363,7 @@ export function useVimMode({
     onToggleCheatsheet,
     onOpenTypeDropdown,
     onToggleCollections,
+    onCycleNeighbor,
   ])
 
   return { mode, setMode: setModeSync, cycleSearch }
