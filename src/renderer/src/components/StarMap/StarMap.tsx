@@ -283,16 +283,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
   // p99 125 ms in profiling). All consumers (rAF draw loop, vim
   // dispatcher, search auto-pan animation) read `camRef.current` directly.
   const camRef = useRef<Camera>({ cx: 0, cy: 0, zoom: 1 })
-  // Animated camera tween for `panTo` actions (vim n/N cycle, search auto-pan,
-  // galaxy fly-to). Lerps cam.cx/cy/zoom from a captured "from" pose to the
-  // requested target with ease-out cubic over ~280 ms so transitions feel
-  // smooth instead of teleporting. Cancelled by any user-initiated pan
-  // (velocity, mouse drag, wheel, fitAll/fitCluster).
-  const panTweenRef = useRef<{
-    fromCx: number; fromCy: number; fromZoom: number
-    toCx: number; toCy: number; toZoom: number
-    t0Ms: number; durMs: number
-  } | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 })
   const [edges, setEdges] = useState<Edge[]>([])
@@ -551,15 +541,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     if (vimAction.type === 'panVelocity') {
       // Velocity is in screen px/sec; the animation loop integrates it into
-      // camRef every frame (divided by zoom for world units). Cancels any
-      // tween so the user's keypress wins over an in-flight glide.
-      if (vimAction.vx !== 0 || vimAction.vy !== 0) panTweenRef.current = null
+      // camRef every frame (divided by zoom for world units).
       panVelRef.current = { vx: vimAction.vx, vy: vimAction.vy }
       return
     }
 
     if (vimAction.type === 'zoom') {
-      panTweenRef.current = null
       const c = camRef.current
       const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, c.zoom * vimAction.factor))
       camRef.current = { ...c, zoom: newZoom }
@@ -569,7 +556,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     if (vimAction.type === 'fitAll') {
       if (!canvas || currentStars.length === 0) return
-      panTweenRef.current = null
       const w = canvas.clientWidth, h = canvas.clientHeight
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
       for (const s of currentStars) {
@@ -592,7 +578,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       const clusterId = vimAction.clusterId
       const members = currentStars.filter(s => s.clusterId === clusterId)
       if (!canvas || members.length === 0) return
-      panTweenRef.current = null
       const w = canvas.clientWidth, h = canvas.clientHeight
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
       for (const s of members) {
@@ -613,19 +598,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
     if (vimAction.type === 'panTo') {
       // Optional zoom lets callers (e.g. galaxy "fly to") snap to a specific
-      // viewing zoom in addition to recentering. Seeds the tween rather than
-      // teleporting so n/N cycle + auto-pan transitions look like a quick
-      // glide from the current centred location.
+      // viewing zoom in addition to recentering.
       const c = camRef.current
       const z = vimAction.zoom !== undefined
         ? Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, vimAction.zoom))
         : c.zoom
-      panTweenRef.current = {
-        fromCx: c.cx, fromCy: c.cy, fromZoom: c.zoom,
-        toCx: vimAction.wx, toCy: vimAction.wy, toZoom: z,
-        t0Ms: performance.now(),
-        durMs: 280,
-      }
+      camRef.current = { ...c, cx: vimAction.wx, cy: vimAction.wy, zoom: z }
       dirtyRef.current = true
       return
     }
@@ -1577,23 +1555,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         }
       }
 
-      // Advance the panTo tween, if any. Per-frame ease-out cubic write to
-      // camRef. Skipped (and cancelled) when the user is actively panning so
-      // input always wins; cleared when the tween completes.
-      const tw = panTweenRef.current
-      if (tw && !hasVel) {
-        const t = Math.min(1, (tNow - tw.t0Ms) / tw.durMs)
-        const e = 1 - Math.pow(1 - t, 3)
-        camRef.current = {
-          cx: tw.fromCx + (tw.toCx - tw.fromCx) * e,
-          cy: tw.fromCy + (tw.toCy - tw.fromCy) * e,
-          zoom: tw.fromZoom + (tw.toZoom - tw.fromZoom) * e,
-        }
-        if (t >= 1) panTweenRef.current = null
-      } else if (tw && hasVel) {
-        panTweenRef.current = null
-      }
-
       // Dirty flag detection. Cam mutations done imperatively (mouse drag,
       // wheel, vim) don't go through React, so compare against the last
       // snapshot to detect them. Continuous animations force a redraw via
@@ -1609,8 +1570,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         pulseActive ||                                 // search highlight pulse
         visibleAnimatedCountRef.current > 0 ||         // pulsar/quasar beams in viewport
         hasVel ||                                      // vim pan velocity
-        pinDrag.current !== null ||                    // pin-drag preview
-        panTweenRef.current !== null                   // panTo glide in flight
+        pinDrag.current !== null                       // pin-drag preview
 
       // User-driven gestures, distinct from animation. The metric overlay
       // breaks out an interacting-only avg/p99 so the user can see whether
@@ -1743,7 +1703,6 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
 
     if (isDragging.current) {
-      panTweenRef.current = null  // user is taking over; abandon any tween
       const dx = e.clientX - lastMouse.current.x
       const dy = e.clientY - lastMouse.current.y
       lastMouse.current = { x: e.clientX, y: e.clientY }
