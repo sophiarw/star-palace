@@ -382,7 +382,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const buckets = bucketsRef.current
     for (const s of starsRef.current) {
       const t = effectiveStarType(s, mode, buckets)
-      if (t === 'pulsar') next.push(s)
+      if (t === 'pulsar' || t === 'quasar') next.push(s)
     }
     animatedStarsRef.current = next
     // Seed gate-count to corpus-total so the first frame after a mode flip
@@ -405,7 +405,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     const buckets = bucketsRef.current
     for (const s of stars) {
       const t = effectiveStarType(s, mode, buckets)
-      if (t === 'pulsar') animated.push(s)
+      if (t === 'pulsar' || t === 'quasar') animated.push(s)
       if (s.isPinned) pinned.push(s)
     }
     animatedStarsRef.current = animated
@@ -1103,15 +1103,10 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     // Count animated stars actually inside the viewport. The rAF gate uses
     // this (not the corpus-total) so a single PDF (→quasar) at the far end
     // of the map can't pin the dirty-flag gate open and prevent idle skip.
-    // Quasar overlay (additive jet flicker) was removed: it didn't dim with
-    // selection focus and didn't fit any theme's quasar drawer. Pulsar
-    // overlay is also gone for JWST + Vapor; instead a slow brightness
-    // pulse breathes the sprite. Other themes still get the rotating beam
-    // until each one is treated.
     let visibleAnimated = 0
     for (const star of animatedStarsRef.current) {
       const animType = effectiveStarType(star, activeMode, activeBuckets)
-      if (animType !== 'pulsar') continue
+      if (animType !== 'pulsar' && animType !== 'quasar') continue
       const [sx, sy] = worldToScreen(star.x, star.y, cam, w, h)
       if (sx < -cull || sx > w + cull || sy < -cull || sy > h + cull) continue
 
@@ -1119,7 +1114,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
         ? sizeBucketForImportance(star.importanceScore ?? 0)
         : sizeBucketFor(star.viewCount)
       const r = spriteCoreRadius(sb)
-      // Skip-and-don't-count if the on-screen overlay would be sub-perceivable.
+      // Skip-and-don't-count if the on-screen beam would be sub-perceivable.
       // The rAF gate reads visibleAnimatedCountRef so this also lets idle
       // skip when animations are present but invisibly small.
       if (r * drawScale < animSkipPx) continue
@@ -1131,36 +1126,55 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       ctx.globalCompositeOperation = 'lighter'
       ctx.globalAlpha = exposure
 
-      if (activeTheme.id === 'jwst' || activeTheme.id === 'vapor') {
-        // Gentle additive brightness pulse — replaces the rotating-beam
-        // animation. Slow sinusoid (~5 s period) on a soft halo, low depth
-        // so the star reads as "alive" without spinning. Per-id phase
-        // offset keeps neighbouring pulsars from beating in sync.
-        const PERIOD_S = 5
-        const phase = tNow * (Math.PI * 2 / PERIOD_S) + phaseOffset * Math.PI * 2
-        const pulse01 = 0.5 + 0.5 * Math.sin(phase)
-        const a = 0.15 + pulse01 * 0.30  // 0.10 .. 0.30, very gentle
-        const reach = r * 1.8
-        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, reach)
-        grad.addColorStop(0,    `rgba(230,242,255,${a})`)
-        grad.addColorStop(0.5,  `rgba(170,210,255,${a * 0.4})`)
-        grad.addColorStop(1,    'rgba(120,170,240,0)')
-        ctx.fillStyle = grad
-        ctx.beginPath(); ctx.arc(sx, sy, reach, 0, Math.PI * 2); ctx.fill()
+      if (animType === 'pulsar') {
+        if (activeTheme.id === 'jwst') {
+          // JWST pulsar: gentle additive brightness pulse, no rotating beam.
+          // Slow sinusoid (~5 s period) on a soft halo, low depth so the
+          // star reads as "alive" without spinning. Per-id phase offset
+          // keeps neighbouring pulsars from beating in sync.
+          const PERIOD_S = 5
+          const phase = tNow * (Math.PI * 2 / PERIOD_S) + phaseOffset * Math.PI * 2
+          const pulse01 = 0.5 + 0.5 * Math.sin(phase)
+          const a = 0.10 + pulse01 * 0.20  // 0.10 .. 0.30, very gentle
+          const reach = r * 1.8
+          const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, reach)
+          grad.addColorStop(0,    `rgba(230,242,255,${a})`)
+          grad.addColorStop(0.5,  `rgba(170,210,255,${a * 0.4})`)
+          grad.addColorStop(1,    'rgba(120,170,240,0)')
+          ctx.fillStyle = grad
+          ctx.beginPath(); ctx.arc(sx, sy, reach, 0, Math.PI * 2); ctx.fill()
+        } else {
+          // Other themes keep the rotating-beam animation.
+          const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
+          const reach = r * 6
+          const dx = Math.cos(angle) * reach
+          const dy = Math.sin(angle) * reach
+          const grad = ctx.createLinearGradient(sx - dx, sy - dy, sx + dx, sy + dy)
+          grad.addColorStop(0, 'rgba(180,220,255,0)')
+          grad.addColorStop(0.45, 'rgba(220,235,255,0.55)')
+          grad.addColorStop(0.5, 'rgba(255,255,255,0.95)')
+          grad.addColorStop(0.55, 'rgba(220,235,255,0.55)')
+          grad.addColorStop(1, 'rgba(180,220,255,0)')
+          ctx.strokeStyle = grad
+          ctx.lineWidth = 1.4
+          ctx.beginPath()
+          ctx.moveTo(sx - dx, sy - dy)
+          ctx.lineTo(sx + dx, sy + dy)
+          ctx.stroke()
+        }
       } else {
-        // Other themes still get the rotating beam.
-        const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
-        const reach = r * 6
-        const dx = Math.cos(angle) * reach
-        const dy = Math.sin(angle) * reach
+        // quasar: two opposing jets shimmering on a vertical-ish axis with mild precession
+        const baseAngle = Math.PI / 2 + Math.sin((tNow * 0.3 + phaseOffset) * Math.PI * 2) * 0.12
+        const reach = r * 5
+        const flicker = 0.55 + 0.4 * Math.sin((tNow * 1.7 + phaseOffset) * Math.PI * 2)
+        const dx = Math.cos(baseAngle) * reach
+        const dy = Math.sin(baseAngle) * reach
         const grad = ctx.createLinearGradient(sx - dx, sy - dy, sx + dx, sy + dy)
-        grad.addColorStop(0, 'rgba(180,220,255,0)')
-        grad.addColorStop(0.45, 'rgba(220,235,255,0.55)')
-        grad.addColorStop(0.5, 'rgba(255,255,255,0.95)')
-        grad.addColorStop(0.55, 'rgba(220,235,255,0.55)')
-        grad.addColorStop(1, 'rgba(180,220,255,0)')
+        grad.addColorStop(0, `rgba(180,140,255,0)`)
+        grad.addColorStop(0.5, `rgba(255,210,255,${flicker})`)
+        grad.addColorStop(1, `rgba(180,140,255,0)`)
         ctx.strokeStyle = grad
-        ctx.lineWidth = 1.4
+        ctx.lineWidth = 2
         ctx.beginPath()
         ctx.moveTo(sx - dx, sy - dy)
         ctx.lineTo(sx + dx, sy + dy)
