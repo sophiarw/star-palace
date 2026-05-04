@@ -130,6 +130,21 @@ export interface Theme {
    * opacity and corners shouldn't darken. Default `false`.
    */
   flatLighting?: boolean
+  /**
+   * Per-cluster `screen`-blended elliptical glow under the star pass. Default
+   * `true`. Themes whose aesthetic forbids soft halos (Atari 8-bit, Vapor's
+   * posterized CRT cells) set this to `false` so cluster centres render
+   * crisp against the backdrop instead of bloomed.
+   */
+  constellationHalos?: boolean
+  /**
+   * Theme-specific display labels for star types. The DetailPanel falls back
+   * to the global astronomy labels for any key the theme leaves unset, so a
+   * theme only needs to declare the types it renames. Bio → tide-pool
+   * creatures (anemone, coral bloom…); Lost → narrative props
+   * (astronaut, rusty ship…).
+   */
+  labels?: Partial<Record<StarType, string>>
   ui: ThemeUi
 }
 

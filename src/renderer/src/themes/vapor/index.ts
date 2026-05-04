@@ -22,6 +22,7 @@ export const vaporTheme: Theme = {
   background: vaporBackground,
   smoothing: 'off',
   postPass: vaporPostPass,
+  constellationHalos: false,
   ui: {
     accentColor: '#ff007a',  // hot pink
     fontStack: '"VT323", "Courier New", "Menlo", monospace',

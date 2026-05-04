@@ -21,6 +21,9 @@ export const lostBackground: ThemeBackground = {
   // Mid-tone fill so any sliver that escapes the overlay still reads
   // as deep space rather than the JWST slate.
   canvasFill: LOST_BG,
+  // The Lost sky is the vertical gradient + sparkle field; the JWST
+  // deep-field backdrop underneath would inject extraneous nebulae.
+  replacesBackdrop: true,
   overlay(ctx, w, h) {
     // Re-stamp the gradient under the existing scene so we sit over the
     // theme-picker's previous backdrop cache.

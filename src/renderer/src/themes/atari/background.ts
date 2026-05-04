@@ -23,6 +23,9 @@ function makeRng(seed: number): () => number {
 
 export const atariBackground: ThemeBackground = {
   canvasFill: ATARI_BG,
+  // The Atari sky is the navy fill + chunky pixel stars; rendering the
+  // deep-field deep-space backdrop underneath would leak JWST nebulae.
+  replacesBackdrop: true,
   overlay(ctx, w, h) {
     // Re-stamp under the clear pass so the deep-field cache (a JWST
     // artefact baked at boot time) doesn't bleed into the Atari sky.

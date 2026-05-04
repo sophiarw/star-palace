@@ -9,8 +9,9 @@ import {
   getTags, setTags as apiSetTags, reindexFile,
 } from '../../api'
 import { defaultStarType, defaultStarTypeReason } from '../StarMap/autoStarType'
+import type { Theme } from '../../themes/types'
 
-const STAR_TYPE_LABELS: Record<StarType, string> = {
+const ASTRONOMY_LABELS: Record<StarType, string> = {
   'red-giant': 'Red giant',
   'blue-supergiant': 'Blue supergiant',
   'white-dwarf': 'White dwarf',
@@ -23,6 +24,10 @@ const STAR_TYPE_LABELS: Record<StarType, string> = {
   'nebula': 'Nebula',
 }
 
+function labelForType(theme: Theme | undefined, type: StarType): string {
+  return theme?.labels?.[type] ?? ASTRONOMY_LABELS[type]
+}
+
 interface NeighborSummary {
   id: string
   name: string
@@ -33,6 +38,8 @@ interface Props {
   star: Star
   clusterColorIndex: number | null
   clusterMemberCount: number | null
+  /** Active theme — supplies per-theme star_type label overrides. */
+  theme?: Theme
   onClose: () => void
   onSelectNeighbor: (id: string) => void
   onStarTypeChange: (id: string, type: StarType | null) => void
@@ -75,6 +82,7 @@ export default function DetailPanel({
   star,
   clusterColorIndex,
   clusterMemberCount,
+  theme,
   onClose,
   onSelectNeighbor,
   onStarTypeChange,
@@ -212,11 +220,11 @@ export default function DetailPanel({
           onClick={() => setTypeOpen(!typeOpen)}
         >
           {star.starType
-            ? STAR_TYPE_LABELS[star.starType]
+            ? labelForType(theme, star.starType)
             : (() => {
                 const auto = defaultStarType(star.name, star.mimeType)
                 return auto
-                  ? `Default → ${STAR_TYPE_LABELS[auto]} (from ${defaultStarTypeReason(star.name)})`
+                  ? `Default → ${labelForType(theme, auto)} (from ${defaultStarTypeReason(star.name)})`
                   : 'Default (cluster hue)'
               })()}
           <span className="detail-panel-startype-caret">▾</span>
@@ -242,7 +250,7 @@ export default function DetailPanel({
                 {(() => {
                   const auto = defaultStarType(star.name, star.mimeType)
                   return auto
-                    ? `Default → ${STAR_TYPE_LABELS[auto]} (from ${defaultStarTypeReason(star.name)})`
+                    ? `Default → ${labelForType(theme, auto)} (from ${defaultStarTypeReason(star.name)})`
                     : 'Default (cluster hue)'
                 })()}
               </button>
@@ -264,7 +272,7 @@ export default function DetailPanel({
                   }}
                   aria-current={star.starType === t}
                 >
-                  {STAR_TYPE_LABELS[t]}
+                  {labelForType(theme, t)}
                 </button>
               </li>
             ))}

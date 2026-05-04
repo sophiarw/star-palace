@@ -530,6 +530,7 @@ export default function App() {
           star={selectedStar}
           clusterColorIndex={selectedCluster?.colorIndex ?? null}
           clusterMemberCount={selectedCluster?.memberCount ?? null}
+          theme={themeCtx.theme}
           onClose={() => setSelectedId(null)}
           onSelectNeighbor={(id) => setSelectedId(id)}
           onStarTypeChange={handleStarTypeChange}

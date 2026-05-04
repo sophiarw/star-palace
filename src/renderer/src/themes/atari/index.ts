@@ -17,6 +17,7 @@ export const atariTheme: Theme = {
   background: atariBackground,
   smoothing: 'off',
   dprCap: 1.0,
+  constellationHalos: false,
   ui: {
     accentColor: '#ffd23f',  // Atari yellow
     fontStack: '"Press Start 2P", "VT323", "Courier New", monospace',

@@ -7,10 +7,13 @@
 import type { ThemeBackground } from '../types'
 import { BIO } from './drawers'
 
-const WASH_COLORS = [
-  'rgba(95,210,192,0.05)',
-  'rgba(255,154,139,0.04)',
-  'rgba(155,124,216,0.04)',
+// RGBA tuples (peak-alpha at gradient center). Each wash is rendered as a
+// radial gradient that fades to alpha=0 at the rim, so overlapping ovals read
+// as soft watercolor washes instead of hard-edged grey ellipses.
+const WASH_COLORS: readonly [number, number, number, number][] = [
+  [95, 210, 192, 0.10],   // teal
+  [255, 154, 139, 0.08],  // coral
+  [155, 124, 216, 0.08],  // mauve
 ] as const
 
 function makeRng(seed: number): () => number {
@@ -25,6 +28,10 @@ export const bioBackground: ThemeBackground = {
   // Mid-tone of the diagonal wash so a sliver behind the overlay still
   // reads as deep tide-pool rather than the JWST slate.
   canvasFill: BIO.bg1,
+  // The Bio sky is the diagonal teal-into-navy gradient + watercolor washes
+  // + sparkles; the deep-field starfield underneath would clash with the
+  // organic mood.
+  replacesBackdrop: true,
   overlay(ctx, w, h) {
     // Re-stamp the diagonal gradient under the existing scene.
     ctx.save()
@@ -39,12 +46,28 @@ export const bioBackground: ThemeBackground = {
     const rng = makeRng(((w | 0) * 73856093) ^ ((h | 0) * 19349663) ^ 0xB10)
 
     // Watercolor wash ovals — large translucent shapes for paper feel.
+    // Each oval is a radial gradient with alpha=0 at the rim so the boundary
+    // never reads as a hard ellipse against the underlying scene.
     for (let i = 0; i < 5; i++) {
-      const c = WASH_COLORS[Math.floor(rng() * WASH_COLORS.length)]
-      ctx.fillStyle = c
+      const [r, g, b, a] = WASH_COLORS[Math.floor(rng() * WASH_COLORS.length)]
+      const cx = rng() * w
+      const cy = rng() * h
+      const rx = w * 0.34
+      const ry = h * 0.34
+      const angle = rng() * Math.PI
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate(angle)
+      ctx.scale(1, ry / rx)
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx)
+      grad.addColorStop(0, `rgba(${r},${g},${b},${a})`)
+      grad.addColorStop(0.55, `rgba(${r},${g},${b},${a * 0.55})`)
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`)
+      ctx.fillStyle = grad
       ctx.beginPath()
-      ctx.ellipse(rng() * w, rng() * h, w * 0.3, h * 0.3, rng() * Math.PI, 0, Math.PI * 2)
+      ctx.arc(0, 0, rx, 0, Math.PI * 2)
       ctx.fill()
+      ctx.restore()
     }
 
     // Sparkles — scale count with canvas area so big windows don't look

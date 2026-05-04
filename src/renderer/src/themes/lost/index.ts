@@ -17,6 +17,19 @@ export const lostTheme: Theme = {
   background: lostBackground,
   smoothing: 'high',
   flatLighting: true,
+  constellationHalos: false,
+  labels: {
+    'main-sequence': 'Astronaut',
+    'red-giant': 'Rusty ship',
+    'blue-supergiant': 'Rocket',
+    'white-dwarf': 'Satellite',
+    'neutron-star': 'Asteroid cluster',
+    'pulsar': 'Space lighthouse',
+    'binary': 'Two astronauts',
+    'quasar': 'Space jellyfish',
+    'black-hole': 'Wormhole',
+    'nebula': 'Debris field',
+  },
   ui: {
     accentColor: '#7ec8ff',  // visor-cyan
     fontStack: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',

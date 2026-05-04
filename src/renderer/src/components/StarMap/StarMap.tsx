@@ -841,35 +841,40 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
     }
     markEnd('03.vignette')
 
-    // Constellation nebulae — multi-stop gradients with subtle elliptical squish per cluster
+    // Constellation nebulae — multi-stop gradients with subtle elliptical
+    // squish per cluster. Themes that forbid soft halos (Atari, Vapor) opt
+    // out via `constellationHalos: false` so their crisp aesthetic isn't
+    // bloomed by a screen-blended glow under each cluster.
     markStart()
-    ctx.save()
-    ctx.globalCompositeOperation = 'screen'
-    for (const cluster of currentClusters) {
-      if (cluster.centroidX === null || cluster.centroidY === null) continue
-      const [sx, sy] = worldToScreen(cluster.centroidX, cluster.centroidY, cam, w, h)
-      const intrinsic = Math.sqrt(cluster.memberCount) * 25 * cam.zoom
-      const r = Math.sqrt(intrinsic * intrinsic + 20 * 20)  // soft floor near 20 px
-      const color = CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
-      const squish = 0.6 + ((cluster.id * 2654435761) >>> 0) % 100 / 250
-      const rot = (((cluster.id * 1664525) >>> 0) % 360) * Math.PI / 180
-      ctx.globalAlpha = exposure
+    if (activeTheme.constellationHalos !== false) {
       ctx.save()
-      ctx.translate(sx, sy)
-      ctx.rotate(rot)
-      ctx.scale(1, squish)
-      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r)
-      grad.addColorStop(0, color + '33')
-      grad.addColorStop(0.25, color + '1f')
-      grad.addColorStop(0.6, color + '10')
-      grad.addColorStop(1, 'transparent')
-      ctx.fillStyle = grad
-      ctx.beginPath()
-      ctx.arc(0, 0, r, 0, Math.PI * 2)
-      ctx.fill()
+      ctx.globalCompositeOperation = 'screen'
+      for (const cluster of currentClusters) {
+        if (cluster.centroidX === null || cluster.centroidY === null) continue
+        const [sx, sy] = worldToScreen(cluster.centroidX, cluster.centroidY, cam, w, h)
+        const intrinsic = Math.sqrt(cluster.memberCount) * 25 * cam.zoom
+        const r = Math.sqrt(intrinsic * intrinsic + 20 * 20)  // soft floor near 20 px
+        const color = CONSTELLATION_PALETTE[cluster.colorIndex % CONSTELLATION_PALETTE.length]
+        const squish = 0.6 + ((cluster.id * 2654435761) >>> 0) % 100 / 250
+        const rot = (((cluster.id * 1664525) >>> 0) % 360) * Math.PI / 180
+        ctx.globalAlpha = exposure
+        ctx.save()
+        ctx.translate(sx, sy)
+        ctx.rotate(rot)
+        ctx.scale(1, squish)
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r)
+        grad.addColorStop(0, color + '33')
+        grad.addColorStop(0.25, color + '1f')
+        grad.addColorStop(0.6, color + '10')
+        grad.addColorStop(1, 'transparent')
+        ctx.fillStyle = grad
+        ctx.beginPath()
+        ctx.arc(0, 0, r, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
       ctx.restore()
     }
-    ctx.restore()
     markEnd('04.clusters')
 
     // F5 — active-collection hull. Sits behind the star pass so members

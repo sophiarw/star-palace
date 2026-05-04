@@ -17,6 +17,19 @@ export const bioTheme: Theme = {
   background: bioBackground,
   smoothing: 'high',
   flatLighting: true,
+  constellationHalos: false,
+  labels: {
+    'main-sequence': 'Anemone',
+    'red-giant': 'Coral bloom',
+    'blue-supergiant': 'Jellyfish',
+    'white-dwarf': 'Sea urchin',
+    'neutron-star': 'Spores',
+    'pulsar': 'Angler light',
+    'binary': 'Twin flowers',
+    'quasar': 'Mantaray',
+    'black-hole': 'Carnivorous flower',
+    'nebula': 'Moss patch',
+  },
   ui: {
     accentColor: '#a8f0c8',  // mint
     fontStack: '"Instrument Serif", "Iowan Old Style", Georgia, serif',
