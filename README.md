@@ -201,6 +201,22 @@ the three gates above before every commit. Re-run
 `bash scripts/install-git-hooks.sh` if you ever need to reinstall it
 manually.
 
+### Graphics test bed
+
+Spin up a throwaway DB with one cluster per star type and side-by-side
+the renderer with the original pitch deck:
+
+```sh
+bash scripts/dev-audit.sh                # builds audit-corpus/, seeds an isolated daemon
+npm run dev:web                          # renderer talks to the audit daemon on :7373
+( cd docs && python3 -m http.server 8181 )   # serves the deck reference
+# → open http://localhost:8181/three-new-themes/index.html
+# → open http://localhost:5173/
+```
+
+Full guide: [`docs/graphics-test-bed.md`](docs/graphics-test-bed.md).
+Validation: `tests/graphics/auditCorpus.test.ts`.
+
 ## Configuration
 
 | Env var | Default | Purpose |

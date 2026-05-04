@@ -1,6 +1,8 @@
 node_modules/
 dist-web/
 dummy-corpus/
+audit-corpus/
+tiny-corpus-2/
 *.js.map
 .DS_Store
 .env
