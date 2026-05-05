@@ -4,7 +4,7 @@
   "description": "Persistent embedding-based 2D star map of your files",
   "scripts": {
     "dev:web": "vite --config vite.web.config.ts",
-    "dev:daemon": "tsx src/daemon/index.ts",
+    "dev:daemon": "tsx watch src/daemon/index.ts",
     "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit",
     "test": "vitest run",
