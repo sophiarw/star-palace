@@ -22,6 +22,7 @@ export type StrategyId =
   | 'metadata+content'
   | 'tags+metadata+content'
   | 'sampled-stats+metadata'
+  | 'path-only'
 
 export const STRATEGY_IDS: readonly StrategyId[] = [
   'content-only',
@@ -29,6 +30,7 @@ export const STRATEGY_IDS: readonly StrategyId[] = [
   'metadata+content',
   'tags+metadata+content',
   'sampled-stats+metadata',
+  'path-only',
 ] as const
 
 export const DEFAULT_STRATEGY: StrategyId = 'content-only'
@@ -195,6 +197,27 @@ const tagsPlusMetadataPlusContent: Strategy = {
   },
 }
 
+// Strip the home-directory prefix from `node.path` so the embedding input
+// isn't padded with bytes shared by every file in the corpus. Falls through
+// to the original absolute path on non-Unixy layouts where the regex doesn't
+// match.
+function relativePath(node: FileNode): string {
+  let p = node.path.replace(/^\/+/, '')
+  p = p.replace(/^(?:Users|home)\/[^/]+\//, '')
+  return p
+}
+
+const pathOnly: Strategy = {
+  id: 'path-only',
+  label: 'Path only (experimental)',
+  description:
+    'Embeds the file\'s relative path string, slashes preserved. Tests whether the PCA layout reproduces the directory tree.',
+  build(ctx) {
+    const p = relativePath(ctx.node)
+    return p.length > 0 ? p : null
+  },
+}
+
 const sampledStatsPlusMetadata: Strategy = {
   id: 'sampled-stats+metadata',
   label: 'Sampled stats + metadata',
@@ -219,4 +242,5 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
   'metadata+content': metadataPlusContent,
   'tags+metadata+content': tagsPlusMetadataPlusContent,
   'sampled-stats+metadata': sampledStatsPlusMetadata,
+  'path-only': pathOnly,
 }

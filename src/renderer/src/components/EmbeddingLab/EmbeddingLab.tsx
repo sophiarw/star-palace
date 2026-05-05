@@ -7,6 +7,9 @@ import {
   promoteExperiment,
   revertExperiment,
   listSnapshots,
+  prepareLabMix,
+  runLabMix,
+  releaseLabMix,
   type EmbeddingStrategy,
   type SnapshotSummary,
   type ExperimentPosition,
@@ -17,6 +20,11 @@ import { useIndexProgress } from '../../hooks/useIndexProgress'
 // B3 — minimum subdir size for an experiment. Mirrors B2's hard floor; if
 // B2 ships a different number this constant is the single point to update.
 const MIN_FILES_FOR_EXPERIMENT = 10
+
+// Channels exposed as live-mix sliders. Order = render order in the panel.
+const MIX_CHANNELS = ['path-only', 'content-only', 'metadata-only'] as const
+type MixChannel = (typeof MIX_CHANNELS)[number]
+const MIX_DEBOUNCE_MS = 60
 
 // How deeply to nest the subdir picker. Two segments past the galaxy root
 // keep the tree small enough to scan visually without an explorer-style
@@ -145,6 +153,20 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
   // same progress UI used during indexing. Cleared on terminal frame.
   const [promoteJobId, setPromoteJobId] = useState<string | null>(null)
   const promoteJobFinishedRef = useRef<string | null>(null)
+
+  // Live-mix workbench state. `prepId` is the daemon-side handle into the
+  // cached per-channel vectors; sliders mutate `mixWeights`, which a debounced
+  // effect feeds back into POST /api/embedding/lab/mix. Result lands on the
+  // shared preview overlay.
+  const [mixPrepId, setMixPrepId] = useState<string | null>(null)
+  const [mixWeights, setMixWeights] = useState<Record<MixChannel, number>>(() => ({
+    'path-only': 1,
+    'content-only': 1,
+    'metadata-only': 1,
+  }))
+  const [mixPreparing, setMixPreparing] = useState(false)
+  const [mixing, setMixing] = useState(false)
+  const mixDebounceRef = useRef<number | null>(null)
 
   const tree = useMemo(() => buildTree(stars), [stars])
   const flatNodes = useMemo(() => flattenTree(tree), [tree])
@@ -308,6 +330,90 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
       setBusySnapshotId(null)
     }
   }, [onPreview, loadSnapshots, loadStrategies, onMutated])
+
+  const handleMixPrepare = useCallback(async () => {
+    if (!scopePath) return
+    setMixPreparing(true)
+    setError(null)
+    setOkMsg(null)
+    try {
+      // Drop any existing workbench so we don't leak server memory.
+      if (mixPrepId) {
+        releaseLabMix(mixPrepId).catch(() => { /* best-effort */ })
+      }
+      const result = await prepareLabMix(scopePath, [...MIX_CHANNELS])
+      setMixPrepId(result.prepId)
+      setOkMsg(`Mix prepared (${result.count} files × ${result.channels.length} channels).`)
+    } catch (err) {
+      if (err instanceof HttpError) {
+        setError(`Mix prepare failed: ${err.message}`)
+      } else {
+        setError(`Mix prepare failed: ${String(err)}`)
+      }
+    } finally {
+      setMixPreparing(false)
+    }
+  }, [scopePath, mixPrepId])
+
+  const handleMixRelease = useCallback(async () => {
+    if (!mixPrepId) return
+    const id = mixPrepId
+    setMixPrepId(null)
+    onPreview(null)
+    try {
+      await releaseLabMix(id)
+    } catch {
+      /* best-effort */
+    }
+  }, [mixPrepId, onPreview])
+
+  // Debounced live mix. Fires whenever weights change (or after a fresh
+  // prepare lands a new prepId) so the slider drag feels continuous.
+  useEffect(() => {
+    if (!mixPrepId) return
+    if (mixDebounceRef.current !== null) {
+      window.clearTimeout(mixDebounceRef.current)
+    }
+    mixDebounceRef.current = window.setTimeout(() => {
+      void (async () => {
+        setMixing(true)
+        try {
+          const positions = await runLabMix(mixPrepId, mixWeights)
+          const ids = new Set<string>()
+          const map = new Map<string, [number, number]>()
+          for (const p of positions) {
+            ids.add(p.id)
+            map.set(p.id, [p.x, p.y])
+          }
+          onPreview({ snapshotId: `live-mix:${mixPrepId}`, ids, positions: map })
+        } catch (err) {
+          if (err instanceof HttpError) {
+            setError(`Mix failed: ${err.message}`)
+          } else {
+            setError(`Mix failed: ${String(err)}`)
+          }
+        } finally {
+          setMixing(false)
+        }
+      })()
+    }, MIX_DEBOUNCE_MS)
+    return () => {
+      if (mixDebounceRef.current !== null) {
+        window.clearTimeout(mixDebounceRef.current)
+        mixDebounceRef.current = null
+      }
+    }
+  }, [mixPrepId, mixWeights, onPreview])
+
+  // Free the workbench when the panel unmounts so the daemon can drop its
+  // cached vectors.
+  useEffect(() => {
+    return () => {
+      if (mixPrepId) {
+        releaseLabMix(mixPrepId).catch(() => { /* best-effort */ })
+      }
+    }
+  }, [mixPrepId])
 
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -476,6 +582,61 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
       >
         {running ? 'Running…' : 'Run experiment'}
       </button>
+
+      <section className="embedding-lab-section embedding-lab-mix">
+        <div className="embedding-lab-section-label">
+          Live mix
+          {mixing && <span className="embedding-lab-loading"> · projecting…</span>}
+        </div>
+        <div className="embedding-lab-mix-controls">
+          {!mixPrepId ? (
+            <button
+              type="button"
+              className="embedding-lab-mix-prepare"
+              onClick={handleMixPrepare}
+              disabled={
+                mixPreparing
+                || !scopePath
+                || scopeCount < MIN_FILES_FOR_EXPERIMENT
+              }
+              title="Pre-compute path/content/metadata embeddings on the chosen subdir"
+            >
+              {mixPreparing ? 'Preparing…' : 'Prepare mix'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="embedding-lab-mix-release"
+              onClick={handleMixRelease}
+            >
+              Release
+            </button>
+          )}
+        </div>
+        {mixPrepId && (
+          <div className="embedding-lab-mix-sliders">
+            {MIX_CHANNELS.map(ch => (
+              <label key={ch} className="embedding-lab-mix-row">
+                <span className="embedding-lab-mix-channel">{ch}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={mixWeights[ch]}
+                  onChange={e => {
+                    const v = Number(e.target.value)
+                    setMixWeights(prev => ({ ...prev, [ch]: v }))
+                  }}
+                />
+                <span className="embedding-lab-mix-value">
+                  {mixWeights[ch].toFixed(2)}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </section>
 
       {preview && (
         <div className="embedding-lab-preview">

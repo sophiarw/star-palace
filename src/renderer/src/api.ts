@@ -407,6 +407,61 @@ export async function listSnapshots(): Promise<SnapshotSummary[]> {
   return res.json()
 }
 
+export interface LabPrepareResult {
+  prepId: string
+  fileIds: string[]
+  channels: string[]
+  count: number
+}
+
+export async function prepareLabMix(
+  scopePath: string,
+  channels: string[],
+): Promise<LabPrepareResult> {
+  const res = await fetch(`${BASE}/api/embedding/lab/prepare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scopePath, channels }),
+  })
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({})) as { error?: string }
+    throw new HttpError(res.status, errBody.error ?? `prepareLabMix: ${res.status}`)
+  }
+  return res.json()
+}
+
+export interface LabMixPosition {
+  id: string
+  x: number
+  y: number
+}
+
+export async function runLabMix(
+  prepId: string,
+  weights: Record<string, number>,
+): Promise<LabMixPosition[]> {
+  const res = await fetch(`${BASE}/api/embedding/lab/mix`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prepId, weights }),
+  })
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({})) as { error?: string }
+    throw new HttpError(res.status, errBody.error ?? `runLabMix: ${res.status}`)
+  }
+  const data = await res.json() as { positions: LabMixPosition[] }
+  return data.positions
+}
+
+export async function releaseLabMix(prepId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/embedding/lab/${encodeURIComponent(prepId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`releaseLabMix: ${res.status}`)
+  }
+}
+
 export async function reindexFile(id: string): Promise<void> {
   const res = await fetch(`${BASE}/api/file/${encodeURIComponent(id)}/reindex`, { method: 'POST' })
   if (!res.ok) throw new Error(`reindexFile: ${res.status}`)

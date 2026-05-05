@@ -31,6 +31,7 @@ import {
   reindexFile,
 } from './embedding/experiments'
 import { listSnapshots } from './embedding/snapshots'
+import { prepareLabMix, mixLab, releaseLabMix } from './embedding/labMix'
 
 const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|svg\+xml)|application\/pdf)$/
 
@@ -987,6 +988,64 @@ app.post('/api/embedding/experiment/:id/revert', (req, res) => {
 
 app.get('/api/embedding/snapshots', (_req, res) => {
   res.json(listSnapshots(db))
+})
+
+// --- live-mix lab ---
+//   POST   /api/embedding/lab/prepare   — embed scope under N channels, cache
+//   POST   /api/embedding/lab/mix       — slider-driven recompute
+//   DELETE /api/embedding/lab/:prepId   — release workbench
+//
+// Workbenches live in-memory only (see labMix.ts). Prepare is the slow call;
+// mix is pure arithmetic over cached vectors so a slider drag is sub-50 ms.
+
+app.post('/api/embedding/lab/prepare', async (req, res) => {
+  try {
+    const scopePath = String(req.body?.scopePath ?? '')
+    const channels = Array.isArray(req.body?.channels) ? req.body.channels.map(String) : []
+    if (!scopePath) {
+      return res.status(400).json({ error: 'scopePath required' })
+    }
+    const result = await prepareLabMix(
+      { db, embedEngine },
+      { scopePath, channels: channels as never }
+    )
+    if ('code' in result) {
+      const status = result.code === 'invalid-channel' ? 400 : 400
+      return res.status(status).json({ error: result.message, code: result.code })
+    }
+    res.json({
+      prepId: result.prepId,
+      fileIds: result.fileIds,
+      channels: result.channels,
+      count: result.count,
+    })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+app.post('/api/embedding/lab/mix', (req, res) => {
+  try {
+    const prepId = String(req.body?.prepId ?? '')
+    const weights = (req.body?.weights ?? {}) as Record<string, number>
+    if (!prepId) {
+      return res.status(400).json({ error: 'prepId required' })
+    }
+    const result = mixLab({ prepId, weights })
+    if ('code' in result) {
+      if (result.code === 'not-found') return res.status(404).json({ error: 'not found' })
+      return res.status(400).json({ error: result.message, code: result.code })
+    }
+    res.json({ positions: result.positions })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+app.delete('/api/embedding/lab/:prepId', (req, res) => {
+  const ok = releaseLabMix(req.params.prepId)
+  if (!ok) return res.status(404).json({ error: 'not found' })
+  res.json({ ok: true })
 })
 
 app.post('/api/file/:id/reindex', async (req, res) => {

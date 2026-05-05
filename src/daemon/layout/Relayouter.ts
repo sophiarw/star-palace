@@ -184,18 +184,33 @@ export class Relayouter {
         f !== null && f.embedding !== null
       )
     if (files.length < SUBSET_PCA_MIN) return null
-
+    const ids = files.map(f => f.id)
     const embeddings = files.map(f => f.embedding!)
-    const pca = StarPca.train(embeddings)
-    const rawPositions = embeddings.map(e => pca.project(e))
-    const { scaled } = scalePositions(rawPositions, 1000)
-
-    const out = new Map<string, [number, number]>()
-    for (let i = 0; i < files.length; i++) {
-      const [x, y] = scaled[i]
-      const [jx, jy] = jitterFor(files[i].id)
-      out.set(files[i].id, [x + jx, y + jy])
-    }
-    return out
+    return projectVectors(ids, embeddings)
   }
+}
+
+// Pure helper: given parallel arrays of ids and unit-length embeddings, fit a
+// one-shot PCA and return scaled (x, y) positions. Same math as the body of
+// `trainSubset` — separated out so live-mix and other ephemeral projections can
+// reuse it without round-tripping through the database.
+export function projectVectors(
+  ids: string[],
+  vectors: Float32Array[]
+): Map<string, [number, number]> | null {
+  if (vectors.length < SUBSET_PCA_MIN) return null
+  if (ids.length !== vectors.length) {
+    throw new Error(`projectVectors: ids/vectors length mismatch (${ids.length} vs ${vectors.length})`)
+  }
+  const pca = StarPca.train(vectors)
+  const rawPositions = vectors.map(e => pca.project(e))
+  const { scaled } = scalePositions(rawPositions, 1000)
+
+  const out = new Map<string, [number, number]>()
+  for (let i = 0; i < ids.length; i++) {
+    const [x, y] = scaled[i]
+    const [jx, jy] = jitterFor(ids[i])
+    out.set(ids[i], [x + jx, y + jy])
+  }
+  return out
 }
