@@ -444,6 +444,36 @@ export class FileIndex {
     ).run(id)
   }
 
+  // User-managed ignore list. Stored as the raw newline-delimited gitignore
+  // source (same syntax users already know). Empty string == no extra rules.
+  getIgnorePatterns(): string {
+    const row = this.db.prepare(
+      `SELECT value FROM app_settings WHERE key = 'ignore_patterns'`
+    ).get() as { value: string | null } | undefined
+    return row?.value ?? ''
+  }
+
+  setIgnorePatterns(source: string): void {
+    this.db.prepare(
+      `INSERT INTO app_settings (key, value) VALUES ('ignore_patterns', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    ).run(source)
+  }
+
+  // Sweep helper: every indexed file paired with its galaxy's root_path so
+  // a gitignore matcher can be applied with the same relative-to-root
+  // semantics the walker uses. Files with no galaxy_id (legacy backfill,
+  // pre-F9) come back with rootPath = null and the caller can decide whether
+  // to match against an empty root or skip them.
+  listFilesForSweep(): { id: string; path: string; rootPath: string | null }[] {
+    const rows = this.db.prepare(`
+      SELECT f.id AS id, f.path AS path, g.root_path AS root_path
+      FROM files f
+      LEFT JOIN galaxies g ON g.id = f.galaxy_id
+    `).all() as { id: string; path: string; root_path: string | null }[]
+    return rows.map(r => ({ id: r.id, path: r.path, rootPath: r.root_path }))
+  }
+
   // F4 — pin/unpin. Atomic; overwrites any prior pin coefficients.
   setPin(id: string, alpha: number, beta: number, axisA: number, axisB: number, at: number): void {
     this.db.prepare(`

@@ -20,6 +20,7 @@ import { useCollections } from './hooks/useCollections'
 import { useGalaxyVisibility } from './hooks/useGalaxyVisibility'
 import PerfOverlay from './components/PerfOverlay/PerfOverlay'
 import EmbeddingLab, { type ExperimentPreview } from './components/EmbeddingLab/EmbeddingLab'
+import SettingsPanel from './components/SettingsPanel/SettingsPanel'
 
 const GALAXY_FLY_TO_ZOOM = 0.3
 
@@ -53,6 +54,7 @@ export default function App() {
   // here (not inside the panel) so StarMap can read it for the overlay
   // overrides, and `Back to production` can clear it from either place.
   const [showEmbeddingLab, setShowEmbeddingLab] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [experimentPreview, setExperimentPreview] = useState<ExperimentPreview | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const layoutVersionRef = useRef<number>(-1)
@@ -143,6 +145,20 @@ export default function App() {
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
       e.preventDefault()
       setShowEmbeddingLab(v => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Shift+I opens the ignore-patterns panel. Same input-focus skip so typing
+  // a capital 'I' in a text field doesn't pop the modal.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'I' || !e.shiftKey) return
+      const target = e.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      setShowSettings(v => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -554,6 +570,15 @@ export default function App() {
       )}
 
       <PerfOverlay visible={showPerf} onClose={() => setShowPerf(false)} />
+
+      <SettingsPanel
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+        onMutated={() => {
+          loadMap()
+          pollStats().catch(() => { /* surfaced elsewhere */ })
+        }}
+      />
 
       <EmbeddingLab
         visible={showEmbeddingLab}

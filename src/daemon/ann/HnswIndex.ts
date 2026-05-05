@@ -70,6 +70,22 @@ export class HnswIndex {
     return this.idToLabel.has(fileId)
   }
 
+  // Mark a point as deleted so subsequent searches don't return it. The label
+  // stays in the underlying hnswlib graph (rebuild required to reclaim space)
+  // but the id<->label mapping is dropped so re-indexing the same file later
+  // gets a fresh label. Idempotent: no-op for unknown ids.
+  markDelete(fileId: string): void {
+    const label = this.idToLabel.get(fileId)
+    if (label === undefined) return
+    try {
+      this.index.markDelete(label)
+    } catch {
+      // hnswlib throws if the label is already marked; safe to ignore.
+    }
+    this.idToLabel.delete(fileId)
+    this.labelToId.delete(label)
+  }
+
   save(): void {
     if (!this.persistPath) return
     mkdirSync(dirname(this.persistPath), { recursive: true })

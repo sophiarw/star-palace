@@ -490,3 +490,21 @@ export async function setTags(id: string, tags: string[]): Promise<void> {
   })
   if (!res.ok) throw new Error(`setTags: ${res.status}`)
 }
+
+export async function fetchIgnorePatterns(): Promise<string> {
+  const res = await fetch(`${BASE}/api/settings/ignore-patterns`)
+  if (!res.ok) throw new Error(`fetchIgnorePatterns: ${res.status}`)
+  const body = await res.json() as { patterns: string }
+  return body.patterns
+}
+
+export async function saveIgnorePatterns(patterns: string): Promise<{ removed: number }> {
+  const res = await fetch(`${BASE}/api/settings/ignore-patterns`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ patterns }),
+  })
+  if (!res.ok) throw new Error(`saveIgnorePatterns: ${res.status}`)
+  const body = await res.json() as { ok: true; removed: number }
+  return { removed: body.removed }
+}

@@ -17,6 +17,7 @@ import { PC_COUNT } from './layout/Pca'
 import { projectOnAxis } from './math/pinMath'
 import { LAYOUT_THRESHOLD } from '../shared/types'
 import { indexPath } from './pipeline/Insert'
+import { buildIgnoreMatcher } from './index/ignoreMatcher'
 import { progressStore } from './index/progressStore'
 import type { ProgressState } from './index/progressStore'
 import type { MapStats, ViewportResult, SearchResult, FileContent, StarType, CollectionKind } from '../shared/types'
@@ -164,10 +165,16 @@ app.post('/api/index', (req, res) => {
   // runs after the response — see the .then() chain below.
   const jobId = progressStore.start({ galaxyId: galaxy.id, galaxyName: galaxy.name })
 
+  // Layer the user's ignore patterns on top of the walker's hardcoded
+  // DEFAULT_IGNORE so files matching `node_modules/`, `*.log`, etc. never
+  // enter the indexer.
+  const ignoreMatcher = buildIgnoreMatcher(db.getIgnorePatterns())
+
   // Detach: don't await. Errors land in the progressStore as the terminal
   // 'error' frame so SSE subscribers see the failure cause.
   void indexPath(rootPath, {
     db, hnsw, embedEngine, relayouter, galaxyId: galaxy.id,
+    walkOpts: { matcher: ignoreMatcher },
     progress: {
       tick: payload => progressStore.update(jobId, payload),
       shouldCancel: () => progressStore.isCancelled(jobId),
@@ -890,6 +897,40 @@ app.post('/api/embedding/default', (req, res) => {
   }
   db.setDefaultStrategy(body.strategy)
   res.json({ ok: true, strategy: body.strategy })
+})
+
+// User-managed ignore list. Stored as raw gitignore source so users see the
+// same syntax they already know. Patterns apply to every future index walk
+// AND, on save, sweep already-indexed files: anything now matching the rules
+// is removed from `files`, `edges`, and the HNSW graph so contaminated rows
+// from a prior index don't keep showing up in the renderer.
+app.get('/api/settings/ignore-patterns', (_req, res) => {
+  res.json({ patterns: db.getIgnorePatterns() })
+})
+
+app.put('/api/settings/ignore-patterns', (req, res) => {
+  const body = req.body as { patterns?: unknown }
+  if (typeof body.patterns !== 'string') {
+    return res.status(400).json({ error: 'patterns must be a string (gitignore source)' })
+  }
+  db.setIgnorePatterns(body.patterns)
+
+  const matcher = buildIgnoreMatcher(body.patterns)
+  let removed = 0
+  if (matcher.active) {
+    const candidates = db.listFilesForSweep()
+    for (const c of candidates) {
+      // Files indexed before F9 (no galaxy_id) have no root to be relative to;
+      // skip them rather than risk a confusing match against an empty root.
+      if (!c.rootPath) continue
+      if (!matcher.matches(c.path, c.rootPath)) continue
+      db.delete(c.id)
+      hnsw.markDelete(c.id)
+      removed++
+    }
+    if (removed > 0) hnsw.save()
+  }
+  res.json({ ok: true, removed })
 })
 
 app.post('/api/embedding/experiment', async (req, res) => {
