@@ -6,6 +6,7 @@ import { mkdirSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
 import { extname } from 'path'
 import mammoth from 'mammoth'
+import { extractText, getDocumentProxy } from 'unpdf'
 import { openInDefaultApp, revealInFileExplorer } from './util/openInDefaultApp'
 import { FileIndex } from './db/FileIndex'
 import { HnswIndex } from './ann/HnswIndex'
@@ -771,6 +772,28 @@ app.get('/api/file/:id/content', async (req, res) => {
       try {
         const result = await mammoth.extractRawText({ path: file.path })
         const text = result.value ?? ''
+        const truncated = text.length > VIEW_BYTES
+        const sliced = truncated ? text.slice(0, VIEW_BYTES) : text
+        const payload: FileContent = {
+          content: sliced,
+          mimeType: file.mimeType,
+          truncated,
+          size: onDisk.size,
+        }
+        return res.json(payload)
+      } catch {
+        // fall through to raw read below
+      }
+    }
+
+    // .pdf is a binary container; reading as utf8 produces gibberish. Pull
+    // plain text via unpdf (Mozilla pdfjs wrapper). Errors fall through to
+    // the raw-byte path so a corrupt .pdf still renders something.
+    if (ext === '.pdf') {
+      try {
+        const buf = await readFile(file.path)
+        const pdf = await getDocumentProxy(new Uint8Array(buf))
+        const { text } = await extractText(pdf, { mergePages: true })
         const truncated = text.length > VIEW_BYTES
         const sliced = truncated ? text.slice(0, VIEW_BYTES) : text
         const payload: FileContent = {

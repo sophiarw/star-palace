@@ -24,7 +24,8 @@
     "ml-pca": "^4.1.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "undici": "^7.25.0"
+    "undici": "^7.25.0",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
