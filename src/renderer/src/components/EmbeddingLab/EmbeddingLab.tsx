@@ -21,10 +21,9 @@ import { useIndexProgress } from '../../hooks/useIndexProgress'
 // B2 ships a different number this constant is the single point to update.
 const MIN_FILES_FOR_EXPERIMENT = 10
 
-// Channels exposed as live-mix sliders. Order = render order in the panel.
+// Channels exposed as mix sliders. Order = render order in the panel.
 const MIX_CHANNELS = ['dir-path', 'filename', 'top-dir', 'content-only', 'metadata-only'] as const
 type MixChannel = (typeof MIX_CHANNELS)[number]
-const MIX_DEBOUNCE_MS = 60
 
 // How deeply to nest the subdir picker. Two segments past the galaxy root
 // keep the tree small enough to scan visually without an explorer-style
@@ -154,10 +153,11 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
   const [promoteJobId, setPromoteJobId] = useState<string | null>(null)
   const promoteJobFinishedRef = useRef<string | null>(null)
 
-  // Live-mix workbench state. `prepId` is the daemon-side handle into the
-  // cached per-channel vectors; sliders mutate `mixWeights`, which a debounced
-  // effect feeds back into POST /api/embedding/lab/mix. Result lands on the
-  // shared preview overlay.
+  // Mix workbench state. `prepId` is the daemon-side handle into the cached
+  // per-channel vectors; sliders mutate `mixWeights` cheaply (local state
+  // only), and the user clicks Engage to commit the current weights and pay
+  // the daemon's PCA-refit cost once. `engagedWeights` records the snapshot
+  // last sent to /api/embedding/lab/mix so the dirty indicator works.
   const [mixPrepId, setMixPrepId] = useState<string | null>(null)
   const [mixWeights, setMixWeights] = useState<Record<MixChannel, number>>(() => ({
     'dir-path': 1,
@@ -166,9 +166,17 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
     'content-only': 1,
     'metadata-only': 1,
   }))
+  const [engagedWeights, setEngagedWeights] = useState<Record<MixChannel, number> | null>(null)
   const [mixPreparing, setMixPreparing] = useState(false)
   const [mixing, setMixing] = useState(false)
-  const mixDebounceRef = useRef<number | null>(null)
+
+  // True when the slider state diverges from the last engaged snapshot (or
+  // nothing has been engaged yet). Drives the Engage button's disabled state
+  // and dirty asterisk.
+  const mixDirty = useMemo(() => {
+    if (!engagedWeights) return true
+    return MIX_CHANNELS.some(ch => mixWeights[ch] !== engagedWeights[ch])
+  }, [mixWeights, engagedWeights])
 
   const tree = useMemo(() => buildTree(stars), [stars])
   const flatNodes = useMemo(() => flattenTree(tree), [tree])
@@ -333,11 +341,43 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
     }
   }, [onPreview, loadSnapshots, loadStrategies, onMutated])
 
+  // Shared engage path: POST /api/embedding/lab/mix and route the resulting
+  // positions onto the shared experiment-preview overlay. Both the Engage
+  // button and the auto-fire after a fresh prepare call this with explicit
+  // (prepId, weights) so neither has to wait for closure deps to settle.
+  const doEngage = useCallback(async (
+    prepId: string,
+    weights: Record<MixChannel, number>,
+  ) => {
+    setMixing(true)
+    setError(null)
+    try {
+      const positions = await runLabMix(prepId, weights)
+      const ids = new Set<string>()
+      const map = new Map<string, [number, number]>()
+      for (const p of positions) {
+        ids.add(p.id)
+        map.set(p.id, [p.x, p.y])
+      }
+      onPreview({ snapshotId: `live-mix:${prepId}`, ids, positions: map })
+      setEngagedWeights({ ...weights })
+    } catch (err) {
+      if (err instanceof HttpError) {
+        setError(`Mix failed: ${err.message}`)
+      } else {
+        setError(`Mix failed: ${String(err)}`)
+      }
+    } finally {
+      setMixing(false)
+    }
+  }, [onPreview])
+
   const handleMixPrepare = useCallback(async () => {
     if (!scopePath) return
     setMixPreparing(true)
     setError(null)
     setOkMsg(null)
+    setEngagedWeights(null)
     try {
       // Drop any existing workbench so we don't leak server memory.
       if (mixPrepId) {
@@ -346,6 +386,10 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
       const result = await prepareLabMix(scopePath, [...MIX_CHANNELS])
       setMixPrepId(result.prepId)
       setOkMsg(`Mix prepared (${result.count} files × ${result.channels.length} channels).`)
+      // Auto-engage once with the current weights so the user sees an initial
+      // baseline preview without having to click Engage. The PCA fit happens
+      // inside the same wait window the user already accepted for prepare.
+      void doEngage(result.prepId, mixWeights)
     } catch (err) {
       if (err instanceof HttpError) {
         setError(`Mix prepare failed: ${err.message}`)
@@ -355,12 +399,13 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
     } finally {
       setMixPreparing(false)
     }
-  }, [scopePath, mixPrepId])
+  }, [scopePath, mixPrepId, mixWeights, doEngage])
 
   const handleMixRelease = useCallback(async () => {
     if (!mixPrepId) return
     const id = mixPrepId
     setMixPrepId(null)
+    setEngagedWeights(null)
     onPreview(null)
     try {
       await releaseLabMix(id)
@@ -369,43 +414,10 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
     }
   }, [mixPrepId, onPreview])
 
-  // Debounced live mix. Fires whenever weights change (or after a fresh
-  // prepare lands a new prepId) so the slider drag feels continuous.
-  useEffect(() => {
-    if (!mixPrepId) return
-    if (mixDebounceRef.current !== null) {
-      window.clearTimeout(mixDebounceRef.current)
-    }
-    mixDebounceRef.current = window.setTimeout(() => {
-      void (async () => {
-        setMixing(true)
-        try {
-          const positions = await runLabMix(mixPrepId, mixWeights)
-          const ids = new Set<string>()
-          const map = new Map<string, [number, number]>()
-          for (const p of positions) {
-            ids.add(p.id)
-            map.set(p.id, [p.x, p.y])
-          }
-          onPreview({ snapshotId: `live-mix:${mixPrepId}`, ids, positions: map })
-        } catch (err) {
-          if (err instanceof HttpError) {
-            setError(`Mix failed: ${err.message}`)
-          } else {
-            setError(`Mix failed: ${String(err)}`)
-          }
-        } finally {
-          setMixing(false)
-        }
-      })()
-    }, MIX_DEBOUNCE_MS)
-    return () => {
-      if (mixDebounceRef.current !== null) {
-        window.clearTimeout(mixDebounceRef.current)
-        mixDebounceRef.current = null
-      }
-    }
-  }, [mixPrepId, mixWeights, onPreview])
+  const handleMixEngage = useCallback(() => {
+    if (!mixPrepId || mixing) return
+    void doEngage(mixPrepId, mixWeights)
+  }, [mixPrepId, mixWeights, mixing, doEngage])
 
   // Free the workbench when the panel unmounts so the daemon can drop its
   // cached vectors.
@@ -587,7 +599,7 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
 
       <section className="embedding-lab-section embedding-lab-mix">
         <div className="embedding-lab-section-label">
-          Live mix
+          Mix workbench
           {mixing && <span className="embedding-lab-loading"> · projecting…</span>}
         </div>
         <div className="embedding-lab-mix-controls">
@@ -606,13 +618,24 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
               {mixPreparing ? 'Preparing…' : 'Prepare mix'}
             </button>
           ) : (
-            <button
-              type="button"
-              className="embedding-lab-mix-release"
-              onClick={handleMixRelease}
-            >
-              Release
-            </button>
+            <>
+              <button
+                type="button"
+                className="embedding-lab-mix-engage"
+                onClick={handleMixEngage}
+                disabled={!mixDirty || mixing}
+                title="Apply current weights — refits the subset PCA on the daemon."
+              >
+                {mixing ? 'Projecting…' : (mixDirty ? 'Engage *' : 'Engaged')}
+              </button>
+              <button
+                type="button"
+                className="embedding-lab-mix-release"
+                onClick={handleMixRelease}
+              >
+                Release
+              </button>
+            </>
           )}
         </div>
         {mixPrepId && (

@@ -1930,7 +1930,8 @@ body {
 }
 
 .embedding-lab-mix-prepare,
-.embedding-lab-mix-release {
+.embedding-lab-mix-release,
+.embedding-lab-mix-engage {
   background: color-mix(in srgb, var(--starpalace-accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--starpalace-accent) 40%, transparent);
   border-radius: 5px;
@@ -1941,11 +1942,13 @@ body {
 }
 
 .embedding-lab-mix-prepare:hover:not([disabled]),
-.embedding-lab-mix-release:hover {
+.embedding-lab-mix-release:hover,
+.embedding-lab-mix-engage:hover:not([disabled]) {
   background: color-mix(in srgb, var(--starpalace-accent) 22%, transparent);
 }
 
-.embedding-lab-mix-prepare[disabled] {
+.embedding-lab-mix-prepare[disabled],
+.embedding-lab-mix-engage[disabled] {
   opacity: 0.45;
   cursor: not-allowed;
 }
