@@ -33,6 +33,7 @@ import {
 } from './embedding/experiments'
 import { listSnapshots } from './embedding/snapshots'
 import { prepareLabMix, mixLab, releaseLabMix } from './embedding/labMix'
+import { searchSpotlight, SpotlightUnavailable } from './search/spotlight'
 
 const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|svg\+xml)|application\/pdf)$/
 
@@ -742,6 +743,64 @@ app.post('/api/search', async (req, res) => {
 
 // B11 — non-POST methods on /api/search should be 405, not Express's HTML 404.
 app.all('/api/search', (_req, res) => {
+  res.set('Allow', 'POST')
+  res.status(405).json({ error: 'method not allowed; use POST' })
+})
+
+// Spotlight-backed literal search. macOS only; non-macOS callers receive
+// 501 and the renderer falls back to the semantic /api/search.
+app.post('/api/search/spotlight', async (req, res) => {
+  const body = req.body as { query?: unknown; limit?: unknown; collectionId?: unknown; galaxyId?: unknown }
+
+  if (typeof body.query !== 'string' || body.query.trim() === '') {
+    return res.status(400).json({ error: 'query must be a non-empty string' })
+  }
+  const query = body.query
+
+  let limitN = 30
+  if (body.limit !== undefined && body.limit !== null) {
+    if (typeof body.limit !== 'number' || !Number.isFinite(body.limit) ||
+        !Number.isInteger(body.limit) || body.limit < 0) {
+      return res.status(400).json({ error: 'limit must be a non-negative integer' })
+    }
+    limitN = body.limit
+  }
+
+  let collectionId: number | null = null
+  if (body.collectionId !== undefined && body.collectionId !== null) {
+    if (typeof body.collectionId !== 'number' || !Number.isInteger(body.collectionId) ||
+        body.collectionId < 0) {
+      return res.status(400).json({ error: 'collectionId must be a non-negative integer' })
+    }
+    collectionId = body.collectionId
+  }
+
+  let galaxyId: number | null = null
+  if (body.galaxyId !== undefined && body.galaxyId !== null) {
+    if (typeof body.galaxyId !== 'number' || !Number.isInteger(body.galaxyId) ||
+        body.galaxyId < 0) {
+      return res.status(400).json({ error: 'galaxyId must be a non-negative integer' })
+    }
+    galaxyId = body.galaxyId
+  }
+
+  if (collectionId !== null) {
+    const coll = db.getCollection(collectionId)
+    if (!coll) return res.status(404).json({ error: 'collection not found' })
+  }
+
+  try {
+    const results = await searchSpotlight({ db }, { query, limit: limitN, collectionId, galaxyId })
+    res.json({ results })
+  } catch (err) {
+    if (err instanceof SpotlightUnavailable) {
+      return res.status(501).json({ error: 'spotlight-unavailable', reason: err.reason })
+    }
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+app.all('/api/search/spotlight', (_req, res) => {
   res.set('Allow', 'POST')
   res.status(405).json({ error: 'method not allowed; use POST' })
 })

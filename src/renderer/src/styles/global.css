@@ -101,6 +101,50 @@ body {
   color: #ffc4c4;
 }
 
+/* Spotlight/semantic toggle. Sits over the input's left edge, leaving the
+   text input clickable to its right. The two states are visually distinct so
+   users glance-recognise which mode is active. */
+.search-mode-toggle {
+  position: absolute;
+  top: 9px;
+  left: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  background: rgba(74, 158, 255, 0.15);
+  border: 1px solid rgba(74, 158, 255, 0.45);
+  color: #b6d4ff;
+  z-index: 1;
+  user-select: none;
+}
+
+.search-mode-toggle:hover {
+  background: rgba(74, 158, 255, 0.28);
+}
+
+.search-mode-toggle--literal {
+  background: rgba(255, 224, 102, 0.18);
+  border-color: rgba(255, 224, 102, 0.55);
+  color: #ffe066;
+}
+
+.search-mode-toggle--literal:hover {
+  background: rgba(255, 224, 102, 0.30);
+}
+
+/* Leave room for the toggle so input text doesn't overlap it. */
+.search-bar .search-input {
+  padding-left: 56px;
+}
+
+.search-hint--warn {
+  color: #ffd28a;
+}
+
 /* Hover card */
 
 .hover-card {

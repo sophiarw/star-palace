@@ -13,6 +13,7 @@ import PCDial from './components/PCDial/PCDial'
 import { usePcDial } from './hooks/usePcDial'
 import GalaxyPanel from './components/GalaxyPanel/GalaxyPanel'
 import { useTheme } from './hooks/useTheme'
+import { useSearchMode } from './hooks/useSearchMode'
 import { useClassificationMode } from './hooks/useClassificationMode'
 import { computePercentileBuckets } from './components/StarMap/usageStarType'
 import CollectionsPanel from './components/CollectionsPanel/CollectionsPanel'
@@ -190,6 +191,7 @@ export default function App() {
 
   const pcDial = usePcDial()
   const themeCtx = useTheme()
+  const searchModeCtx = useSearchMode()
   const classCtx = useClassificationMode()
 
   // F16 — per-galaxy visibility filter (renderer-only). Drives projected
@@ -501,6 +503,8 @@ export default function App() {
           // search bar (or before any results) still types literally.
           onCycleNext={projectedHighlights.length > 0 ? () => cycleSearch(1) : undefined}
           onCyclePrev={projectedHighlights.length > 0 ? () => cycleSearch(-1) : undefined}
+          searchMode={searchModeCtx.searchMode}
+          onSearchModeChange={searchModeCtx.setSearchMode}
         />
       )}
 

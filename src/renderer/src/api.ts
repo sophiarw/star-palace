@@ -65,6 +65,39 @@ export async function search(query: string, limit = 30, collectionId?: number): 
   return data.results
 }
 
+// Thrown when the daemon reports Spotlight is unavailable (501 — non-macOS or
+// mdfind itself failed). Callers catch this to fall back to semantic search
+// transparently.
+export class SpotlightUnavailableError extends Error {
+  reason: string
+  constructor(reason: string) {
+    super(`spotlight unavailable: ${reason}`)
+    this.name = 'SpotlightUnavailableError'
+    this.reason = reason
+  }
+}
+
+export async function searchSpotlight(
+  query: string,
+  limit = 30,
+  collectionId?: number,
+): Promise<SearchResult[]> {
+  const body: { query: string; limit: number; collectionId?: number } = { query, limit }
+  if (collectionId !== undefined) body.collectionId = collectionId
+  const res = await fetch(`${BASE}/api/search/spotlight`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (res.status === 501) {
+    const errBody = await res.json().catch(() => ({})) as { reason?: string }
+    throw new SpotlightUnavailableError(errBody.reason ?? 'unknown')
+  }
+  if (!res.ok) throw new Error(`searchSpotlight: ${res.status}`)
+  const data = await res.json() as { results: SearchResult[] }
+  return data.results
+}
+
 export async function fetchFile(id: string): Promise<Star & { isStale?: boolean }> {
   const res = await fetch(`${BASE}/api/file/${id}`)
   if (!res.ok) throw new Error(`fetchFile: ${res.status}`)

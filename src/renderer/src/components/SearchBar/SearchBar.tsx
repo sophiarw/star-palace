@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { search } from '../../api'
+import { search, searchSpotlight, SpotlightUnavailableError } from '../../api'
 import type { SearchResult, CollectionSummary } from '@shared/types'
+import type { SearchMode } from '../../hooks/useSearchMode'
 
 interface Props {
   value: string
@@ -26,6 +27,12 @@ interface Props {
   // a query (e.g. "neutron") still types normally.
   onCycleNext?: () => void
   onCyclePrev?: () => void
+  // Spotlight toggle. `searchMode` flips between the semantic embedding
+  // search and the macOS Spotlight-backed literal search. When the daemon
+  // reports Spotlight unavailable (501), this component silently falls back
+  // to semantic and surfaces a one-line hint in the bar.
+  searchMode?: SearchMode
+  onSearchModeChange?: (m: SearchMode) => void
 }
 
 // F5 — parse a leading `c:foo ` or `#foo ` token off a search string. The
@@ -54,8 +61,13 @@ function parsePrefix(raw: string): ParsedPrefix | null {
 export default function SearchBar({
   value, onValueChange, onResults, onClear, onClose, onSubmit, inputRef, onQueryChange,
   collections, onCycleNext, onCyclePrev,
+  searchMode = 'semantic', onSearchModeChange,
 }: Props) {
   const [searching, setSearching] = useState(false)
+  // Latched once the daemon returns 501 for the active session. Keeps the
+  // toggle visually in 'literal' but disables the API call so we don't
+  // hammer the endpoint on every keystroke.
+  const [spotlightFallback, setSpotlightFallback] = useState<string | null>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const internalRef = useRef<HTMLInputElement>(null)
   const resolvedRef = inputRef ?? internalRef
@@ -109,7 +121,23 @@ export default function SearchBar({
     debounce.current = setTimeout(async () => {
       setSearching(true)
       try {
-        const results = await search(effective.trim(), 30, resolveCollectionId())
+        const useSpotlight = searchMode === 'literal' && spotlightFallback === null
+        const collectionId = resolveCollectionId()
+        let results: SearchResult[]
+        if (useSpotlight) {
+          try {
+            results = await searchSpotlight(effective.trim(), 30, collectionId)
+          } catch (err) {
+            if (err instanceof SpotlightUnavailableError) {
+              setSpotlightFallback(err.reason)
+              results = await search(effective.trim(), 30, collectionId)
+            } else {
+              throw err
+            }
+          }
+        } else {
+          results = await search(effective.trim(), 30, collectionId)
+        }
         onResults(results)
       } catch {
         // daemon may not be running yet
@@ -117,7 +145,7 @@ export default function SearchBar({
         setSearching(false)
       }
     }, 300)
-  }, [onResults, onClear, onValueChange, onQueryChange, collections])
+  }, [onResults, onClear, onValueChange, onQueryChange, collections, searchMode, spotlightFallback])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -145,6 +173,12 @@ export default function SearchBar({
     }
   }, [onClear, onClose, onSubmit, onValueChange, onQueryChange, onCycleNext, onCyclePrev])
 
+  const toggleMode = useCallback(() => {
+    const next: SearchMode = searchMode === 'literal' ? 'semantic' : 'literal'
+    setSpotlightFallback(null)  // user explicitly opting in; let it retry
+    onSearchModeChange?.(next)
+  }, [searchMode, onSearchModeChange])
+
   // Badge: show the resolved collection (green) or the unresolved name (red)
   // so the user sees instantly whether their prefix actually filtered.
   const badge = collectionFilter.parsed
@@ -153,8 +187,22 @@ export default function SearchBar({
         : { label: `?: ${collectionFilter.parsed.collectionName}`, kind: 'miss' as const })
     : null
 
+  const modeLabel = searchMode === 'literal' ? 'lit' : 'sem'
+  const modeTitle = searchMode === 'literal'
+    ? 'Literal (Spotlight). Click to switch to semantic.'
+    : 'Semantic (embeddings). Click to switch to literal/Spotlight.'
+
   return (
     <div className="search-bar">
+      <button
+        type="button"
+        className={`search-mode-toggle search-mode-toggle--${searchMode}`}
+        onClick={toggleMode}
+        title={modeTitle}
+        aria-label={`search mode: ${searchMode}`}
+      >
+        {modeLabel}
+      </button>
       <input
         ref={resolvedRef}
         className="search-input"
@@ -162,7 +210,11 @@ export default function SearchBar({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        placeholder={searching ? 'Searching…' : 'Search the sky…   (c:name or #name to scope)'}
+        placeholder={searching
+          ? 'Searching…'
+          : (searchMode === 'literal'
+              ? 'Spotlight: literal text in name or content…'
+              : 'Search the sky…   (c:name or #name to scope)')}
         spellCheck={false}
         autoComplete="off"
       />
@@ -170,6 +222,9 @@ export default function SearchBar({
         <div className={badge.kind === 'ok' ? 'search-collection-badge' : 'search-collection-badge search-collection-badge--miss'}>
           {badge.label}
         </div>
+      )}
+      {searchMode === 'literal' && spotlightFallback && (
+        <div className="search-hint search-hint--warn">Spotlight unavailable ({spotlightFallback}); using semantic.</div>
       )}
       {value && (
         <div className="search-hint">Enter: hide bar, n/N to cycle · Esc: clear</div>
