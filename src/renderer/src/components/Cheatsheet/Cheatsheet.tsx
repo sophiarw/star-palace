@@ -37,6 +37,7 @@ const PANEL_BINDINGS: Binding[] = [
   { key: '?', desc: 'Toggle this cheatsheet' },
   { key: 'Shift + P', desc: 'Toggle perf overlay (FPS, p99, frame budget)' },
   { key: 'Shift + E', desc: 'Toggle Embedding Lab' },
+  { key: 'Shift + I', desc: 'Toggle ignore-patterns panel' },
 ]
 
 export default function Cheatsheet({ onClose }: Props) {
@@ -128,6 +129,18 @@ export default function Cheatsheet({ onClose }: Props) {
             re-embeds the rest of the corpus in the background.
             <strong>Revert</strong> restores the prior embeddings + positions.</li>
         </ol>
+      </div>
+
+      <div className="cheatsheet-section-title">Ignore patterns (<kbd>Shift+I</kbd>)</div>
+      <div className="cheatsheet-note">
+        gitignore-style exclusion list, layered on top of the built-in
+        defaults (<code>node_modules</code>, <code>.git</code>, <code>dist</code>, …).
+        One pattern per line. Examples: <code>node_modules/</code>,
+        <code>*.log</code>, <code>vendor/**</code>, <code>!vendor/keep.md</code>.
+        Save applies the rules to every future index walk AND immediately
+        sweeps already-indexed files matching the new rules — deletes the
+        rows, edges, and HNSW points so contaminated stars disappear from
+        the sky.
       </div>
 
       <div className="cheatsheet-section-title">Index a directory</div>
