@@ -1129,9 +1129,14 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
 
       const phaseOffset = (hashStr(star.id) % 1000) / 1000
 
+      const isHighlighted = highlights.has(star.id)
+      const isSelected = star.id === selectedId
+      const isNeighbor = neighbors.has(star.id)
+      const dimAlpha = hasFocus && !isHighlighted && !isSelected && !isNeighbor ? DIM_ALPHA : 1
+
       ctx.save()
       ctx.globalCompositeOperation = 'lighter'
-      ctx.globalAlpha = exposure
+      ctx.globalAlpha = exposure * dimAlpha
 
       if (animType === 'pulsar') {
         const angle = (tNow * 0.7 + phaseOffset) * Math.PI * 2
