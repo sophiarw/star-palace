@@ -14,6 +14,7 @@ import {
   setSpriteCacheActiveTheme,
   setSpriteCacheDpr,
   spriteLogicalSize,
+  resetTypedBakeBudget,
 } from './sprites'
 import { defaultJitterFor } from './proc'
 import { drawChromaticAberration } from './vaporCrt'
@@ -729,6 +730,12 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       if (PERF) frameMetrics.recordPass(name, performance.now() - _markT)
     }
 
+    // Reset the per-frame typed-sprite bake budget. Caps how many cold-cache
+    // procedural drawer calls one frame may incur; over-budget misses serve
+    // the cheap-tier sprite so a single rAF never stalls on thousands of
+    // bakes (e.g. cold load at 7.5k stars).
+    resetTypedBakeBudget()
+
     // Opaque clear: backdrop draw + vignette below are not guaranteed to
     // cover the full backing store on resize / DPR change. Without this,
     // stale pixels survive in narrow bands. Theme drives the fill colour
@@ -1022,7 +1029,7 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
       let jitter: ReturnType<typeof defaultJitterFor> | null = null
       const effectiveType = effectiveStarType(star, activeMode, activeBuckets)
       if (effectiveType) {
-        sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id, lod)
+        sprite = getTypedStarSprite(activeTheme, effectiveType, sb, star.id, lod, focused ? 'high' : 'normal')
       } else {
         const cluster = star.clusterId !== null ? clusterMap.current.get(star.clusterId) : null
         const colorIndex = cluster ? cluster.colorIndex : -1
@@ -1600,6 +1607,9 @@ export default function StarMap({ stars, clusters, searchHighlights, selectedId,
           frameMetrics.recordCounter('spriteCache.typed.size', s.typedSize)
           frameMetrics.recordCounter('spriteCache.typed.misses', s.typedMisses)
           frameMetrics.recordCounter('spriteCache.typed.hits', s.typedHits)
+          frameMetrics.recordCounter('spriteCache.typed.bakesPerformed', s.typedBakesPerformed)
+          frameMetrics.recordCounter('spriteCache.typed.bakesDeferred', s.typedBakesDeferred)
+          frameMetrics.recordCounter('spriteCache.typed.bytes', s.typedBytes)
         }
       } else {
         frameMetrics.recordSkipped()

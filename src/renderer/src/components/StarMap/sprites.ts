@@ -114,6 +114,8 @@ let _defaultMisses = 0
 let _defaultHits = 0
 let _typedMisses = 0
 let _typedHits = 0
+let _typedBakesPerformed = 0
+let _typedBakesDeferred = 0
 
 export function spriteCacheStats(): {
   defaultSize: number
@@ -122,6 +124,9 @@ export function spriteCacheStats(): {
   typedSize: number
   typedMisses: number
   typedHits: number
+  typedBakesPerformed: number
+  typedBakesDeferred: number
+  typedBytes: number
 } {
   return {
     defaultSize: cache.size,
@@ -130,6 +135,9 @@ export function spriteCacheStats(): {
     typedSize: typedCache.size(),
     typedMisses: _typedMisses,
     typedHits: _typedHits,
+    typedBakesPerformed: _typedBakesPerformed,
+    typedBakesDeferred: _typedBakesDeferred,
+    typedBytes: typedCache.bytes(),
   }
 }
 
@@ -283,24 +291,25 @@ const TYPED_SCALE: Record<StarType, number> = {
   'nebula': 2.4,
 }
 
-// Phase 1.5 — cap raised 500 → 4000 with a 96 MB byte ceiling and
-// theme-aware eviction (see Report 4 §B.2 + ThemeAwareSpriteCache in
-// proc.ts). At a 7822-star corpus the prior cap=500 thrashed at 758k
-// misses per pan; this sizing keeps the working set resident across
-// pan/zoom and makes second theme flip ~free.
+// Cap raised 4000 → 6000 to cover the ~7.5k-star JWST working set with
+// headroom while staying well under the 512 MB byte cap (6000 × ~50 KB
+// avg ≈ 300 MB). Prior cap=4000 forced ~3600 evict-then-rebake misses
+// per frame at 7758 visible stars, pushing 07.mainStars p99 to ~700 ms.
 //
-// F-NEXT-A — sprites now bake at effective DPR; a DPR=2 sprite uses ~4×
-// the bytes of the previous DPR=1 bake. The plan's first cut halved the
-// entry cap (4000→2000) on the assumption byte cap would dominate, but in
-// practice the working set at retina with ~4.7k visible stars exceeded
-// both ceilings and the cache thrashed at ~38% hit rate (~115k misses per
-// pan). Restored entry cap to 4000 and bumped byte cap to 512 MB so the
-// full visible working set stays resident at DPR=2. Byte cap dominates at
-// retina (4000 × ~100 KB ≈ 400 MB), entry cap dominates at DPR=1 (e.g.
-// external 1× monitor) where each sprite is ~25 KB.
-const TYPED_CACHE_CAP = 4000
+// Pair with a per-frame bake budget (TYPED_BAKE_BUDGET_PER_FRAME): when a
+// frame exceeds the budget for full procedural bakes, over-budget misses
+// fall back to the existing cheap-tier sprite (renderCheapTypedSprite)
+// so the cache warms across a few frames instead of stalling one frame.
+// Focused stars (selected/hovered/neighbour) bypass the budget.
+const TYPED_CACHE_CAP = 6000
 const TYPED_CACHE_BYTE_CAP = 512 * 1024 * 1024
+const TYPED_BAKE_BUDGET_PER_FRAME = 120
 const typedCache = new ThemeAwareSpriteCache<string>(TYPED_CACHE_CAP, TYPED_CACHE_BYTE_CAP)
+let _typedBakesThisFrame = 0
+
+export function resetTypedBakeBudget(): void {
+  _typedBakesThisFrame = 0
+}
 
 // Notify the cache when the active theme changes so its eviction loop
 // prefers victims from the now-inactive theme. StarMap calls this on
@@ -343,15 +352,40 @@ export function getTypedStarSprite(
   sizeBucket: number,
   starId: string,
   lod: Lod = 'full',
+  priority: 'high' | 'normal' = 'normal',
 ): HTMLCanvasElement {
   const dpr = currentSpriteDpr
   const key = typedSpriteKey(theme.id, type, sizeBucket, starId, lod, dpr)
   const cached = typedCache.get(key)
   if (cached) { _typedHits++; return cached }
   _typedMisses++
+
+  // Defer expensive procedural bakes once per-frame budget is hit. Over-budget
+  // requests serve a cheap-tier sprite (or build one) so a single frame never
+  // stalls on thousands of cold-cache full bakes; the full sprite warms in
+  // over subsequent frames as the budget refills.
+  const overBudget =
+    lod === 'full' &&
+    priority === 'normal' &&
+    _typedBakesThisFrame >= TYPED_BAKE_BUDGET_PER_FRAME
+
+  if (overBudget) {
+    const cheapKey = typedSpriteKey(theme.id, type, sizeBucket, starId, 'cheap', dpr)
+    const cheapHit = typedCache.get(cheapKey)
+    if (cheapHit) { _typedBakesDeferred++; return cheapHit }
+    const cheap = renderCheapTypedSprite(type, sizeBucket, dpr)
+    typedCache.set(cheapKey, cheap, theme.id)
+    _typedBakesDeferred++
+    return cheap
+  }
+
   const sprite = lod === 'cheap'
     ? renderCheapTypedSprite(type, sizeBucket, dpr)
     : renderTypedSprite(theme, type, sizeBucket, starId, dpr)
+  if (lod === 'full') {
+    _typedBakesThisFrame++
+    _typedBakesPerformed++
+  }
   typedCache.set(key, sprite, theme.id)
   return sprite
 }
