@@ -23,6 +23,9 @@ export type StrategyId =
   | 'tags+metadata+content'
   | 'sampled-stats+metadata'
   | 'path-only'
+  | 'dir-path'
+  | 'filename'
+  | 'top-dir'
 
 export const STRATEGY_IDS: readonly StrategyId[] = [
   'content-only',
@@ -31,6 +34,9 @@ export const STRATEGY_IDS: readonly StrategyId[] = [
   'tags+metadata+content',
   'sampled-stats+metadata',
   'path-only',
+  'dir-path',
+  'filename',
+  'top-dir',
 ] as const
 
 export const DEFAULT_STRATEGY: StrategyId = 'content-only'
@@ -45,6 +51,9 @@ export interface Strategy {
   id: StrategyId
   label: string
   description: string
+  // Mixer-only channels: present in the registry so labMix can build them,
+  // hidden from the experiment-strategy dropdown.
+  hidden?: boolean
   build(ctx: StrategyContext): string | null
 }
 
@@ -218,6 +227,43 @@ const pathOnly: Strategy = {
   },
 }
 
+const dirPath: Strategy = {
+  id: 'dir-path',
+  label: 'Directory path (mixer)',
+  description: 'Relative path with the filename stripped. Mixer-only — pairs with filename + top-dir.',
+  hidden: true,
+  build(ctx) {
+    const p = relativePath(ctx.node)
+    const i = p.lastIndexOf('/')
+    if (i < 0) return null
+    const dir = p.slice(0, i)
+    return dir.length > 0 ? dir : null
+  },
+}
+
+const filenameOnly: Strategy = {
+  id: 'filename',
+  label: 'Filename (mixer)',
+  description: 'Just the file basename, no directory. Mixer-only.',
+  hidden: true,
+  build(ctx) {
+    return ctx.node.name.length > 0 ? ctx.node.name : null
+  },
+}
+
+const topDir: Strategy = {
+  id: 'top-dir',
+  label: 'Top directory (mixer)',
+  description: 'First segment of the relative path (e.g. "projects" in "projects/foo/bar.txt"). Mixer-only.',
+  hidden: true,
+  build(ctx) {
+    const p = relativePath(ctx.node)
+    const i = p.indexOf('/')
+    const top = i < 0 ? p : p.slice(0, i)
+    return top.length > 0 ? top : null
+  },
+}
+
 const sampledStatsPlusMetadata: Strategy = {
   id: 'sampled-stats+metadata',
   label: 'Sampled stats + metadata',
@@ -243,4 +289,7 @@ export const STRATEGIES: Record<StrategyId, Strategy> = {
   'tags+metadata+content': tagsPlusMetadataPlusContent,
   'sampled-stats+metadata': sampledStatsPlusMetadata,
   'path-only': pathOnly,
+  'dir-path': dirPath,
+  'filename': filenameOnly,
+  'top-dir': topDir,
 }

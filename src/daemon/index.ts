@@ -937,11 +937,13 @@ app.get('/api/file/:id/neighborhood', (req, res) => {
 // src/daemon/embedding/experiments.ts for the shared helper.
 
 app.get('/api/embedding/strategies', (_req, res) => {
-  const list = STRATEGY_IDS.map(id => ({
-    id,
-    label: STRATEGIES[id].label,
-    description: STRATEGIES[id].description,
-  }))
+  const list = STRATEGY_IDS
+    .filter(id => !STRATEGIES[id].hidden)
+    .map(id => ({
+      id,
+      label: STRATEGIES[id].label,
+      description: STRATEGIES[id].description,
+    }))
   const rawDefault = db.getDefaultStrategy()
   res.json({
     strategies: list,

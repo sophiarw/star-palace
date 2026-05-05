@@ -22,7 +22,7 @@ import { useIndexProgress } from '../../hooks/useIndexProgress'
 const MIN_FILES_FOR_EXPERIMENT = 10
 
 // Channels exposed as live-mix sliders. Order = render order in the panel.
-const MIX_CHANNELS = ['path-only', 'content-only', 'metadata-only'] as const
+const MIX_CHANNELS = ['dir-path', 'filename', 'top-dir', 'content-only', 'metadata-only'] as const
 type MixChannel = (typeof MIX_CHANNELS)[number]
 const MIX_DEBOUNCE_MS = 60
 
@@ -160,7 +160,9 @@ export default function EmbeddingLab({ visible, onClose, stars, preview, onPrevi
   // shared preview overlay.
   const [mixPrepId, setMixPrepId] = useState<string | null>(null)
   const [mixWeights, setMixWeights] = useState<Record<MixChannel, number>>(() => ({
-    'path-only': 1,
+    'dir-path': 1,
+    'filename': 1,
+    'top-dir': 1,
     'content-only': 1,
     'metadata-only': 1,
   }))
