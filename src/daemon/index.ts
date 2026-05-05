@@ -32,7 +32,7 @@ import {
 } from './embedding/experiments'
 import { listSnapshots } from './embedding/snapshots'
 
-const RAW_MIME_ALLOW = /^image\/(png|jpeg|gif|webp|svg\+xml)$/
+const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|svg\+xml)|application\/pdf)$/
 
 const DATA_DIR = process.env.STARPALACE_DIR ?? join(homedir(), '.starpalace')
 const DB_PATH = process.env.STARPALACE_DB ?? join(DATA_DIR, 'index.db')

@@ -78,6 +78,10 @@ function isImage(mimeType: string): boolean {
   return /^image\//.test(mimeType)
 }
 
+function isPdf(mimeType: string): boolean {
+  return mimeType === 'application/pdf'
+}
+
 export default function DetailPanel({
   star,
   clusterColorIndex,
@@ -129,9 +133,13 @@ export default function DetailPanel({
 
     let cancelled = false
 
-    fetchContent(star.id)
-      .then(c => { if (!cancelled) setContent(c) })
-      .catch(err => { if (!cancelled) setContentError(String(err)) })
+    // PDFs render via <iframe> against /raw; skip the text fetch so we don't
+    // run unpdf extraction on a payload nothing reads.
+    if (!isPdf(star.mimeType)) {
+      fetchContent(star.id)
+        .then(c => { if (!cancelled) setContent(c) })
+        .catch(err => { if (!cancelled) setContentError(String(err)) })
+    }
 
     fetchNeighborhood(star.id)
       .then(hood => {
@@ -157,7 +165,7 @@ export default function DetailPanel({
       })
 
     return () => { cancelled = true }
-  }, [star.id])
+  }, [star.id, star.mimeType])
 
   const clusterColor = clusterColorIndex !== null
     ? CONSTELLATION_PALETTE[clusterColorIndex % CONSTELLATION_PALETTE.length]
@@ -413,6 +421,9 @@ function ContentViewer({ star, content, error }: ContentViewerProps) {
   if (error) return <div className="detail-panel-empty">Could not load content: {error}</div>
   if (isImage(star.mimeType)) {
     return <img className="detail-panel-image" src={rawUrl(star.id)} alt={star.name} />
+  }
+  if (isPdf(star.mimeType)) {
+    return <iframe className="detail-panel-pdf" src={rawUrl(star.id)} title={star.name} />
   }
   if (content === null) return <div className="detail-panel-empty">Loading…</div>
   if (content.content === null) {

@@ -568,6 +568,14 @@ body {
   border-radius: 6px;
 }
 
+.detail-panel-pdf {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bg-elevated, #111);
+}
+
 .detail-panel-truncation {
   margin-top: 8px;
   font-size: 11px;
