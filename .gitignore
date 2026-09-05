@@ -20,3 +20,4 @@ playwright-report/
 
 dist-site/
 dist-daemon/
+.starpalace-update-backup/

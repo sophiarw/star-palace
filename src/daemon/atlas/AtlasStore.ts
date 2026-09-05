@@ -321,11 +321,11 @@ export class AtlasStore {
     const groups = regions.filter(r => r.kind === 'neighborhood')
     const sampleCount = Math.max(1, Math.floor(4096 / Math.max(1, groups.length)))
     const markerJoin = 'JOIN files f ON f.id=p.id'
-    const sample = this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type,f.size,f.is_favorite isFavorite,f.favorite_appearance favoriteAppearance FROM atlas_positions p
+    const sample = this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type,f.size,f.modified_at modifiedAt,f.is_favorite isFavorite,f.favorite_appearance favoriteAppearance FROM atlas_positions p
       ${markerJoin} JOIN atlas_object_types o ON o.id=p.id
       WHERE p.neighborhood_id=?${filter.sql} ORDER BY p.rowid LIMIT ?`)
     const markers = regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0) <= 4096
-      ? this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type,f.size,f.is_favorite isFavorite,f.favorite_appearance favoriteAppearance FROM atlas_positions p ${markerJoin} JOIN atlas_object_types o ON o.id=p.id WHERE 1${filter.sql}`).all(...filter.args) as AtlasMarker[] : []
+      ? this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type,f.size,f.modified_at modifiedAt,f.is_favorite isFavorite,f.favorite_appearance favoriteAppearance FROM atlas_positions p ${markerJoin} JOIN atlas_object_types o ON o.id=p.id WHERE 1${filter.sql}`).all(...filter.args) as AtlasMarker[] : []
     const stride = Math.max(1, Math.ceil(groups.length / 4096))
     if (!markers.length) for (let i = 0; i < groups.length; i += stride) markers.push(...sample.all(groups[i].id, ...filter.args, sampleCount) as AtlasMarker[])
     const layoutEpoch = (this.index.db.prepare('SELECT layout_epoch FROM atlas_state WHERE id=1').get() as { layout_epoch: number }).layout_epoch

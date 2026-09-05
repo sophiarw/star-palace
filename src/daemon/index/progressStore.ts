@@ -143,6 +143,8 @@ export class ProgressStore {
     return entry ? { ...entry.state } : null
   }
 
+  hasRunning(): boolean { return [...this.jobs.values()].some(entry => entry.state.status === 'running') }
+
   has(jobId: string): boolean {
     return this.jobs.has(jobId)
   }

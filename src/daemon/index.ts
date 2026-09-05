@@ -34,6 +34,10 @@ import { searchSpotlight, SpotlightUnavailable } from './search/spotlight'
 import { AtlasStore } from './atlas/AtlasStore'
 import { AtlasService } from './atlas/service'
 import { atlasRoutes } from './atlas/routes'
+import { TextHistory } from './history/TextHistory'
+import { textHistoryRoutes } from './history/routes'
+import { updateRoutes } from './util/updateRoutes'
+import { dirname, resolve } from 'node:path'
 
 const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|avif|bmp|svg\+xml)|application\/pdf)$/
 
@@ -80,6 +84,14 @@ app.use(express.json({ limit: '5mb' }))
 
 export const atlasStore = new AtlasStore(db)
 export const atlasService = new AtlasService(atlasStore, embedEngine)
+const updater = updateRoutes(() => progressStore.hasRunning())
+app.use('/api', (req, res, next) => {
+  if (req.method !== 'GET' && updater.updating()) { res.status(409).json({ error: 'An update is in progress. Please wait for the app to restart.' }); return }
+  next()
+})
+const textHistory = new TextHistory(atlasStore, join(dirname(resolve(DB_PATH)), 'text-history.git'))
+app.use('/api/atlas/history', textHistoryRoutes(textHistory))
+app.use('/api/atlas/update', updater)
 app.use('/api/atlas', atlasRoutes(atlasService))
 
 // B10 — body-parser surfaces SyntaxError/PayloadTooLargeError as Express's
@@ -156,6 +168,7 @@ app.post('/api/index', async (req, res) => {
   try { if (!(await stat(rootPath)).isDirectory()) return res.status(400).json({ error: 'Choose a folder to index' }) }
   catch { return res.status(400).json({ error: 'Folder not found or unavailable' }) }
 
+  if (updater.updating()) return res.status(409).json({ error: 'An update is in progress. Index after the app restarts.' })
   const fallbackName = basename(rootPath) || rootPath
   const name = ((galaxyName ?? '').trim() || fallbackName).slice(0, 80)
   let galaxy
@@ -1107,6 +1120,7 @@ app.post('/api/file/:id/reindex', async (req, res) => {
 export function startDaemon(port = Number(process.env.STARPALACE_PORT) || DAEMON_PORT): void {
   atlasStore.syncBatch(64)
   atlasService.start()
+  textHistory.start()
   app.listen(port, '127.0.0.1', () => {
     console.log(`Star Palace daemon listening on http://127.0.0.1:${port}`)
     console.log(`  DB: ${DB_PATH}`)

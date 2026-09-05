@@ -37,7 +37,10 @@ export interface AtlasScope {
   tag?: string
 }
 
+export type AtlasLens = 'visible' | 'recent' | 'size' | 'connections'
+
 export interface AtlasMarker {
+  modifiedAt?: number
   regionId: string
   neighborhoodId: string
   id: string
