@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Star Palace · Planet surfaces</title>
+<style>
+:root{color-scheme:dark;font-family:ui-sans-serif,system-ui,sans-serif;background:#030405;color:#e4e7eb}*{box-sizing:border-box}body{margin:0}main{max-width:1300px;margin:auto;padding:36px 40px 60px}header{display:flex;justify-content:space-between;gap:20px;align-items:center;border-bottom:1px solid #20242b;padding-bottom:23px}header span,.eyebrow{font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:#9da9b9}header a{color:#9da9b9;font-size:12px}h1{font:400 clamp(32px,4vw,52px)/1.15 Georgia,serif;margin:20px 0 14px}h2{font:400 29px Georgia,serif;margin:12px 0}p{line-height:1.7;color:#9ca8b7;max-width:600px;font-size:14px}button,input{font:inherit}button{color:#bdc6d1;background:#0c1016;border:1px solid #2a313c;border-radius:7px;padding:9px 13px;cursor:pointer}button:hover,button[aria-pressed=true]{border-color:#abb6c8;color:#fff;background:#151c27}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #c8dfff;outline-offset:4px}.layout{display:grid;grid-template-columns:1.2fr 1fr;gap:46px;align-items:center}.hero{position:relative;min-width:0}.hero canvas{width:100%;aspect-ratio:1;display:block}.caption{position:absolute;bottom:24px;left:18px;font-size:11px;color:#7f8d9f;letter-spacing:.08em}.catalog{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:25px 0}.planet{padding:8px 4px 12px;background:#080a0e}.planet canvas{width:100%;aspect-ratio:1;display:block}.planet span{font-size:12px}.controls{display:flex;gap:9px;flex-wrap:wrap;margin:19px 0}.sliders{display:flex;gap:22px;flex-wrap:wrap;color:#a9b3c0;font-size:12px}.sliders label{display:grid;gap:8px}input{accent-color:#bccde3;width:145px}.note{font-size:12px;color:#798697}.system{border-top:1px solid #20242b;margin-top:15px;padding-top:32px;display:grid;grid-template-columns:1fr 1.1fr;gap:40px;align-items:center}#orbits{width:100%;height:330px}.section-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.section-list button{font-size:12px}.specimen{font-size:12px;color:#c8b895}.key{color:#d5dce6}.error{color:#f3bf9b}footer{margin-top:30px;font-size:12px;color:#748094} @media(max-width:760px){main{padding:22px 20px}.layout,.system{grid-template-columns:1fr;gap:0}.hero{order:2}.caption{bottom:10px}.system{gap:12px}header span{font-size:9px}.catalog{margin-top:15px}.hero canvas{max-height:480px}.system canvas{max-height:300px}}
+</style>
+<main>
+<header><span>Star Palace / Close-up studies</span><a href="planet-semantics.md">Design notes</a></header>
+<div class="layout">
+  <div class="hero"><canvas id="surface" aria-label="Animated procedural planet close-up"></canvas><div class="caption">FICTIONAL DOCUMENT · SEED <span id="seedLabel">2718</span></div></div>
+  <section>
+    <div class="eyebrow" style="margin-top:30px">Procedural worlds</div>
+    <h1>A place inside a file.</h1>
+    <p>Six surface studies for a document’s solar system. Pick a world, change its seed, and let the weather drift.</p>
+    <div class="catalog" id="catalog" aria-label="Surface families"></div>
+    <h2 id="title">Ocean & cloud</h2><p id="description"></p>
+    <div class="controls"><button id="pause" aria-pressed="false">Pause motion</button><button id="reseed">Another seed</button><button id="reset">Reset study</button></div>
+    <div class="sliders"><label>Atmosphere <input id="atmosphere" aria-label="Atmosphere" type="range" min="0" max="1" step="0.01" value="0.65"></label><label>Inspection scale <input id="scale" aria-label="Inspection scale" type="range" min="0.75" max="1.2" step="0.01" value="1"></label></div>
+    <p class="note" id="status">Live procedural rendering. No image assets or file contents are used.</p>
+  </section>
+</div>
+<section class="system">
+  <div><div class="eyebrow">An interior / interaction sketch</div><h2>Field notes.md</h2><p>The file is the sun. Its sections become recognizable worlds. Choose a section below to inspect its planet; the orbit sketch stops while you point at it.</p><p class="specimen" id="passage">Overview · An ocean world for the opening section.</p><div class="section-list" id="sections"></div><p class="note">Appearance is a memory cue, not a measure of writing quality. Section names, surfaces, and associations here are fictional.</p></div>
+  <canvas id="orbits" aria-label="Slowly orbiting section planets; use the adjacent section buttons to select"></canvas>
+</section>
+<footer>Visual prototype · The atlas and your library are unchanged. Reduced-motion settings are respected.</footer>
+</main>
+<script id="fragment" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2 resolution;
+uniform float clockTime, seed, family, atmosphere, scale;
+float hash(vec3 p){p=fract(p*.3183099+vec3(.13,.37,.71));p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float noise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float fbm(vec3 p){float v=0.,a=.52;for(int i=0;i<5;i++){v+=noise(p)*a;p=p*2.03+vec3(8.2,1.7,3.5);a*=.49;}return v;}
+vec3 turn(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);}
+void main(){
+ vec2 uv=(gl_FragCoord.xy-resolution*.5)/min(resolution.x,resolution.y)*2.;uv/=scale*.72;
+ float rr=dot(uv,uv), r=sqrt(rr);vec3 atmosphereColor=vec3(.24,.49,.78);
+ if(family>1.5&&family<2.5)atmosphereColor=vec3(.60,.39,.26);
+ if(family>3.5&&family<4.5)atmosphereColor=vec3(.84,.25,.075);
+ if(family>4.5)atmosphereColor=vec3(.48,.42,.65);
+ if(rr>1.){float glow=exp(-(r-1.)*36.)*.16*atmosphere;float sunward=clamp(.6-.3*uv.x+.3*uv.y,0.,1.);gl_FragColor=vec4(atmosphereColor,glow*sunward);return;}
+ vec3 n=vec3(uv,sqrt(1.-rr)),p=turn(n,clockTime*.024+seed*.031);
+ vec3 base=vec3(.15);float rough=0.,ocean=0.,clouds=0.;
+ vec3 q=p*3.+vec3(seed*.139,seed*.073,seed*.017);
+ float terrain=fbm(q+vec3(fbm(q*1.7),fbm(q*1.7+17.),fbm(q*1.7+31.))*.65);
+ if(family<.5){
+  ocean=1.-smoothstep(.47,.51,terrain);base=mix(vec3(.018,.082,.115),vec3(.035,.18,.24),smoothstep(.36,.49,terrain));
+  vec3 land=mix(vec3(.13,.19,.12),vec3(.41,.37,.25),smoothstep(.51,.64,terrain));land=mix(land,vec3(.78,.80,.73),smoothstep(.72,.87,abs(p.y)+terrain*.13));
+  base=mix(land,base,ocean);rough=terrain;
+ }else if(family<1.5){
+  float warp=fbm(q*2.+vec3(clockTime*.016,0,0));
+  float bands=sin(p.y*58.+warp*10.+sin(p.x*9.+p.z*5.)*.8);
+  float fine=fbm(q*12.);float storm=length((p.xy-vec2(.32,-.19))*vec2(1.,2.4));
+  float swirl=sin(storm*57.+atan(p.y+.19,p.x-.32)*2.+warp*8.);
+  bands=mix(bands,swirl,(1.-smoothstep(.12,.37,storm))*.85);
+  base=mix(vec3(.25,.18,.135),vec3(.78,.69,.53),smoothstep(-.8,.8,bands));base*=.80+fine*.4;rough=warp;
+ }else if(family<2.5){
+  float ridges=abs(sin(terrain*27.+fbm(q*7.)*2.));
+  base=mix(vec3(.20,.105,.058),vec3(.66,.43,.24),terrain);base+=pow(ridges,12.)*.075;rough=fbm(q*15.);
+  base=mix(base,vec3(.72,.67,.53),smoothstep(.85,.98,abs(p.y)));
+ }else if(family<3.5){
+  float veins=abs(fbm(q*3.)-.48);float cracks=1.-smoothstep(.006,.024,veins);
+  base=mix(vec3(.25,.39,.43),vec3(.75,.84,.81),terrain);base=mix(base,vec3(.07,.18,.23),cracks*.63);rough=fbm(q*13.);
+ }else if(family<4.5){
+  float crack=1.-smoothstep(.012,.045,abs(terrain-.5));
+  base=mix(vec3(.055,.045,.046),vec3(.19,.16,.14),fbm(q*15.));base+=vec3(1.,.20,.025)*crack*.50;rough=fbm(q*17.);
+ }else{
+  vec3 w=q+vec3(fbm(q*2.),fbm(q*2.+9.),fbm(q*2.+21.))*1.6;
+  float whorls=fbm(w*3.+vec3(clockTime*.022,0,0));
+  base=mix(vec3(.14,.16,.26),vec3(.60,.65,.75),smoothstep(.28,.70,whorls));base=mix(base,vec3(.49,.39,.43),smoothstep(.53,.64,whorls)*.35);rough=whorls;
+ }
+ vec3 light=normalize(vec3(-.65,.48,1.));float day=max(dot(n,light),0.);
+ if(family<.5||family>1.5&&family<3.5){
+  vec3 cp=turn(n,clockTime*.035+seed*.031)*5.+vec3(seed*.139,seed*.073,seed*.017);
+  float c=fbm(cp+vec3(fbm(cp*2.),fbm(cp*2.+5.),0.)*1.7);
+  clouds=smoothstep(.49,.69,c)*atmosphere*(family<.5?1.:.3);base=mix(base,vec3(.87,.90,.92),clouds);
+ }
+ vec3 color=base*(.042+pow(day,.85)*1.05)*(1.+(rough-.5)*.19);
+ float spec=pow(max(dot(reflect(-light,n),vec3(0,0,1)),0.),85.);color+=vec3(.80,.86,.81)*spec*ocean*(1.-clouds)*.53;
+ if(family>3.5&&family<4.5)color+=vec3(.65,.085,.006)*(1.-smoothstep(.008,.025,abs(terrain-.5)))*.65;
+ float rim=pow(1.-n.z,3.8);color+=atmosphereColor*rim*atmosphere*(.07+day*.65);
+ color*=smoothstep(0.,.02,1.-rr);gl_FragColor=vec4(pow(max(color,vec3(0.)),vec3(.88)),1.);
+}
+</script>
+<script>
+const families=[
+ ['Ocean & cloud','Dark seas, muted continents, a thin blue limb, and a separate cloud layer. A recognizable coastline beneath moving weather.'],
+ ['Banded giant','Cream, bronze, and slate bands curl into a storm. The cloud pattern drifts slowly across the illuminated hemisphere.'],
+ ['Dune world','Ochre ridges and eroded highlands, with pale polar deposits and a fine warm atmosphere.'],
+ ['Fractured ice','Pearl-white ice interrupted by dark teal seams. Quiet color, intricate surface structure.'],
+ ['Volcanic night','Charcoal crust threaded with amber fissures that remain visible beyond the day–night boundary.'],
+ ['Veiled world','A deep slate and mauve cloud deck, with broad folds and soft atmospheric scattering.']
+];
+const sectionNames=['Overview','Observations','Methods','References','Open questions','Appendix'];
+const canvas=document.querySelector('#surface'), gl=canvas.getContext('webgl',{alpha:true,premultipliedAlpha:false,antialias:false,preserveDrawingBuffer:true});
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+let selected=0,seed=2718,time=0,paused=reduced.matches,orbitHover=false,atmosphere=.65,scale=1,dirty=true;
+const thumbs=[];
+function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s;}
+let program,uniforms;
+function setup(){
+ if(!gl)throw Error('WebGL is unavailable. Open this study in a browser with hardware acceleration.');
+ program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,'attribute vec2 position;void main(){gl_Position=vec4(position,0.,1.);}'));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,document.querySelector('#fragment').textContent));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
+ const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);const a=gl.getAttribLocation(program,'position');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+ uniforms=Object.fromEntries(['resolution','clockTime','seed','family','atmosphere','scale'].map(k=>[k,gl.getUniformLocation(program,k)]));
+}
+function draw(family,size,preview=false){
+ if(canvas.width!==size){canvas.width=size;canvas.height=size;}gl.viewport(0,0,size,size);gl.uniform2f(uniforms.resolution,size,size);gl.uniform1f(uniforms.clockTime,preview?0:time);gl.uniform1f(uniforms.seed,seed);gl.uniform1f(uniforms.family,family);gl.uniform1f(uniforms.atmosphere,atmosphere);gl.uniform1f(uniforms.scale,preview?.95:scale);gl.drawArrays(gl.TRIANGLES,0,6);
+}
+function select(index){selected=index;document.querySelector('#title').textContent=families[index][0];document.querySelector('#description').textContent=families[index][1];document.querySelector('#passage').textContent=sectionNames[index]+' · '+families[index][0];document.querySelectorAll('[data-family]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.family===index)));dirty=true;}
+function previews(){families.forEach((_,i)=>{draw(i,192,true);const c=thumbs[i],ctx=c.getContext('2d');ctx.clearRect(0,0,192,192);ctx.drawImage(canvas,0,0,192,192);});dirty=true;}
+families.forEach(([title],i)=>{
+ const button=document.createElement('button');button.className='planet';button.dataset.family=i;button.innerHTML='<canvas width="192" height="192" aria-hidden="true"></canvas><span>'+title+'</span>';button.onclick=()=>select(i);document.querySelector('#catalog').append(button);thumbs.push(button.querySelector('canvas'));
+ const section=document.createElement('button');section.dataset.family=i;section.textContent=sectionNames[i];section.onclick=()=>select(i);document.querySelector('#sections').append(section);
+});
+const orbit=document.querySelector('#orbits'),ctx=orbit.getContext('2d');let orbitClock=0;
+function drawOrbits(){
+ const w=orbit.clientWidth,h=orbit.clientHeight,dpr=Math.min(devicePixelRatio,2);if(orbit.width!==Math.round(w*dpr)||orbit.height!==Math.round(h*dpr)){orbit.width=Math.round(w*dpr);orbit.height=Math.round(h*dpr);}
+ ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);const cx=w*.5,cy=h*.5;
+ for(let i=0;i<6;i++){const r=(.12+i*.057)*w;ctx.beginPath();ctx.ellipse(cx,cy,r,r*.57,-.22,0,Math.PI*2);ctx.strokeStyle=i===selected?'#485665':'#1c242e';ctx.lineWidth=1;ctx.stroke();}
+ const glow=ctx.createRadialGradient(cx,cy,0,cx,cy,42);glow.addColorStop(0,'#fff5d6');glow.addColorStop(.10,'#ffe7af');glow.addColorStop(.20,'#a18a5155');glow.addColorStop(1,'#a18a5100');ctx.fillStyle=glow;ctx.fillRect(cx-42,cy-42,84,84);
+ for(let i=0;i<6;i++){const angle=i*2.399+orbitClock*.026/(1+i*.38),r=(.12+i*.057)*w,x=Math.cos(angle)*r,y=Math.sin(angle)*r*.57,px=cx+x*Math.cos(-.22)-y*Math.sin(-.22),py=cy+x*Math.sin(-.22)+y*Math.cos(-.22),s=i===selected?42:30;ctx.drawImage(thumbs[i],px-s/2,py-s/2,s,s);if(i===selected){ctx.strokeStyle='#a4b3c6';ctx.beginPath();ctx.arc(px,py,s*.42,0,Math.PI*2);ctx.stroke();}}
+}
+orbit.onpointerenter=()=>{orbitHover=true;};orbit.onpointerleave=()=>{orbitHover=false;};
+function setPaused(value){paused=value;document.querySelector('#pause').textContent=paused?'Resume motion':'Pause motion';document.querySelector('#pause').setAttribute('aria-pressed',String(paused));dirty=true;}
+document.querySelector('#pause').onclick=()=>setPaused(!paused);
+document.querySelector('#reseed').onclick=()=>{seed=(seed+7919)%10000;document.querySelector('#seedLabel').textContent=seed;previews();};
+document.querySelector('#reset').onclick=()=>{seed=2718;time=0;orbitClock=0;atmosphere=.65;scale=1;document.querySelector('#seedLabel').textContent=seed;document.querySelector('#atmosphere').value=atmosphere;document.querySelector('#scale').value=scale;setPaused(reduced.matches);select(0);previews();};
+document.querySelector('#atmosphere').oninput=e=>{atmosphere=+e.target.value;dirty=true;};document.querySelector('#atmosphere').onchange=()=>previews();document.querySelector('#scale').oninput=e=>{scale=+e.target.value;dirty=true;};
+reduced.onchange=()=>setPaused(reduced.matches);window.onresize=()=>{dirty=true;};document.addEventListener('visibilitychange',()=>{dirty=true;});
+let previous=0;
+function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-previous)/1000,.08);if(now-previous<1000/30)return;previous=now;if(document.hidden)return;if(!paused){time+=dt;if(!orbitHover)orbitClock+=dt;}if(paused&&!dirty)return;const size=Math.min(1000,Math.round(canvas.clientWidth*Math.min(devicePixelRatio,1.5)));draw(selected,size);drawOrbits();dirty=false;}
+try{setup();select(0);setPaused(paused);previews();requestAnimationFrame(frame);}catch(e){document.querySelector('#status').textContent=e.message;document.querySelector('#status').className='error';}
+window.planetStudy={get state(){return{selected,seed,time,paused,orbitClock}},select};
+</script>
+</html>

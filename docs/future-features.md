@@ -82,6 +82,8 @@ Enter a document's star deliberately to explore a local solar system: sections a
 
 The user explicitly prefers **very slow moving orbits**, somewhat sped up from real planetary timescales, over frozen planets. Explore deterministic per-document planets with gently evolving, wavy procedural atmospheres or cloud bands. Orbital tracks and recognizable planet appearances provide continuity while positions change. Support pause/reduced motion and reliable keyboard/pointing selection; camera follow is a design option for an inspected planet. Generate detail only for the active system with bounded graphics work. Prototype visual appeal and navigation usefulness before extending to complex document formats.
 
+FR-09 visual follow-up: the user requested generated close-up surfaces/atmospheres and alternative meanings for orbiting planets. [Six procedural surface studies](design/planet-study.html) and [solar-system proposals](design/planet-semantics.md) are ready for review. Compare Contents (sections/functions/sheets), Sources (explicit references/dependencies), Milestones (selected versions), and Reading routes (authored passage bookmarks). No production solar-system navigation or format extraction is implemented by this study.
+
 ### FR-10: Binary stars and stellar families
 
 Give explicitly related files a paired or family appearance: paper/supplement, original/edited image, manuscript/translation. Users can establish the relationship or accept an evidence-backed suggestion. Distinguish authored pairing from generic content similarity, duplicate detection, favorites, and folder membership. Explore connecting or shared-halo treatments at existing atlas positions before considering any motion or relocation.
