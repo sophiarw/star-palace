@@ -1,5 +1,6 @@
+import { openInTerminalEditor, TerminalEditorError } from '../util/openInTerminalEditor'
 import { Router } from 'express'
-import type { AtlasScope } from '../../shared/atlas'
+import type { AtlasFile, AtlasScope } from '../../shared/atlas'
 import type { FileCategory } from '../../shared/types'
 import type { AtlasService } from './service'
 
@@ -29,7 +30,7 @@ export function parseScope(raw: Record<string, unknown>): AtlasScope {
   return scope
 }
 
-export function atlasRoutes(service: AtlasService): Router {
+export function atlasRoutes(service: AtlasService, editFile: (file: AtlasFile) => Promise<{ editor: 'nvim' | 'vim' }> = openInTerminalEditor): Router {
   const router = Router(), store = service.store
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
   router.get('/summary', (req, res) => {
@@ -77,6 +78,12 @@ export function atlasRoutes(service: AtlasService): Router {
         } catch { if (!res.destroyed) res.json({ results: [], semanticAvailable: false, elapsedMs: performance.now() - start }) }
       } else res.json({ results: store.lexical(query, scope, limit), semanticAvailable: true, elapsedMs: performance.now() - start })
     } catch (e) { res.status(400).json({ error: String(e) }) }
+  })
+  router.post('/file/:id/edit', async (req, res) => {
+    const file = store.file(req.params.id)
+    if (!file) return res.status(404).json({ error: 'File not found' })
+    try { return res.json(await editFile(file)) }
+    catch (error) { return res.status(error instanceof TerminalEditorError ? error.status : 500).json({ error: error instanceof TerminalEditorError ? error.message : 'Could not open the terminal editor' }) }
   })
   router.post('/file/:id/favorite', (req, res) => {
     const { isFavorite, favoriteAppearance } = req.body ?? {}

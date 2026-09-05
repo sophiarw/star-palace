@@ -2,7 +2,7 @@
 
 Star Palace has native Normal-mode browsing keys in the atlas, file list/grid, search results, and reader. Use **`:help`**, **F1**, or the **Commands** button for the in-app reference. `:` opens a command field; its Up/Down keys recall this session's command history.
 
-This first implementation covers navigation, search, file ranges, marks, and a small set of app commands. It does not emulate a text editor or implement all Vim commands. Original files stay unchanged by these commands; explicit `:favorite`, `:unfavorite`, `:pin`, and `:unpin` update atlas metadata, and `:collection` opens the existing reviewable collection form.
+This first implementation covers navigation, search, file ranges, marks, and a small set of app commands. It does not emulate a text editor or implement all Vim commands. Browsing commands do not change original files; explicit terminal editing opens the original in the user’s editor, where saving changes it. The explicit commands `:favorite`, `:unfavorite`, `:pin`, and `:unpin` update atlas metadata, and `:collection` opens the existing reviewable collection form.
 
 ## Contexts and commands
 
@@ -30,6 +30,7 @@ This first implementation covers navigation, search, file ranges, marks, and a s
 | `gt gT` | Next/previous map, list, grid view. | Same. |
 | `[f ]f` | Previous/next file in the sequence. | Same, independent of text-match navigation. |
 | Enter | Expand/collapse selected file reader. Focused buttons and links retain native Enter behavior. | Same. |
+| `Space e`, `:edit` / `:e` | Open the selected local plain-text or Markdown file in Terminal, preferring nvim and falling back to vim. | Same. |
 | `o O`, `gf` | Open in default app / reveal in folder; gf opens in default app. | Same. |
 | `+ = -` | Zoom map, bounded by the existing camera. | Use image/PDF controls for their own zoom. |
 | `zz zt zb`, `zf` | Center selected file; fit map. | Align current highlighted match center/top/bottom. |
@@ -41,7 +42,7 @@ Visual selection is highlighted in list/search cards and on the map, with a sele
 
 ## Command field
 
-Supported commands: `help`/`h`/`commands`, `map`, `list`, `grid`, `next`/`n`, `previous`/`prev`/`N`, `open`, `reveal`, `favorite`, `unfavorite`, `pin`, `unpin`, `collection`, `marks`, `fit`, `noh`/`nohlsearch`, and `q`/`quit`/`close`. `q` closes/collapses the reader, not the browser tab. Unknown commands produce a visible message. There is no shell execution or Ex expression evaluation.
+Supported commands: `help`/`h`/`commands`, `map`, `list`, `grid`, `next`/`n`, `previous`/`prev`/`N`, `open`, `reveal`, `edit`/`e`, `favorite`, `unfavorite`, `pin`, `unpin`, `collection`, `marks`, `fit`, `noh`/`nohlsearch`, and `q`/`quit`/`close`. `q` closes/collapses the reader, not the browser tab. Unknown commands produce a visible message. There is no shell execution or Ex expression evaluation.
 
 ## Compatibility decisions and remaining vocabulary
 
@@ -55,3 +56,11 @@ Supported commands: `help`/`h`/`commands`, `map`, `list`, `grid`, `next`/`n`, `p
 The vocabulary audit used Vim's maintained [command index](https://vimhelp.org/index.txt.html), [motion reference](https://vimhelp.org/motion.txt.html), and [quick reference](https://vimhelp.org/quickref.txt.html). The mapping above describes Star Palace's implementation and intentional differences; it is not a claim that Vim's text-editing semantics transfer unchanged to a spatial file browser.
 
 Regression coverage: `tests/atlas/vimCommands.test.ts` checks counts, prefixes, native shortcut bypass, unsupported destructive operators, file boundaries/ranges, and counted jump history. `tests/browser/vim.spec.ts` checks real UI selection, collection ranges, literal typing, search exit, command help/errors, marks/jumps, and reader scrolling using the isolated fictional demo.
+
+## External terminal editing on Mac
+
+`Space e`, `:edit`, and the reader's **Edit in Vim** button open the selected file in a new Terminal session. Star Palace first looks for executable `nvim`, then `vim`, in its PATH and normal Mac installation directories. Plain-text and Markdown files are supported; missing files, directories, binary samples, and unsupported formats produce a visible error. Input fields retain ordinary Space/e typing.
+
+The API accepts a file id, not a path or arbitrary command. It resolves the existing indexed file and sends a constant AppleScript with a separately passed, shell-quoted command argument. Paths with spaces, quotes, shell metacharacters, and leading dashes remain literal editor arguments. Control-character paths are rejected. On first use macOS may ask for permission to control Terminal; a declined or failed launch produces an actionable error. No editor is installed automatically.
+
+Automated tests use a fake executable to verify literal shell arguments and stub the browser edit endpoint; they never launch a real user's file or editor. Source content changes are made by the external editor only after the user saves. Reindex the source afterward to refresh the atlas's indexed text.

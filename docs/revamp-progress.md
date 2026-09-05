@@ -114,3 +114,19 @@ Final source-install acceptance passed from a clean anonymous HTTPS clone plus t
 ## Public branch promotion
 
 At the user's request, the tested atlas is promoted to public `main`, with the previous remote main preserved as `legacy/pre-atlas-main-2026-09-05`. Website deployment follows `main` only and normal clone instructions obtain the atlas by default. Promotion is a fast-forward, preserving history. The original local checkout, its local `main` ref, and its uncommitted files remain untouched; development continues in the atlas worktree.
+
+## September 5: atlas space, responsive gestures, and external editing
+
+The library starts collapsed and the reader takes no space until a file is selected or the preview is opened. Library, preview, and search results have explicit controls; collapsing retains selection, camera, and (for results) the query/highlights. Library preference persists, while reloading starts with the preview closed. Mobile panels remain dismissible overlays. Website source instructions now include **Library → Manage sources**.
+
+A high-frequency input regression reproduced the zoom complaint: the first frame showed no movement because each wheel event restarted a 140ms easing animation. Wheel gestures now update the pointer-anchored camera directly and draw once per animation frame; zoom buttons retain animation. The regression checks next-frame response, exact input accumulation, anchor stability, and absence of catch-up motion after input ends. Hit targets reuse cached stellar appearances instead of computing new palette/size records every frame.
+
+**Space e**, **:edit**, and **Edit in Vim** open the selected local text/Markdown file in Terminal, preferring Neovim then Vim. The daemon accepts only an indexed file ID and constructs literal editor arguments, with supported-file and readable-regular-file checks. Automated safety tests use fake editors and stubbed launch routes, never the user's original files. See [Vim browsing](vim-browsing.md) for macOS automation and reindexing details.
+
+Folder paths were already indexed. The search fix refreshes an unchanged query when indexing advances, preserving displayed hits and avoiding repeated model requests. Source/region/neighborhood labels now also match their members; label-only hits explain why they matched. Scope filters remain in force, with a visible geographic scope and an all-regions recovery action. No schema rebuild or position changes were needed. See [search behavior](search-behavior.md).
+
+Validation: typecheck/lint, 448 passing unit/integration tests (3 historical skips), 32 app browser checks, seven website checks, and renderer/site builds. The onboarding fixture initially mocked only the empty summary while allowing populated viewport responses; the fixture now consistently models an empty library and its click regression passes.
+
+Foreground production navigation on the isolated 1,748-file library (1500×1000 CSS pixels, DPR2, visible Chrome) measured frame p95 18.6ms for both renderers, draw p95 3.5ms GPU / 3.1ms Canvas, and no recorded long tasks. Both returned to the original camera with zero position error after the sampled zoom sequence. This was navigation on an existing library, not a concurrent-indexing benchmark or a guarantee for the work laptop. Results stay ignored in `.atlas-real/`.
+
+Rollback baseline for this pass: `8466358`. The original local checkout and primary database remain untouched.

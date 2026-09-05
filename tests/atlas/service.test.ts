@@ -1,3 +1,4 @@
+import { TerminalEditorError } from '../../src/daemon/util/openInTerminalEditor'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
@@ -31,6 +32,19 @@ function add(id: string, embedding: Float32Array | null = null): void {
 const app = () => express().use(express.json()).use('/atlas', atlasRoutes(service))
 
 describe('Atlas HTTP and asynchronous retrieval', () => {
+  it('edits only the indexed file resolved from its id and returns launcher errors', async () => {
+    add('paper')
+    const edit = vi.fn(async (_file: import('../../src/shared/atlas').AtlasFile) => ({ editor: 'nvim' as const }))
+    const server = express().use(express.json()).use('/atlas', atlasRoutes(service, edit))
+    expect((await request(server).post('/atlas/file/missing/edit').send({ path: '/etc/passwd' })).status).toBe(404)
+    expect(edit).not.toHaveBeenCalled()
+    const response = await request(server).post('/atlas/file/paper/edit').send({ path: '/etc/passwd', command: 'unexpected' })
+    expect(response.body).toEqual({ editor: 'nvim' })
+    expect(edit.mock.calls[0]?.[0]).toMatchObject({ id: 'paper', path: join(dir, 'paper.md') })
+    edit.mockRejectedValueOnce(new TerminalEditorError('No editor installed', 503))
+    expect((await request(server).post('/atlas/file/paper/edit').send({})).body).toEqual({ error: 'No editor installed' })
+  })
+
   it('validates favorite mutations and returns consistent typed marker metadata', async () => {
     add('paper')
     const original = store.file('paper')!, before = store.revision

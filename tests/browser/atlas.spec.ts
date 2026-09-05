@@ -92,6 +92,8 @@ test('themes, saved places, and settings work with keyboard focus', async ({ pag
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: '⌖ Save place', exact: true }).click()
+  await page.getByRole('button', { name: 'Show library', exact: true }).click()
+  await expect(page.getByRole('navigation', { name: 'Library navigation' })).toBeVisible()
   await expect(page.locator('.atlas-sidebar')).toContainText('Saved places')
   await page.reload()
   await expect(page.locator('.atlas-shell')).toHaveClass(/atlas-theme-bio/)
@@ -148,6 +150,7 @@ test('size-based stars and explicit favorites share the atlas, with an accessibl
 })
 
 test('zoom reveals deterministic per-file artwork with a bounded close-up cache', async ({ page }) => {
+  await page.getByRole('button', { name: 'Show library', exact: true }).click()
   await page.locator('.atlas-region-nav button').first().click()
   let destinations = page.getByRole('navigation', { name: 'Map destinations' })
   await destinations.getByRole('button').first().focus(); await page.keyboard.press('Enter')

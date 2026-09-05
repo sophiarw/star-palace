@@ -35,7 +35,10 @@ export default function AtlasApp() {
   const [selected, setSelected] = useState<AtlasFile | null>(null), [selectedId, setSelectedId] = useState<string | null>(() => readStored('selected', null))
   const [query, setQuery] = useState(''), [searchMode, setSearchMode] = useState<'all' | 'exact' | 'related'>('all'), [activeResult, setActiveResult] = useState(0)
   const [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null), [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState(false), [dialog, setDialog] = useState<Dialog>(null), [sidebar, setSidebar] = useState(true)
+  const [expanded, setExpanded] = useState(false), [dialog, setDialog] = useState<Dialog>(null), [sidebar, setSidebar] = useState(() => readStored('sidebar', false))
+  const [previewVisible, setPreviewVisible] = useState(false), [focusPreview, setFocusPreview] = useState(false)
+  const previewToggle = useRef<HTMLButtonElement>(null), libraryToggle = useRef<HTMLButtonElement>(null), resultsToggle = useRef<HTMLButtonElement>(null)
+  const [resultsVisible, setResultsVisible] = useState(true)
   const [theme, setTheme] = useState<string>(() => readStored('theme', 'jwst')), [readerWidth, setReaderWidth] = useState<number>(() => readStored('readerWidth', 380))
   const [places, setPlaces] = useState<Place[]>(() => readStored('places', [])), [metrics, setMetrics] = useState<MapMetrics | null>(null), [showMetrics, setShowMetrics] = useState(false)
   const [constellations, setConstellations] = useState<'all' | 'focus' | 'off'>(() => readStored('constellations', 'all'))
@@ -46,7 +49,7 @@ export default function AtlasApp() {
   const scopeKey = JSON.stringify(scope)
   // Search honors all current filters. Clicking a result navigates the map
   // without replacing the scope under an in-progress search.
-  const search = useAtlasSearch(query, scope, searchMode)
+  const search = useAtlasSearch(query, scope, searchMode, summary.revision)
   const updateSearchFile = search.updateFile
   const [searchDestination, setSearchDestination] = useState<AtlasRegion | null>(null)
   const baseScope = useMemo(() => { const { regionId: _r, neighborhoodId: _n, ...base } = JSON.parse(scopeKey) as AtlasScope; return base }, [scopeKey])
@@ -91,6 +94,7 @@ export default function AtlasApp() {
   }, [fileScopeKey, offset, needsFiles, summary.revision, refresh])
   useEffect(() => { setOffset(0); setSearchDestination(null); writeStored('scope', JSON.parse(scopeKey)) }, [scopeKey])
   useEffect(() => { writeStored('view', view) }, [view])
+  useEffect(() => { writeStored('sidebar', sidebar) }, [sidebar])
   useEffect(() => { writeStored('constellations', constellations) }, [constellations])
   useEffect(() => { writeStored('theme', theme) }, [theme])
   useEffect(() => { writeStored('readerWidth', readerWidth) }, [readerWidth])
@@ -108,6 +112,7 @@ export default function AtlasApp() {
   }, [progress.status, progress.errorMessage])
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(timer) }, [notice])
   useEffect(() => { setActiveResult(0); if (!query) setSearchDestination(null) }, [query, scopeKey, searchMode])
+  useEffect(() => { setResultsVisible(true) }, [query])
 
   const navigate = useCallback((next: AtlasScope) => {
     history.current.push(scope); future.current = []; setScope(next); setExpanded(false); setSearchDestination(null)
@@ -117,7 +122,15 @@ export default function AtlasApp() {
     if (overviewRequest === null || overviewRequest !== scopeKey || summaryScopeKey !== baseScopeKey || !map.current) return
     map.current.overview(); setOverviewRequest(null)
   }, [overviewRequest, scopeKey, summaryScopeKey, baseScopeKey, summary, view])
-  const selectFile = useCallback((file: AtlasFile) => { setSelected(file); setSelectedId(file.id) }, [])
+  const closeLibrary = useCallback(() => { setSidebar(false); requestAnimationFrame(() => libraryToggle.current?.focus({ preventScroll: true })) }, [])
+  const hideResults = useCallback(() => { setResultsVisible(false); requestAnimationFrame(() => resultsToggle.current?.focus({ preventScroll: true })) }, [])
+  const showPreview = useCallback(() => { setPreviewVisible(true); setFocusPreview(true) }, [])
+  const hidePreview = useCallback(() => {
+    setPreviewVisible(false); setExpanded(false); setFocusPreview(false)
+    requestAnimationFrame(() => previewToggle.current?.focus({ preventScroll: true }))
+  }, [])
+  const expandPreview = useCallback(() => { setPreviewVisible(true); setExpanded(value => !value) }, [])
+  const selectFile = useCallback((file: AtlasFile) => { setSelected(file); setSelectedId(file.id); setPreviewVisible(true); setFocusPreview(false) }, [])
   const selectId = useCallback(async (id: string) => {
     try { const file = await atlasApi.file(id); selectFile(file); map.current?.focus(file) } catch (e) { setError(String(e)) }
   }, [selectFile])
@@ -162,11 +175,12 @@ export default function AtlasApp() {
   const vim = useVimBrowsing<Place>({
     map, searchInput, sequence, selectedId, selected, query, view, expanded, blocked: dialog !== null, scopeKey,
     setQuery, setView, select: file => { selectFile(file); map.current?.focus(file); const index = search.results.findIndex(hit => hit.file.id === file.id); if (index >= 0) setActiveResult(index) },
-    expand: () => setExpanded(value => !value), close: () => { if (expanded) setExpanded(false); else setSelectedId(null) }, back,
+    expand: expandPreview, close: () => { if (expanded) setExpanded(false); else hidePreview() }, showReader: showPreview, back,
     help: () => setDialog('commands'), metrics: () => setShowMetrics(value => !value), notice: setNotice,
     collection: ids => { setCollectionSelection(ids); setDialog('collection') },
     action: (action, file) => { void act(async () => {
       if (action === 'open') await openFile(file.id)
+      else if (action === 'edit') { const result = await atlasApi.edit(file.id); setNotice(`Opened in ${result.editor}`) }
       else if (action === 'reveal') await revealFile(file.id)
       else if (action === 'favorite' || action === 'unfavorite') { const result = await atlasApi.favorite(file.id, action === 'favorite'); changeFile(result.file); setNotice(action === 'favorite' ? 'File favorited' : 'Favorite removed') }
       else { const result = await atlasApi.pin(file.id, action === 'unpin' ? null : file.x, action === 'unpin' ? null : file.y); changeFile(result.file); setNotice(action === 'pin' ? 'File pinned' : 'File unpinned') }
@@ -175,7 +189,7 @@ export default function AtlasApp() {
     restore: place => { if (place.camera && place.cameraKey) writeStored('camera.continuous.' + place.cameraKey, place.camera); navigate(place.scope); setSelectedId(place.selectedId); if (place.camera && place.cameraKey === cameraKey) map.current?.restore(place.camera) },
   })
 
-  return <div className={`atlas-shell atlas-theme-${theme} ${expanded ? 'atlas-reading' : ''} ${sidebar ? '' : 'atlas-sidebar-hidden'}`} style={{ '--reader-width': `${Math.max(300, Math.min(650, readerWidth))}px` } as CSSProperties}>
+  return <div className={`atlas-shell atlas-theme-${theme} ${expanded ? 'atlas-reading' : ''} ${sidebar ? '' : 'atlas-sidebar-hidden'} ${previewVisible && selected ? '' : 'atlas-preview-hidden'}`} style={{ '--reader-width': `${Math.max(300, Math.min(650, readerWidth))}px` } as CSSProperties}>
     <header className="atlas-topbar"><button className="atlas-brand" onClick={() => showOverview({})} aria-label="Star Palace home"><span aria-hidden="true">✳</span><strong>STAR PALACE</strong></button>
       <div className="atlas-search-field"><span aria-hidden="true">⌕</span><input ref={searchInput} value={query} placeholder="Find a file, a phrase, a place…" aria-label="Search library" onChange={e => setQuery(e.target.value)} onKeyDown={e => {
         if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur() }
@@ -185,7 +199,7 @@ export default function AtlasApp() {
       <button className="atlas-top-action" onClick={() => setDialog('commands')}>Commands <kbd>:help</kbd></button><button className="atlas-icon-button" aria-label="Settings" onClick={() => setDialog('settings')}>⚙</button>
     </header>
     <div className="atlas-workspace">
-      <nav className="atlas-sidebar" aria-label="Library navigation"><div className="atlas-eyebrow">Workspace</div><button className={`atlas-nav-item ${!scope.regionId && !scope.collectionId ? 'is-active' : ''}`} onClick={() => showOverview({})}><span>✧ &nbsp; Your atlas</span><small>{summary.total.toLocaleString()}</small></button>
+      <nav id="atlas-library-navigation" className="atlas-sidebar" aria-label="Library navigation"><div className="atlas-sidebar-toolbar"><div className="atlas-eyebrow">Workspace</div><button className="atlas-icon-button" aria-label="Close library panel" onClick={closeLibrary}>×</button></div><button className={`atlas-nav-item ${!scope.regionId && !scope.collectionId ? 'is-active' : ''}`} onClick={() => showOverview({})}><span>✧ &nbsp; Your atlas</span><small>{summary.total.toLocaleString()}</small></button>
         <div className="atlas-sidebar-heading"><span className="atlas-eyebrow">Sources</span><button aria-label="Add source" onClick={() => setDialog('sources')}>+</button></div>
         {galaxies.filter(g => g.memberCount || !g.rootPath.startsWith('__default__')).map(g => <div className="atlas-source-row" key={g.id}><button className="atlas-nav-item" onClick={() => navigate({ galaxyIds: [g.id] })}><span>{g.name}</span><small>{g.memberCount.toLocaleString()}</small></button><button className="atlas-source-visibility" aria-label={`${scope.galaxyIds && !scope.galaxyIds.includes(g.id) ? 'Show' : 'Hide'} ${g.name}`} aria-pressed={!scope.galaxyIds || scope.galaxyIds.includes(g.id)} onClick={() => {
           const ids = scope.galaxyIds ?? galaxies.map(s => s.id); navigate({ ...baseScope, galaxyIds: ids.includes(g.id) ? ids.filter(id => id !== g.id) : [...ids, g.id] })
@@ -196,22 +210,23 @@ export default function AtlasApp() {
         <footer><span className="atlas-status-dot" />{loading ? 'Connecting to your library' : `${summary.positioned.toLocaleString()} files in view`}<br />{summary.pending ? `Placing ${summary.pending.toLocaleString()} files…` : `${summary.searchable.toLocaleString()} previews indexed`}<button onClick={() => setDialog('sources')}>Manage sources ↗</button></footer>
       </nav>
       <main className="atlas-main"><div className="atlas-context"><div><div className="atlas-breadcrumb"><button onClick={() => showOverview(baseScope)}>Library</button><span>/</span>{region && <><button onClick={() => navigate({ ...baseScope, regionId: region.id })}>{region.label}</button><span>/</span></>}<span>{sceneGroup ? 'Neighborhood' : region ? 'Regions within' : 'Overview'}</span></div><h1>{title}</h1></div><div className="atlas-view-switch">{(['map', 'list', 'grid'] as const).map(v => <button key={v} aria-pressed={view === v} className={view === v ? 'is-active' : ''} onClick={() => setView(v)}>{v === 'map' ? 'Map' : v === 'list' ? 'List' : 'Grid'}</button>)}</div></div>
-        <div className="atlas-filterbar"><button className="atlas-icon-button" aria-label="Toggle sidebar" onClick={() => setSidebar(v => !v)}>☷</button><select aria-label="Filter by file type" value={scope.category ?? ''} onChange={e => navigate({ ...scope, category: e.target.value ? e.target.value as FileCategory : undefined })}><option value="">All file types</option>{['document', 'code', 'data', 'media', 'unknown'].map(t => <option key={t} value={t}>{t === 'unknown' ? 'Other files' : t[0].toUpperCase() + t.slice(1)}</option>)}</select>
+        <div className="atlas-filterbar"><button ref={libraryToggle} className="atlas-panel-toggle" aria-label={sidebar ? 'Hide library' : 'Show library'} aria-expanded={sidebar} aria-controls="atlas-library-navigation" onClick={() => sidebar ? closeLibrary() : setSidebar(true)}><span aria-hidden="true">☷</span> Library</button><button ref={previewToggle} className="atlas-panel-toggle" aria-label={previewVisible && selected ? 'Hide preview' : 'Show preview'} aria-expanded={!!(previewVisible && selected)} aria-controls="atlas-file-reader" disabled={!selected} title={selected ? 'Preview the selected file' : 'Select a file to preview it'} onClick={() => previewVisible ? hidePreview() : showPreview()}><span aria-hidden="true">◫</span> Preview</button><select aria-label="Filter by file type" value={scope.category ?? ''} onChange={e => navigate({ ...scope, category: e.target.value ? e.target.value as FileCategory : undefined })}><option value="">All file types</option>{['document', 'code', 'data', 'media', 'unknown'].map(t => <option key={t} value={t}>{t === 'unknown' ? 'Other files' : t[0].toUpperCase() + t.slice(1)}</option>)}</select>
+          {query && view === 'map' && <button ref={resultsToggle} className="atlas-panel-toggle" aria-label={resultsVisible ? 'Hide search results' : 'Show search results'} aria-expanded={resultsVisible} aria-controls="atlas-search-results" onClick={() => resultsVisible ? hideResults() : setResultsVisible(true)}>Results · {search.results.length}</button>}
           {query && <select aria-label="Search mode" value={searchMode} onChange={e => setSearchMode(e.target.value as typeof searchMode)}><option value="all">Text + related</option><option value="exact">Names & text</option><option value="related">Related meaning</option></select>}
           {(region || neighborhood) && <button onClick={() => setDialog('rename')}>Rename region</button>}<button onClick={savePlace}>⌖ Save place</button><button onClick={() => setDialog('objects')}>Object guide</button><select aria-label="Folder constellations" value={constellations} onChange={e => setConstellations(e.target.value as typeof constellations)}><option value="all">All folders</option><option value="focus">Selected folder</option><option value="off">Constellations off</option></select>
           {scope.collectionId && <button onClick={() => setDialog('collection')}>Manage collection</button>}
         </div>
         <div className="atlas-stage">
           {view === 'map' ? <AtlasMap ref={map} scopeKey={cameraKey} regions={summary.regions} markers={summary.markers ?? []} nebulae={summary.nebulae ?? []} filter={baseScope} destination={sceneGroup ?? region} revision={summary.revision} files={mapFiles} selectedId={selectedId} highlights={vim.visual ? new Set([...highlights, ...vim.range]) : highlights} theme={theme} constellations={constellations}
-            onRegion={showRegion} onFiles={setVisibleFiles} onSelectId={id => void selectId(id)} onSelect={selectFile} onRead={() => setExpanded(true)} onPin={(id, x, y) => void act(async () => { const result = await atlasApi.pin(id, x, y); changeFile(result.file) })} onMetrics={setMetrics} />
-            : <div className={`atlas-file-browser atlas-file-browser-${view}`} aria-label="Files">{displayFiles.map(file => <button key={file.id} data-vim-file={file.id} aria-pressed={selectedId === file.id || vim.range.includes(file.id)} className={`atlas-file-tile ${selectedId === file.id ? 'is-selected' : ''} ${vim.range.includes(file.id) ? 'is-vim-selected' : ''}`} onClick={() => selectFile(file)} onDoubleClick={() => setExpanded(true)}>
+            onRegion={showRegion} onFiles={setVisibleFiles} onSelectId={id => void selectId(id)} onSelect={selectFile} onRead={() => { setPreviewVisible(true); setExpanded(true) }} onPin={(id, x, y) => void act(async () => { const result = await atlasApi.pin(id, x, y); changeFile(result.file) })} onMetrics={setMetrics} />
+            : <div className={`atlas-file-browser atlas-file-browser-${view}`} aria-label="Files">{displayFiles.map(file => <button key={file.id} data-vim-file={file.id} aria-pressed={selectedId === file.id || vim.range.includes(file.id)} className={`atlas-file-tile ${selectedId === file.id ? 'is-selected' : ''} ${vim.range.includes(file.id) ? 'is-vim-selected' : ''}`} onClick={() => selectFile(file)} onDoubleClick={() => { setPreviewVisible(true); setExpanded(true) }}>
               <span className={`atlas-tile-icon atlas-type-${file.category}`}>{file.mimeType.startsWith('image/') && view === 'grid' ? <img src={`http://127.0.0.1:${((import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT) ?? 7373}/api/file/${file.id}/raw`} alt="" loading="lazy" /> : <CelestialIcon type={fileStellarAppearance(file).objectType} color={fileStellarAppearance(file).color} size={view === 'grid' ? 90 : 40} />}</span>
               <span className="atlas-tile-title"><Highlighted text={file.name} query={query} /><small>{file.path}</small></span><span className="atlas-tile-meta">{file.isFavorite && <span className="atlas-favorite-indicator" aria-label="Favorite" title={`${file.favoriteAppearance === 'black-hole' ? 'Black hole' : 'Pulsar'} favorite`}>★ </span>}{file.isPinned ? '⌖ ' : ''}{new Date(file.modifiedAt).toLocaleDateString()}</span>
-            </button>)}{!displayFiles.length && <div className="atlas-empty"><h2>{query ? 'No matching files' : 'No files in this scope'}</h2><p>Choose another region or adjust your filters.</p></div>}</div>}
-          {view === 'map' && query.trim() && <section className="atlas-results" aria-label="Search results"><header><span>{search.results.length} matches</span><button onClick={() => setDialog('collection')}>Save results</button></header>
+            </button>)}{!displayFiles.length && <div className="atlas-empty"><h2>{query ? 'No matching files' : 'No files in this scope'}</h2><p>Choose another region or adjust your filters.</p>{query && (scope.regionId || scope.neighborhoodId) && <button className="atlas-text-button" onClick={() => navigate(baseScope)}>Search all regions</button>}</div>}</div>}
+          {view === 'map' && query.trim() && resultsVisible && <section id="atlas-search-results" className="atlas-results" aria-label="Search results"><header><span>{search.results.length} matches{(scope.regionId || scope.neighborhoodId) && <small className="atlas-search-scope">In {neighborhood?.label ?? region?.label ?? 'selected region'}</small>}</span><button onClick={() => setDialog('collection')}>Save results</button><button aria-label="Close search results panel" onClick={hideResults}>×</button></header>
             {search.status === 'searching' && <p className="atlas-results-state">Searching your library…</p>}
             {search.results.map((hit, i) => <button key={hit.file.id} data-vim-file={hit.file.id} className={`atlas-result ${vim.range.includes(hit.file.id) ? 'is-vim-selected' : ''} ${i === activeResult ? 'is-active' : ''} ${hit.file.id === selectedId ? 'is-selected' : ''}`} onClick={() => { setActiveResult(i); selectHit(hit) }}><strong>{hit.file.isFavorite && <span className="atlas-favorite-indicator" aria-label="Favorite">★ </span>}<Highlighted text={hit.file.name} query={query} /></strong><small>{hit.reason === 'related' ? 'Related by meaning' : `Matches ${hit.reason}`}</small><p><Highlighted text={hit.snippet} query={query} /></p></button>)}
-            {search.status === 'enriching' && <p className="atlas-results-state">Looking for related files…</p>}{search.error && <p className="atlas-results-state">{search.error}</p>}{search.status === 'ready' && !search.results.length && <p className="atlas-results-state">No matches. Try a filename, a phrase, or a broader scope.</p>}
+            {search.status === 'enriching' && <p className="atlas-results-state">Looking for related files…</p>}{search.error && <p className="atlas-results-state">{search.error}</p>}{search.status === 'ready' && !search.results.length && <div className="atlas-results-state"><p>No matches. Try a filename, a phrase, or a broader scope.</p>{(scope.regionId || scope.neighborhoodId) && <button className="atlas-text-button" onClick={() => navigate(baseScope)}>Search all regions</button>}</div>}
           </section>}
           {!loading && !summary.positioned && !query && <div className="atlas-empty"><span>✧</span><h2>{summary.total ? 'No visible regions' : 'A universe waiting to be discovered.'}</h2><p>{summary.total ? 'Show a source or clear your filters to return to your files.' : 'Add a folder. Your files will find a place in the atlas.'}</p><button className="atlas-primary-button" onClick={() => summary.total ? navigate({}) : setDialog('sources')}>{summary.total ? 'Show all files' : 'Add your first folder'}</button></div>}
           {loading && <div className="atlas-loading atlas-stage-loading">Opening your atlas…</div>}
@@ -219,10 +234,10 @@ export default function AtlasApp() {
         <div className="atlas-map-footer"><span className="atlas-vim-status" aria-live="polite">{vim.visual ? `VISUAL · ${vim.range.length} files` : vim.pending ? `NORMAL · ${vim.pending}` : ''}{vim.visual && <><button onClick={() => { setCollectionSelection(vim.range); setDialog('collection') }}>Save selection</button><button onClick={vim.clearVisual}>Clear</button></>}</span><div><button onClick={back}>← Back</button><button onClick={() => { const next = future.current.pop(); if (next) { history.current.push(scope); setScope(next) } }} disabled={!future.current.length}>Forward →</button></div>{view === 'map' ? <div><button onClick={() => map.current?.fit()}>Fit view</button><button onClick={() => map.current?.zoom(1 / 1.4)} aria-label="Zoom out">−</button><span>{sceneGroup ? 'Files' : region ? 'Neighborhoods' : 'Overview'}</span><button onClick={() => map.current?.zoom(1.4)} aria-label="Zoom in">+</button></div> : <div><button disabled={offset === 0 || !!query} onClick={() => setOffset(n => Math.max(0, n - 100))}>Previous</button><span>{query ? search.results.length : `${offset + (files.length ? 1 : 0)}–${offset + files.length} of ${fileTotal}`}</span><button disabled={offset + files.length >= fileTotal || !!query} onClick={() => setOffset(n => n + 100)}>Next</button></div>}</div>
         {showMetrics && metrics && <div className="atlas-metrics">{metrics.renderer} · {metrics.points} points · {metrics.labels} labels · {metrics.drawMs.toFixed(2)}ms draw · {(metrics.bytes / 1048576).toFixed(1)} MiB buffers</div>}
       </main>
-      <div className="atlas-reader-resizer" role="separator" aria-label="Reader width" aria-orientation="vertical" tabIndex={0} onKeyDown={e => { if (e.key === 'ArrowLeft') setReaderWidth(w => Math.min(650, w + 20)); if (e.key === 'ArrowRight') setReaderWidth(w => Math.max(300, w - 20)) }} onPointerDown={e => {
+      {previewVisible && selected && <><div className="atlas-reader-resizer" role="separator" aria-label="Reader width" aria-orientation="vertical" tabIndex={0} onKeyDown={e => { if (e.key === 'ArrowLeft') setReaderWidth(w => Math.min(650, w + 20)); if (e.key === 'ArrowRight') setReaderWidth(w => Math.max(300, w - 20)) }} onPointerDown={e => {
         e.currentTarget.setPointerCapture(e.pointerId); e.currentTarget.dataset.dragging = 'true'
       }} onPointerMove={e => { if (e.currentTarget.dataset.dragging === 'true') setReaderWidth(Math.min(650, Math.max(300, window.innerWidth - e.clientX))) }} onPointerUp={e => { e.currentTarget.dataset.dragging = 'false'; e.currentTarget.releasePointerCapture(e.pointerId) }} />
-      <Suspense key={selected ? 'reading' : 'empty'} fallback={<aside className="atlas-reader"><p className="atlas-muted">Opening reader…</p></aside>}>{selected ? <Reader key={selected.id} file={selected} expanded={expanded} query={query} collections={collections} onExpand={() => setExpanded(v => !v)} onClose={() => { setSelectedId(null); setExpanded(false) }} onSelect={id => void selectId(id)} onChange={changeFile} hasSequence={sequence.length > 1} onPrevious={() => cycle(-1)} onNext={() => cycle(1)} /> : <aside className="atlas-reader atlas-reader-empty"><span>✧</span><h2>Room to think.</h2><p>Select a file to preview it here.<br />Your place in the atlas stays close.</p></aside>}</Suspense>
+      <Suspense fallback={<aside id="atlas-file-reader" className="atlas-reader"><p className="atlas-muted">Opening reader…</p></aside>}><Reader key={selected.id} file={selected} expanded={expanded} query={query} collections={collections} focusOnOpen={focusPreview} onExpand={expandPreview} onClose={hidePreview} onSelect={id => void selectId(id)} onChange={changeFile} hasSequence={sequence.length > 1} onPrevious={() => cycle(-1)} onNext={() => cycle(1)} /></Suspense></>}
     </div>
     {error && <div className="atlas-toast atlas-toast-error" role="alert">{error}<button onClick={() => { setError(null); setRefresh(n => n + 1) }}>Retry</button><button aria-label="Dismiss error" onClick={() => setError(null)}>×</button></div>}
     {notice && <div className="atlas-toast" role="status">{notice}</div>}

@@ -13,6 +13,8 @@
 - [website/README.md](website/README.md): public website, fictional demo, feedback handoff, GitHub Pages deployment, and Squarespace DNS.
 - [docs/mac-distribution.md](docs/mac-distribution.md): Mac packaging investigation, tested build foundation, and remaining distribution work.
 - [docs/vim-browsing.md](docs/vim-browsing.md): native browsing command mapping, context rules, and unsupported Vim semantics.
+- [docs/atlas-panels.md](docs/atlas-panels.md): hidden-by-default panels, focus and selection behavior.
+- [docs/search-behavior.md](docs/search-behavior.md): folder/label matching and search refresh during indexing.
 - [docs/folder-constellations.md](docs/folder-constellations.md): stable folder graph, cache invalidation, rendering budgets, and measured cold construction costs.
 - [docs/design/stellar-semantics.md](docs/design/stellar-semantics.md): approved Clouds & landmarks language and historical alternatives.
 
@@ -34,6 +36,7 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 - `src/daemon/atlas/`: additive persistent atlas, FTS retrieval, region summaries, snapshots, and background service.
 - `src/daemon/index/extractors/`: bounded worker extraction shared by search, readers, and embedding paths.
 - `src/daemon/index.ts`: HTTP composition and legacy routes.
+- `src/daemon/util/openInTerminalEditor.ts`: Mac Neovim/Vim launch, file eligibility, and literal argument handling.
 - `src/daemon/db/FileIndex.ts`: SQLite schema and file/collection persistence.
 - `src/daemon/pipeline/Insert.ts`: indexing transactions and ANN ordering.
 - `src/daemon/index/`: traversal, extraction, ignore rules, and progress.
@@ -68,6 +71,7 @@ Close-up generation remains bounded (16 slots, two generations per frame); never
 - `AtlasStore.summary()` returns real file markers at their persistent world coordinates. Coarse views must not substitute invented stars at unrelated positions.
 - `src/renderer/src/atlas/useAtlasTiles.ts` hydrates bounded spatial viewports. A data response must never move the camera.
 - `src/renderer/src/atlas/labelPainter.ts` retains visible labels and fades visibility changes. Hover must not reorder headings or flip their placement.
+- Wheel/trackpad gestures update the camera directly; do not restart an easing animation on each event. Buttons and explicit navigation may animate.
 - Scrolling changes one camera continuously; it must not change navigation scope or restore another camera. Explicit navigation may animate to a destination. Layout epochs invalidate cameras after an explicit reshaping/restore.
 - `scripts/reshape-atlas.ts` is an explicit, isolated-copy-only review helper, with a database backup and snapshot. Never run it against the primary library.
 - `tests/browser/atlas.spec.ts` includes delayed-response zoom continuity, hover pixel stability, home navigation, and offscreen-selection tests. `scripts/inspect-atlas-zoom.mjs` and `scripts/benchmark-atlas-navigation.mjs` validate the real-library preview.

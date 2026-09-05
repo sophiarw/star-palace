@@ -25,6 +25,7 @@ export const atlasApi = {
   file: (id: string, signal?: AbortSignal) => request<AtlasFile>('/file/' + encodeURIComponent(id), { signal }),
   text: (id: string, signal?: AbortSignal) => request<FileContent & { status: string; error: string | null }>('/file/' + encodeURIComponent(id) + '/text', { signal }),
   search: (query: string, scope: AtlasScope, mode: 'exact' | 'related', signal?: AbortSignal) => request<AtlasSearchResponse>('/search', { ...body({ query, ...scope, mode, limit: 60 }), signal }),
+  edit: (id: string) => request<{ editor: 'nvim' | 'vim' }>('/file/' + encodeURIComponent(id) + '/edit', body({})),
   favorite: (id: string, isFavorite: boolean, favoriteAppearance?: FavoriteAppearance) => request<{ file: AtlasFile; revision: number }>('/file/' + encodeURIComponent(id) + '/favorite', body({ isFavorite, favoriteAppearance })),
   pin: (id: string, x: number | null, y: number | null) => request<{ file: AtlasFile }>('/file/' + encodeURIComponent(id) + '/pin', body({ x, y })),
   rename: (id: string, label: string) => request('/region/' + encodeURIComponent(id), { ...body({ label }), method: 'PATCH' }),

@@ -47,7 +47,7 @@ The current real-library review runs at `http://127.0.0.1:5176` against an isola
 
 Tested with Node 22.17. Start `npm run dev:daemon` and `npm run dev:web`, then open `http://localhost:5173`. The daemon uses `~/.starpalace` unless `STARPALACE_DIR` or `STARPALACE_DB` is set. Atlas tables are additive; the classic positions, embeddings, collections, and user metadata remain available. Back up an existing library before upgrading.
 
-Choose **Manage sources → Index folder** to add or refresh a folder. Ollama with `nomic-embed-text` is optional for names, tags, text search, and browsing; it is required for semantic indexing and related-meaning search:
+Choose **Library → Manage sources → Index folder** to add or refresh a folder. Ollama with `nomic-embed-text` is optional for names, tags, text search, and browsing; it is required for semantic indexing and related-meaning search:
 
 ```sh
 ollama pull nomic-embed-text
@@ -57,6 +57,9 @@ ollama pull nomic-embed-text
 
 | Action | How |
 |---|---|
+| Library panel | **Library** shows or hides sources, regions, collections, and saved places; starts closed and remembers your choice |
+| File preview | Selecting a file opens it; **Preview** hides or restores it without clearing the selection |
+| Search results | **Results** hides or restores the results while keeping the query and highlights |
 | Explore | Scroll continuously into the galaxy; click a heading to visit a region; use Your atlas to return to the full view |
 | Pan / zoom | Drag / wheel, `h j k l`, `+` / `−` |
 | Inspect an object | Select it and zoom in; close-up detail is seeded by its file ID |

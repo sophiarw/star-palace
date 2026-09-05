@@ -370,18 +370,22 @@ export class AtlasStore {
 
   lexical(query: string, scope: AtlasScope, limit: number): AtlasHit[] {
     const filter = this.scope(scope), normalized = query.trim().replace(/^"|"$/g, '')
+    if (!normalized) return []
     const needle = '*' + normalized.toLowerCase().replace(/[?*[]/g, char => '[' + char + ']') + '*'
     const direct = this.index.db.prepare(`SELECT f.id FROM (
       SELECT rowid FROM atlas_names WHERE name GLOB ?
       UNION SELECT rowid FROM atlas_names WHERE path GLOB ?
+      UNION SELECT f.rowid FROM galaxies g JOIN files f ON f.galaxy_id=g.id WHERE lower(g.name) GLOB ?
+      UNION SELECT f.rowid FROM atlas_regions r JOIN atlas_positions p ON p.region_id=r.id JOIN files f ON f.id=p.id WHERE lower(r.label) GLOB ?
+      UNION SELECT f.rowid FROM atlas_regions r JOIN atlas_positions p ON p.neighborhood_id=r.id JOIN files f ON f.id=p.id WHERE lower(r.label) GLOB ?
     ) candidates JOIN files f ON f.rowid=candidates.rowid JOIN atlas_positions p ON p.id=f.id WHERE 1${filter.sql}
-      ORDER BY (lower(f.name)=lower(?)) DESC,(lower(f.name) GLOB ?) DESC,length(f.name),f.id LIMIT ?`)
-      .all(needle, needle, ...filter.args, normalized, needle, limit) as { id: string }[]
+      ORDER BY (lower(f.name)=lower(?)) DESC,(lower(f.name) GLOB ?) DESC,(lower(f.path) GLOB ?) DESC,length(f.path),f.name COLLATE NOCASE,f.id LIMIT ?`)
+      .all(needle, needle, needle, needle, needle, ...filter.args, normalized, needle, needle, limit) as { id: string }[]
     const hits = new Map<string, AtlasHit>()
     for (const { id } of direct) {
       const file = this.file(id)!
-      const nameHit = file.name.toLowerCase().includes(normalized.toLowerCase())
-      hits.set(id, { file, score: file.name.toLowerCase() === normalized.toLowerCase() ? 100 : nameHit ? 90 : 70, reason: nameHit ? 'name' : 'path', snippet: file.path, offset: 0 })
+      const nameHit = file.name.toLowerCase().includes(normalized.toLowerCase()), pathHit = file.path.toLowerCase().includes(normalized.toLowerCase())
+      hits.set(id, { file, score: file.name.toLowerCase() === normalized.toLowerCase() ? 100 : nameHit ? 90 : pathHit ? 70 : 60, reason: nameHit ? 'name' : 'path', snippet: nameHit || pathHit ? file.path : `Atlas label match for “${normalized}” · ${file.path}`, offset: 0 })
     }
     const match = ftsQuery(query)
     if (match) {
@@ -402,7 +406,7 @@ export class AtlasStore {
         hits.set(row.file_id, { file, score: (reason === 'name' ? 85 : 50) - row.rank, reason, snippet: row.excerpt || this.document(row.file_id)?.text.slice(0, 220) || file.path, offset: Number(row.offset) })
       }
     }
-    return [...hits.values()].sort((a, b) => b.score - a.score || a.file.name.localeCompare(b.file.name)).slice(0, limit)
+    return [...hits.values()].sort((a, b) => b.score - a.score || (a.reason === 'path' && b.reason === 'path' ? a.file.path.length - b.file.path.length : 0) || a.file.name.localeCompare(b.file.name)).slice(0, limit)
   }
 
   vectorBatch(scope: AtlasScope, after: string, limit = 256): { id: string; embedding: Float32Array }[] {

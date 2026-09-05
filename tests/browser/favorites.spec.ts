@@ -24,6 +24,7 @@ test('favorites persist independently of pins and legacy artwork, update search 
     const changed = await (await page.request.get(`${api}/file/${id}`)).json()
     expect(changed).toMatchObject({ isFavorite: true, favoriteAppearance: 'black-hole', isPinned: original.isPinned, x: original.x, y: original.y, starType: original.starType })
     await page.reload()
+    await page.getByRole('button', { name: 'Show preview', exact: true }).click()
     await expect(page.getByRole('button', { name: '★ Unfavorite', exact: true })).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Favorite appearance' })).toHaveValue('black-hole')
     await page.locator('.atlas-context h1').click()

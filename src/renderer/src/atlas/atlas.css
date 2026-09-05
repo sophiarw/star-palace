@@ -1839,3 +1839,72 @@
 .atlas-modal {
   margin: auto;
 }
+
+/* Panels are optional. A closed preview reserves no empty column. */
+.atlas-shell { --library-width: 216px; }
+.atlas-shell .atlas-workspace {
+  grid-template-columns: var(--library-width) minmax(0, 1fr) 5px var(--reader-width);
+}
+.atlas-shell.atlas-sidebar-hidden .atlas-workspace {
+  grid-template-columns: minmax(0, 1fr) 5px var(--reader-width);
+}
+.atlas-shell.atlas-preview-hidden .atlas-workspace {
+  grid-template-columns: var(--library-width) minmax(0, 1fr);
+}
+.atlas-shell.atlas-preview-hidden.atlas-sidebar-hidden .atlas-workspace,
+.atlas-shell.atlas-reading .atlas-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+.atlas-reading .atlas-sidebar { display: none; }
+.atlas-sidebar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.atlas-sidebar-toolbar .atlas-eyebrow { margin: 0; }
+.atlas-panel-toggle { white-space: nowrap; }
+.atlas-panel-toggle[aria-expanded=true] {
+  color: var(--atlas-accent);
+  background: #ead2a00c;
+}
+.atlas-panel-toggle:disabled { opacity: .45; cursor: default; }
+@media (min-width: 1650px) { .atlas-shell { --library-width: 236px; } }
+@media (max-width: 1150px) { .atlas-shell { --library-width: 175px; } }
+@media (max-width: 900px) {
+  .atlas-shell .atlas-workspace,
+  .atlas-shell.atlas-sidebar-hidden .atlas-workspace {
+    grid-template-columns: minmax(0, 1fr) 5px var(--reader-width);
+  }
+  .atlas-shell.atlas-preview-hidden .atlas-workspace,
+  .atlas-shell.atlas-preview-hidden.atlas-sidebar-hidden .atlas-workspace,
+  .atlas-shell.atlas-reading .atlas-workspace { grid-template-columns: minmax(0, 1fr); }
+  .atlas-shell:not(.atlas-sidebar-hidden):not(.atlas-reading) .atlas-sidebar {
+    display: flex;
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(285px, calc(100% - 32px));
+    z-index: 12;
+    box-shadow: 18px 0 60px #0009;
+  }
+}
+@media (max-width: 650px) {
+  .atlas-shell .atlas-workspace,
+  .atlas-shell.atlas-sidebar-hidden .atlas-workspace { grid-template-columns: minmax(0, 1fr); }
+  .atlas-shell .atlas-reader-resizer { display: none; }
+  .atlas-shell .atlas-reader {
+    display: flex;
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(390px, 100%);
+    z-index: 11;
+    box-shadow: -18px 0 60px #0009;
+  }
+  .atlas-shell.atlas-reading .atlas-reader {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    box-shadow: none;
+  }
+}
+
+.atlas-search-scope { display: block; margin-top: 4px; color: var(--atlas-muted); font-size: 10px; }

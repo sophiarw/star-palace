@@ -17,7 +17,7 @@ export class VimParser {
       const prefix = this.prefix
       if ((prefix === 'm' || prefix === "'" || prefix === '`') && /^[a-zA-Z]$/.test(key)) return this.finish(prefix, key)
       if ((prefix === "'" || prefix === '`') && key === prefix) return this.finish('jump-back')
-      if (['gg', 'ge', 'gE', 'gt', 'gT', 'gf', 'gv', 'zz', 'zt', 'zb', 'zf', 'yy', '[f', ']f', '[[', ']]', ' w', ' h', ' l'].includes(prefix + key)) return this.finish(prefix + key)
+      if (['gg', 'ge', 'gE', 'gt', 'gT', 'gf', 'gv', 'zz', 'zt', 'zb', 'zf', 'yy', '[f', ']f', '[[', ']]', ' w', ' h', ' l', ' e'].includes(prefix + key)) return this.finish(prefix + key)
       this.reset(); return { handled: true }
     }
     if (/^[0-9]$/.test(key) && (key !== '0' || this.count)) { this.count = String(Math.min(999, Number(this.count + key))); return { handled: true } }
@@ -61,6 +61,7 @@ export const VIM_HELP: readonly [string, string][] = [
   ['ma · \'a / `a · Ctrl O / I', 'Set / return to a session mark; older / newer keyboard jump. Double apostrophe returns to the previous jump.'],
   ['Space w / h / l', 'Switch panes / focus atlas / focus reader. Avoids the browser’s Ctrl W tab-close shortcut.'],
   ['gt / gT', 'Next / previous map, list, or grid view.'],
+  ['Space e · :edit', 'Edit the selected plain-text or Markdown file in Terminal, preferring nvim over vim.'],
   ['Enter · o / O · gf', 'Expand reader; open file / reveal folder; open file in its default app.'],
   ['+ / − · zz / zt / zb · zf', 'Map zoom; center selected file (reader: center / top / bottom of current match); fit map.'],
   [':help · F1 · :commands', 'Command reference. :map, :list, :grid, :next, :previous, :favorite, :unfavorite, :pin, :unpin, :collection, :marks, :q also work.'],

@@ -1,0 +1,38 @@
+import { expect, test } from '@playwright/test'
+
+test('Space e, :edit, and the reader action request the selected text file without stealing typing', async ({ page }) => {
+  const edits: string[] = []
+  await page.route('**/api/atlas/file/*/edit', async route => { edits.push(route.request().url()); await route.fulfill({ json: { editor: 'nvim' } }) })
+  await page.goto('/')
+  const search = page.getByRole('textbox', { name: 'Search library' })
+  await search.fill('how places become memories')
+  await page.getByRole('combobox', { name: 'Search mode', exact: true }).selectOption('exact')
+  const result = page.locator('.atlas-result').first()
+  await expect(result).toBeVisible()
+  const id = await result.getAttribute('data-vim-file')
+  await result.click()
+  await expect(page.locator('.atlas-document-title')).toBeVisible()
+  await page.locator('.atlas-context h1').click()
+  await page.keyboard.press('Space'); await page.keyboard.press('e')
+  await expect.poll(() => edits.length).toBe(1)
+  expect(edits[0]).toContain(`/file/${id}/edit`)
+  await page.keyboard.press(':')
+  await page.getByRole('textbox', { name: 'Vim command', exact: true }).fill('edit')
+  await page.getByRole('textbox', { name: 'Vim command', exact: true }).press('Enter')
+  await expect.poll(() => edits.length).toBe(2)
+  await page.getByRole('button', { name: 'Edit in Vim ↗', exact: true }).click()
+  await expect.poll(() => edits.length).toBe(3)
+  await search.focus(); await search.press('End'); await search.press('Space'); await search.press('e')
+  await expect(search).toHaveValue('how places become memories e')
+  expect(edits).toHaveLength(3)
+})
+
+test('terminal editor failures are visible without launching a terminal in the browser test', async ({ page }) => {
+  await page.route('**/api/atlas/file/*/edit', route => route.fulfill({ status: 503, json: { error: 'Neither Neovim nor Vim was found on this Mac.' } }))
+  await page.goto('/')
+  await page.getByRole('textbox', { name: 'Search library' }).fill('how places become memories')
+  await page.getByRole('combobox', { name: 'Search mode', exact: true }).selectOption('exact')
+  await page.locator('.atlas-result').first().click()
+  await page.getByRole('button', { name: 'Edit in Vim ↗', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Neither Neovim nor Vim')
+})

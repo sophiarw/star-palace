@@ -37,6 +37,7 @@ describe('Vim browsing grammar', () => {
     expect(command(['`', '`'])?.key).toBe('jump-back')
     expect(command(['?'])?.key).toBe('?')
     expect(command([' ', 'l'])?.key).toBe(' l')
+    expect(command([' ', 'e'])?.key).toBe(' e')
     expect(command(['y', 'y'])?.key).toBe('yy')
   })
   it('never maps destructive editing operators to file actions', () => {

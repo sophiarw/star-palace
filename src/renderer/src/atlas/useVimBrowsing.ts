@@ -21,10 +21,11 @@ interface Options<Place> {
   expand: () => void
   close: () => void
   back: () => void
+  showReader?: () => void
   help: () => void
   metrics: () => void
   collection: (ids: string[]) => void
-  action: (action: 'open' | 'reveal' | 'pin' | 'unpin' | 'favorite' | 'unfavorite', file: AtlasFile) => void
+  action: (action: 'open' | 'reveal' | 'pin' | 'unpin' | 'favorite' | 'unfavorite' | 'edit', file: AtlasFile) => void
   notice: (message: string) => void
   capture: () => Place
   restore: (place: Place) => void
@@ -61,6 +62,7 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
       else o.notice('No more keyboard jumps')
     }
     const focusPane = (reader: boolean) => {
+      if (reader) latest.current.showReader?.()
       const target = document.querySelector<HTMLElement>(reader ? '.atlas-reader-scroll' : '.atlas-stage')
       if (target) { target.tabIndex = -1; target.focus({ preventScroll: true }) }
     }
@@ -112,6 +114,7 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
       } else if (key === 'm' && c.argument) { marks.current.set(c.argument, o.capture()); o.notice(`Mark ${c.argument} saved for this session`) }
       else if ((key === "'" || key === '`') && c.argument) { const place = marks.current.get(c.argument); if (place) { snapshot(); o.restore(place) } else o.notice(`Mark ${c.argument} is not set`) }
       else if (key === 'Ctrl-o' || key === 'Ctrl-i' || key === 'jump-back') jump(key === 'Ctrl-i', count)
+      else if (key === ' e') { if (o.selected) o.action('edit', o.selected) }
       else if (key === ' w' || key === ' h' || key === ' l') focusPane(key === ' l' || (key === ' w' && !inReader))
       else if (key === 'gt' || key === 'gT') { const views: View[] = ['map', 'list', 'grid']; o.setView(views[(views.indexOf(o.view) + (key === 'gt' ? count : -(count % 3)) + 3) % 3]) }
       else if (key === 'zf') o.map.current?.fit()
@@ -186,7 +189,7 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
     else if (text === 'fit') o.map.current?.fit()
     else if (text === 'collection') o.collection(range.length ? range : o.selectedId ? [o.selectedId] : [])
     else if (text === 'marks') o.notice(marks.current.size ? `Session marks: ${[...marks.current.keys()].join(', ')}` : 'No marks. Use ma to save mark a.')
-    else if (['open', 'reveal', 'pin', 'unpin', 'favorite', 'unfavorite'].includes(text)) { if (o.selected) o.action(text as 'open' | 'reveal' | 'pin' | 'unpin' | 'favorite' | 'unfavorite', o.selected) }
+    else if (['open', 'reveal', 'pin', 'unpin', 'favorite', 'unfavorite', 'edit', 'e'].includes(text)) { if (o.selected) o.action((text === 'e' ? 'edit' : text) as 'open' | 'reveal' | 'pin' | 'unpin' | 'favorite' | 'unfavorite' | 'edit', o.selected) }
     else if (['next', 'n', 'previous', 'prev', 'N'].includes(text)) {
       const step = text === 'next' || text === 'n' ? 1 : -1, i = o.sequence.findIndex(f => f.id === o.selectedId)
       const next = o.sequence[(i + step + o.sequence.length) % o.sequence.length]; if (next) o.select(next)
