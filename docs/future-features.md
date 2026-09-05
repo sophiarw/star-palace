@@ -2,6 +2,16 @@
 
 These are recorded product ideas, not implemented features or commitments for the current website work.
 
+## Bright, glowing celestial icons
+
+Requested September 5, 2026. The user explicitly wants the main atlas file icons to adopt the aesthetic of their [revised stellar-calligraphy image](design/palace-stellar-calligraphy-reference.jpg): bright, saturated celestial colors surrounded by glow, with luminous cores and softer halos. The blue, white, yellow, orange, and red stars in this reference are the visual target.
+
+Apply that rendering language to the atlas's existing celestial objects, preserving distinct file-type identities (nebulae, pulsars, main-sequence stars, and others), intermixed placement, and deterministic per-file variation. The reference's calligraphic character is for the brand; the atlas objects should retain their own silhouettes.
+
+Make the color and glow legible at ordinary browsing zoom, building on the improved icon screen sizes. Preserve readable labels, smooth zoom, and stable file positions. Keep sprite generation and caching bounded; assess foreground performance and visual clarity with a dense library before shipping the new treatment.
+
+This is a deferred feature request, not an atlas rendering change in the current task. The related website-background and stylized-logo ideas are recorded in [the design notes](design/README.md).
+
 ## Folder constellations and illustrated figures
 
 Requested September 5, 2026.

@@ -72,3 +72,7 @@ Use `git log --oneline` in this worktree to review the implementation checkpoint
 The user rejected the first two logo treatments and requested ten diverse studies before choosing. Review artifacts live in `docs/design/`; the current interactive sheet includes the user's tapered/flared geometry as option 01, plus nine other treatments. The latest unapproved logo implementation has been reverted to the previously published assets while selection is pending.
 
 The comprehensive Vim-style browsing request is recorded in `docs/future-features.md`, alongside the folder constellations and stellar file-size ideas. These remain future work.
+
+## Stellar calligraphy reference
+
+The user rejected all ten logo studies and supplied a new calligraphic 宫 made of glowing stars. Their revised image is saved unchanged at `docs/design/palace-stellar-calligraphy-reference.jpg`. `docs/design/README.md` records the new brand direction and proposed website background; `docs/future-features.md` records the explicit request for bright, glowing atlas icons in this aesthetic. These notes supersede the earlier logo exploration; no new logo or atlas rendering has been deployed.
