@@ -50,9 +50,7 @@ Use the user's wording: “A memory palace for constellations of files.” Keep 
 
 ## Logo
 
-`public/palace-constellation.svg` forms 宫 (palace) on a deliberate geometric grid. One affine transform gives all strokes a consistent ascending slant. Straight ivory connections and three gold four-point stars provide the constellation identity; there are no blur filters, gradients, or embedded raster images. Keep the roof and two 口 shapes distinct.
-
-The favicon uses the same geometry with optically heavier lines and nodes. Generate both assets with `node scripts/generate-brand.mjs`, then regenerate the social card. The generator is the source of truth for geometry. Do not introduce random offsets or reuse the app's atmospheric sprite effects in the logo.
+`public/palace-constellation.svg` forms 宫 (palace) from slightly irregular stars with pale connecting lines and blue, gold, and violet glows. The roof and two 口 shapes stay distinct. The favicon uses the same arrangement with stronger lines for small sizes. Use this mark instead of the earlier compass/starburst.
 
 ## Graphics and changes
 

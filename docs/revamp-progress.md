@@ -67,6 +67,8 @@ Within the new UI, `?view=classic` opens the preserved interface. Atlas/search t
 
 Use `git log --oneline` in this worktree to review the implementation checkpoints. To undo a change on this branch, revert its commit. To inspect the pre-revamp baseline without changing this worktree, create another worktree at `2111795`. No implementation commits have been merged into `main`.
 
-## September 5: logo refinement
+## Logo direction review and deferred keyboard work
 
-Replaced the soft, irregular constellation mark with a geometric 宫: parallel strokes share one intentional slant, ivory lines have enough weight for small placements, and three flat gold stars establish a clear visual hierarchy. Logo and favicon are generated from the same coordinates. The SVG contains no blur filters or raster images; the social card is regenerated separately.
+The user rejected the first two logo treatments and requested ten diverse studies before choosing. Review artifacts live in `docs/design/`; the current interactive sheet includes the user's tapered/flared geometry as option 01, plus nine other treatments. The latest unapproved logo implementation has been reverted to the previously published assets while selection is pending.
+
+The comprehensive Vim-style browsing request is recorded in `docs/future-features.md`, alongside the folder constellations and stellar file-size ideas. These remain future work.

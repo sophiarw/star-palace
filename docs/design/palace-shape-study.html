@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Star Palace — 宫 shape study</title>
+<style>
+  :root { color-scheme:dark; font-family:Arial,sans-serif; background:#0b1019; color:#eeeae2 }
+  * { box-sizing:border-box }
+  body { margin:0; padding:48px 64px }
+  header { display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid #ffffff14; padding-bottom:22px }
+  h1 { font:32px Georgia,serif; font-weight:400; margin:0 }
+  header p, .caption { color:#8591a1; font-size:10px; letter-spacing:2px; text-transform:uppercase }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:80px; max-width:1200px; margin:35px auto 0 }
+  figure { margin:0; text-align:center }
+  .large { display:block; width:100%; max-width:365px; height:456px; margin:0 auto 24px }
+  h2 { font:21px Georgia,serif; font-weight:400; margin:0 0 10px }
+  p { color:#a4adbb; font-size:12px; line-height:1.7; margin:0 }
+  .lockup { display:flex; align-items:center; justify-content:center; gap:15px; font:25px Georgia,serif; margin:34px auto 0; padding-top:25px; border-top:1px solid #ffffff10 }
+  .lockup svg { width:45px; height:56px }
+  footer { margin:36px auto 0; max-width:1200px; display:flex; justify-content:space-between; border-top:1px solid #ffffff14; padding-top:20px; gap:24px }
+  .defs { position:absolute; width:0; height:0; overflow:hidden }
+  @media(max-width:650px) {body{padding:24px}header{align-items:start;gap:20px}h1{font-size:25px}header p{font-size:8px} main{grid-template-columns:1fr;gap:50px}.large{height:390px}footer{flex-direction:column}}
+</style>
+</head>
+<body>
+<svg class="defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <!-- Same star silhouette throughout: long points and concave shoulders. -->
+    <path id="star" d="M0-20C0-6 6 0 20 0C6 0 0 6 0 20C0 6-6 0-20 0C-6 0 0-6 0-20Z"/>
+    <g id="connections" fill="none" stroke="#dce6f2" stroke-opacity=".24" stroke-width=".8" stroke-linejoin="round">
+      <path d="M52 89H188M74 132H166L156 174H84ZM60 222H180L194 264H46Z"/>
+    </g>
+    <g id="stars">
+      <!-- The dot sits left of the shared center to imply the angled 丶.
+           Horizontal tiers stay level. The middle tapers; the base flares. -->
+      <use href="#star" transform="translate(110 34) scale(1.15)"/>
+      <use href="#star" transform="translate(52 89) scale(1.15)"/>
+      <use href="#star" transform="translate(188 89) scale(1.15)"/>
+      <use href="#star" transform="translate(74 132) scale(.76)"/>
+      <use href="#star" transform="translate(166 132) scale(.76)"/>
+      <use href="#star" transform="translate(84 174) scale(.76)"/>
+      <use href="#star" transform="translate(156 174) scale(.76)"/>
+      <use href="#star" transform="translate(60 222) scale(.76)"/>
+      <use href="#star" transform="translate(180 222) scale(.76)"/>
+      <use href="#star" transform="translate(46 264) scale(.76)"/>
+      <use href="#star" transform="translate(194 264) scale(.76)"/>
+    </g>
+    <symbol id="outline" viewBox="0 0 240 300">
+      <use href="#connections"/>
+      <use href="#stars" fill="#0b1019" stroke="#f2eee7" stroke-width="1.05"/>
+    </symbol>
+    <symbol id="filled" viewBox="0 0 240 300">
+      <use href="#connections"/>
+      <use href="#stars" fill="#eeeae2" transform="translate(120 150) scale(1) translate(-120 -150)"/>
+    </symbol>
+  </defs>
+</svg>
+<header><h1>Star Palace</h1><p>宫 / Shape study</p></header>
+<main>
+  <figure>
+    <svg class="large" role="img" aria-label="Outlined four-point stars form 宫 with a left-offset top star, level tiers, a tapered middle, and a flared base"><use href="#outline"/></svg>
+    <h2>01 / Outline</h2><p>Your sketch’s star silhouette, with quiet connections.</p>
+    <div class="lockup"><svg aria-hidden="true"><use href="#outline"/></svg><span>Star Palace</span></div>
+  </figure>
+  <figure>
+    <svg class="large" role="img" aria-label="The same intentionally tapered 宫 geometry using solid ivory stars and faint connections"><use href="#filled"/></svg>
+    <h2>02 / Solid</h2><p>The same geometry, with more weight in the stars.</p>
+    <div class="lockup"><svg aria-hidden="true"><use href="#filled"/></svg><span>Star Palace</span></div>
+  </figure>
+</main>
+<footer><p>Offset top star · Level tiers · Inward taper · Outward flare</p><p>Vector studies for review. Website logo unchanged.</p></footer>
+</body>
+</html>

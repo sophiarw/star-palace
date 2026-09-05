@@ -33,3 +33,23 @@ Preserve the user's preferred mixed celestial file-type identities unless a futu
 Use a logarithmic or bounded scale so a huge archive cannot cover its neighbors and a tiny note remains readable and selectable. Respect the recently improved screen-size curve: users should not have to zoom excessively to see object details. Consider interaction with manual classifications and the existing usage-based classification mode.
 
 Deferred for a future feature pass; no file-size classification or artwork changes are part of the current website work.
+
+## Comprehensive Vim-style browsing
+
+Requested September 5, 2026. The user wants approximately the full Vim command vocabulary supported as native browsing, wherever a meaningful equivalent exists. A Vim user should be able to try familiar keystrokes and get recognizable, interpretable behavior.
+
+Before implementation, audit the Vim command suite and the operations people perform in Star Palace. Produce an explicit mapping, including contexts and conflicts, rather than adding isolated shortcuts.
+
+Areas to cover in that future audit:
+
+- Motions, word/line/document boundaries, screen positions, paging, and numeric counts.
+- Search initiation, forward/backward search, next/previous matches, and return to the prior location.
+- Normal, insert, and visual-selection behavior where those concepts fit file browsing.
+- Multi-key sequences, repeat behavior, marks, jumps, and navigation history.
+- Selections, collections, pins, file actions, and reader/map focus or pane navigation.
+- Consistent behavior across the map, list/grid views, search results, and document readers, with explicit context-sensitive differences.
+- An audit of existing shortcuts such as `h j k l`, `g g`, `n/N`, `o/O`, and Escape; preserve useful behavior or document intentional remapping.
+- Ordinary typing in text inputs and native text selection must continue to work. Commands with editing/destructive meanings in Vim need deliberate browsing equivalents, not accidental changes to original files.
+- A discoverable command reference and a coherent answer for commands that have no sensible browsing equivalent.
+
+The user explicitly deferred this work. Record and design the mapping in a future feature pass; do not implement Vim behavior during the website/logo work.
