@@ -79,6 +79,8 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       alpha: props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9,
     }))
   }, [props.markers, files, props.selectedId, props.highlights])
+  const sceneById = useMemo(() => new Map(scene.map(point => [point.id, point])), [scene])
+  const pointById = useRef(sceneById); pointById.current = sceneById
 
   const invalidate = useCallback((): void => {
     if (!frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; renderCallback.current() })
@@ -211,7 +213,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       for (const marker of latest.current.markers) {
         if (hydrated.has(marker.id)) continue
         const [x, y] = project(marker.x, marker.y, camera.current, width, height)
-        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: Math.max(8, objectRadius({ id: marker.id, radius: 25, zoomable: true, stellar: true, sizeBytes: marker.size, objectType: fileStellarAppearance(marker).objectType }, camera.current.zoom) * .45), marker })
+        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: Math.max(8, objectRadius(pointById.current.get(marker.id)!, camera.current.zoom) * .45), marker })
       }
     }
     const ordered = [...files].sort((a, b) => {
@@ -223,7 +225,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       if (drag.current?.file?.id === file.id) { wx = drag.current.wx ?? wx; wy = drag.current.wy ?? wy }
       const [x, y] = project(wx, wy, camera.current, width, height)
       if (x < -25 || y < -25 || x > width + 25 || y > height + 25) continue
-      const radius = objectRadius({ id: file.id, radius: 25, zoomable: true, stellar: true, sizeBytes: file.size, objectType: fileStellarAppearance(file).objectType }, camera.current.zoom)
+      const radius = objectRadius(pointById.current.get(file.id)!, camera.current.zoom)
       const markerRadius = Math.max(20, radius * .55)
       hitTargets.push({ id: file.id, x, y, radius: Math.max(16, radius * .45), file })
       const focused = file.id === selectedId || highlights.has(file.id)
@@ -326,7 +328,12 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       e.preventDefault()
       const [x, y] = at(e), { height } = size.current
       const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? height : 1)
-      smoothZoom(Math.exp(-Math.max(-600, Math.min(600, delta)) * .0015), x, y)
+      if (!Number.isFinite(delta) || delta === 0) return
+      // A trackpad already provides continuous input. Restarting an eased
+      // animation on every event defers movement and accumulates a catch-up tail.
+      travel.current = null; zoomMotion.current = null
+      camera.current = zoomAt(camera.current, Math.exp(-Math.max(-600, Math.min(600, delta)) * .0015), x, y, size.current.width, height)
+      saveCamera(); invalidate()
     }
     const lost = (e: Event) => {
       e.preventDefault()
