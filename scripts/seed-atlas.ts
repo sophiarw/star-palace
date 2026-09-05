@@ -1,3 +1,4 @@
+import { STAR_TYPES, type StarType } from '../src/shared/types'
 import { mkdirSync, statSync, writeFileSync } from 'fs'
 import { resolve, join } from 'path'
 import { createHash } from 'crypto'
@@ -15,19 +16,20 @@ const topics = [
   { region: 'Writing', names: ['The shape of a thought', 'Field journal', 'Essay fragments'], tags: ['writing', 'ideas'], intro: 'A thought begins as a fragment. Its place beside another fragment can reveal a relationship.' },
   { region: 'Reference', names: ['A small guide to typography', 'Color and contrast', 'Keyboard patterns'], tags: ['reference', 'design'], intro: 'Useful notes to return to as a project takes shape.' },
 ]
-function add(path: string, text: string, tags: string[] = []): void {
+function add(path: string, text: string, tags: string[] = [], starType: StarType | null = null): void {
   mkdirSync(resolve(path, '..'), { recursive: true }); writeFileSync(path, text)
   const info = statSync(path), id = createHash('sha1').update(`${galaxy.id}\0${path}`).digest('hex').slice(0, 16)
   const file: IndexedFile = { id, name: path.split('/').pop()!, path, platform: 'local', category: categoryFromPath(path), mimeType: mimeFromPath(path), size: info.size, createdAt: info.birthtimeMs, modifiedAt: info.mtimeMs,
     embedding: null, contentHash: null, x: null, y: null, z: null, clusterId: null, galaxyId: galaxy.id, layoutVersion: 0,
-    firstSeen: Date.now(), viewCount: 0, isPinned: false, starType: null, pinAlpha: null, pinBeta: null, pinAxisA: null, pinAxisB: null, pinnedAt: null,
+    firstSeen: Date.now(), viewCount: 0, isPinned: false, starType, pinAlpha: null, pinBeta: null, pinAxisA: null, pinAxisB: null, pinnedAt: null,
     osUseCount: null, osLastUsed: null, importanceScore: null, tags, embeddingStrategy: null }
   db.upsert(file)
+  if (starType) db.setStarType(id, starType)
 }
 for (const topic of topics) for (let i = 0; i < 30; i++) {
   const title = topic.names[i % topic.names.length] + (i > 2 ? ` ${i - 1}` : '')
   const text = `# ${title}\n\n${topic.intro}\n\n## Landmarks before detail\n\nA familiar landscape gives information a second identity. A note can be the one beside the research papers, just below the collection of sketches. Those relationships become useful when the landscape remains stable.\n\n> A good map lets you return without having to search again.\n\n## The next useful step\n\nThe first view reveals a few distinctive places. As we move closer, their contents become visible. Recognition grows from a useful hierarchy of places and things.\n\n## Working notes\n\n- Preserve the reader’s place.\n- Let the surrounding material remain available.\n- Give the current task a clear foreground.\n`
-  add(join(library, topic.region, title.replace(/ /g, '-').toLowerCase() + '.md'), text, topic.tags)
+  add(join(library, topic.region, title.replace(/ /g, '-').toLowerCase() + '.md'), text, topic.tags, i >= 20 ? STAR_TYPES[i - 20] : null)
 }
 add(join(library, 'Reference', 'analysis.v2_final.md'), '# Long document\n\n' + 'Background observations and unrelated examples.\n'.repeat(800) + '\n## A late discovery\n\nThe copper lantern is the distinctive landmark at the end of this document.\n', ['long-document'])
 add(join(library, 'Projects', 'inventory.csv'), 'Product,Quantity,Notes\n' + Array.from({ length: 1500 }, (_, i) => `Item ${i + 1},${i % 37},"A sample, with punctuation"`).join('\n'))

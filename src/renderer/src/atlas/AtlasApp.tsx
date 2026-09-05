@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { CELESTIAL_LABELS, CELESTIAL_REASONS, celestialType } from '@shared/celestial'
+import { STAR_TYPES } from '@shared/types'
+import { CelestialIcon } from './CelestialIcon'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { AtlasFile, AtlasHit, AtlasRegion, AtlasScope, AtlasSnapshot, AtlasSummary } from '@shared/atlas'
 import type { CollectionSummary, FileCategory, GalaxySummary } from '@shared/types'
 import { cancelIndex, createCollection, deleteCollection, fetchGalaxies, fetchIgnorePatterns, getCollection, listCollections, openFile, refreshCollection, removeCollectionMember, revealFile, saveIgnorePatterns, startIndex } from '../api'
 import { useIndexProgress } from '../hooks/useIndexProgress'
 import { atlasApi } from './api'
 import { AtlasMap, type MapHandle, type MapMetrics } from './AtlasMap'
-import { Highlighted, Reader } from './Reader'
+import { Highlighted } from './Highlighted'
+import type { Camera } from './scene'
+const Reader = lazy(() => import('./Reader').then(module => ({ default: module.Reader })))
 import { Modal } from './Modal'
 import { readStored, writeStored } from './storage'
 import { useAtlasSearch } from './useAtlasSearch'
 import './atlas.css'
 
 type View = 'map' | 'list' | 'grid'
-type Dialog = 'sources' | 'settings' | 'collection' | 'commands' | 'rename' | null
-interface Place { name: string; scope: AtlasScope; selectedId: string | null }
+type Dialog = 'sources' | 'settings' | 'collection' | 'commands' | 'rename' | 'objects' | null
+interface Place { name: string; scope: AtlasScope; selectedId: string | null; camera?: Camera; cameraKey?: string }
 const EMPTY_HITS = new Set<string>()
 const INITIAL: AtlasSummary = { revision: 0, total: 0, positioned: 0, searchable: 0, pending: 0, regions: [] }
 const THEMES = [{ id: 'jwst', name: 'Atlas · Deep space' }, { id: 'vapor', name: 'Vapor · Rose & violet' }, { id: 'atari', name: 'Atari · Phosphor' }, { id: 'lost', name: 'Lost in space · Warm dusk' }, { id: 'bio', name: 'Bioluminescent · Tidal light' }]
@@ -29,7 +34,7 @@ export default function AtlasApp() {
   const [theme, setTheme] = useState<string>(() => readStored('theme', 'jwst')), [readerWidth, setReaderWidth] = useState<number>(() => readStored('readerWidth', 380))
   const [places, setPlaces] = useState<Place[]>(() => readStored('places', [])), [metrics, setMetrics] = useState<MapMetrics | null>(null), [showMetrics, setShowMetrics] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null), [busy, setBusy] = useState(false), [refresh, setRefresh] = useState(0)
-  const map = useRef<MapHandle>(null), searchInput = useRef<HTMLInputElement>(null), history = useRef<AtlasScope[]>([])
+  const map = useRef<MapHandle>(null), searchInput = useRef<HTMLInputElement>(null), history = useRef<AtlasScope[]>([]), future = useRef<AtlasScope[]>([])
   const progress = useIndexProgress(jobId)
   const scopeKey = JSON.stringify(scope)
   // Search honors all current filters. Clicking a result navigates the map
@@ -53,7 +58,7 @@ export default function AtlasApp() {
         const next = await atlasApi.summary(JSON.parse(baseScopeKey) as AtlasScope, abort.signal)
         if (abort.signal.aborted) return
         setSummary(previous => next.revision === previous.revision && JSON.stringify(previous.regions) === JSON.stringify(next.regions) ? previous : next)
-        setError(null)
+        setError(current => current?.startsWith('The local library is unavailable.') ? null : current)
       } catch { if (!abort.signal.aborted) setError('The local library is unavailable. Start the daemon, then retry.') }
       finally { inFlight = false; if (!abort.signal.aborted) setLoading(false) }
     }
@@ -89,12 +94,13 @@ export default function AtlasApp() {
   }, [selectedId, refresh])
   useEffect(() => {
     if (progress.status === 'done' || progress.status === 'cancelled') { setRefresh(n => n + 1); setNotice(progress.status === 'done' ? 'Source indexed. The atlas is updating.' : 'Indexing stopped. Completed files are kept.') }
-  }, [progress.status])
+    if (progress.status === 'error') { setError(progress.errorMessage ?? 'Indexing stopped. Completed files are kept.'); setRefresh(n => n + 1) }
+  }, [progress.status, progress.errorMessage])
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(timer) }, [notice])
   useEffect(() => { setActiveResult(0); if (!query) setSearchDestination(null) }, [query, scopeKey, searchMode])
 
   const navigate = useCallback((next: AtlasScope) => {
-    history.current.push(scope); setScope(next); setExpanded(false); setSearchDestination(null)
+    history.current.push(scope); future.current = []; setScope(next); setExpanded(false); setSearchDestination(null)
   }, [scope])
   const selectFile = useCallback((file: AtlasFile) => { setSelected(file); setSelectedId(file.id) }, [])
   const selectId = useCallback(async (id: string) => {
@@ -119,7 +125,7 @@ export default function AtlasApp() {
     if (expanded) { setExpanded(false); return }
     if (searchDestination) { setSearchDestination(null); return }
     const previous = history.current.pop()
-    if (previous) setScope(previous)
+    if (previous) { future.current.push(scope); setScope(previous) }
     else if (scope.neighborhoodId) { const { neighborhoodId: _n, ...next } = scope; setScope(next) }
     else if (scope.regionId) { const { regionId: _r, ...next } = scope; setScope(next) }
     else setScope({})
@@ -159,7 +165,12 @@ export default function AtlasApp() {
   const title = searchDestination?.label ?? neighborhood?.label ?? region?.label ?? (scope.collectionId ? collections.find(c => c.id === scope.collectionId)?.name : null) ?? 'Your atlas'
   const act = async (operation: () => Promise<void>) => { setBusy(true); setError(null); try { await operation() } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) } }
   const showRegion = (r: AtlasRegion) => navigate(r.kind === 'region' ? { ...baseScope, regionId: r.id } : { ...baseScope, regionId: r.parentId ?? undefined, neighborhoodId: r.id })
-  const savePlace = () => { setPlaces(current => [...current.filter(p => p.name !== title), { name: title, scope, selectedId }].slice(-20)); setNotice('Place saved. Its camera position is remembered automatically.') }
+  const cameraKey = sceneGroup?.id ?? scope.regionId ?? baseScopeKey
+  const savePlace = () => {
+    const savedScope = searchDestination ? { ...baseScope, regionId: searchDestination.parentId ?? undefined, neighborhoodId: searchDestination.id } : scope
+    setPlaces(current => [...current.filter(p => p.name !== title), { name: title, scope: savedScope, selectedId, camera: map.current?.camera(), cameraKey }].slice(-20))
+    setNotice('Place saved, including its current view.')
+  }
 
   return <div className={`atlas-shell atlas-theme-${theme} ${expanded ? 'atlas-reading' : ''} ${sidebar ? '' : 'atlas-sidebar-hidden'}`} style={{ '--reader-width': `${Math.max(300, Math.min(650, readerWidth))}px` } as CSSProperties}>
     <header className="atlas-topbar"><button className="atlas-brand" onClick={() => navigate({})} aria-label="Star Palace home"><span aria-hidden="true">✳</span><strong>STAR PALACE</strong></button>
@@ -178,20 +189,20 @@ export default function AtlasApp() {
         }}>{!scope.galaxyIds || scope.galaxyIds.includes(g.id) ? '◉' : '○'}</button></div>)}
         <div className="atlas-sidebar-heading"><span className="atlas-eyebrow">Regions</span></div><div className="atlas-region-nav">{summary.regions.filter(r => r.kind === 'region').map(r => <button key={r.id} className={`atlas-nav-item ${scope.regionId === r.id ? 'is-active' : ''}`} onClick={() => showRegion(r)}><span><i style={{ background: r.color }} />{r.label}</span><small>{r.count}</small></button>)}</div>
         <div className="atlas-sidebar-heading"><span className="atlas-eyebrow">Collections</span><button aria-label="Create collection" onClick={() => setDialog('collection')}>+</button></div>{collections.map(c => <button key={c.id} className={`atlas-nav-item ${scope.collectionId === c.id ? 'is-active' : ''}`} onClick={() => navigate({ collectionId: c.id })}><span>{c.kind === 'dynamic' ? '⌕' : '◇'} &nbsp;{c.name}</span><small>{c.memberCount}</small></button>)}
-        {!!places.length && <><div className="atlas-sidebar-heading"><span className="atlas-eyebrow">Saved places</span></div>{places.map((p, i) => <button className="atlas-nav-item" key={i} onClick={() => { navigate(p.scope); setSelectedId(p.selectedId) }}><span>⌖ &nbsp;{p.name}</span></button>)}</>}
+        {!!places.length && <><div className="atlas-sidebar-heading"><span className="atlas-eyebrow">Saved places</span></div>{places.map((p, i) => <button className="atlas-nav-item" key={i} onClick={() => { if (p.camera && p.cameraKey) writeStored('camera.' + p.cameraKey, p.camera); navigate(p.scope); setSelectedId(p.selectedId); if (p.camera && p.cameraKey === cameraKey) map.current?.restore(p.camera) }}><span>⌖ &nbsp;{p.name}</span></button>)}</>}
         <footer><span className="atlas-status-dot" />{loading ? 'Connecting to your library' : `${summary.positioned.toLocaleString()} files in view`}<br />{summary.pending ? `Placing ${summary.pending.toLocaleString()} files…` : `${summary.searchable.toLocaleString()} previews indexed`}<button onClick={() => setDialog('sources')}>Manage sources ↗</button></footer>
       </nav>
       <main className="atlas-main"><div className="atlas-context"><div><div className="atlas-breadcrumb"><button onClick={() => navigate(baseScope)}>Library</button><span>/</span>{region && <><button onClick={() => navigate({ ...baseScope, regionId: region.id })}>{region.label}</button><span>/</span></>}<span>{sceneGroup ? 'Neighborhood' : region ? 'Regions within' : 'Overview'}</span></div><h1>{title}</h1></div><div className="atlas-view-switch">{(['map', 'list', 'grid'] as const).map(v => <button key={v} aria-pressed={view === v} className={view === v ? 'is-active' : ''} onClick={() => setView(v)}>{v === 'map' ? 'Map' : v === 'list' ? 'List' : 'Grid'}</button>)}</div></div>
         <div className="atlas-filterbar"><button className="atlas-icon-button" aria-label="Toggle sidebar" onClick={() => setSidebar(v => !v)}>☷</button><select aria-label="Filter by file type" value={scope.category ?? ''} onChange={e => navigate({ ...scope, category: e.target.value ? e.target.value as FileCategory : undefined })}><option value="">All file types</option>{['document', 'code', 'data', 'media', 'unknown'].map(t => <option key={t} value={t}>{t === 'unknown' ? 'Other files' : t[0].toUpperCase() + t.slice(1)}</option>)}</select>
           {query && <select aria-label="Search mode" value={searchMode} onChange={e => setSearchMode(e.target.value as typeof searchMode)}><option value="all">Text + related</option><option value="exact">Names & text</option><option value="related">Related meaning</option></select>}
-          {(region || neighborhood) && <button onClick={() => setDialog('rename')}>Rename region</button>}<button onClick={savePlace}>⌖ Save place</button>
+          {(region || neighborhood) && <button onClick={() => setDialog('rename')}>Rename region</button>}<button onClick={savePlace}>⌖ Save place</button><button onClick={() => setDialog('objects')}>Object guide</button>
           {scope.collectionId && <button onClick={() => setDialog('collection')}>Manage collection</button>}
         </div>
         <div className="atlas-stage">
           {view === 'map' ? <AtlasMap ref={map} scopeKey={sceneGroup?.id ?? scope.regionId ?? baseScopeKey} regions={sceneRegions} files={mapFiles} selectedId={selectedId} highlights={highlights} theme={theme}
-            onRegion={showRegion} onSelect={selectFile} onRead={() => setExpanded(true)} onPin={(id, x, y) => void act(async () => { const result = await atlasApi.pin(id, x, y); changeFile(result.file) })} onMetrics={setMetrics} />
+            onRegion={showRegion} onBack={back} onSelect={selectFile} onRead={() => setExpanded(true)} onPin={(id, x, y) => void act(async () => { const result = await atlasApi.pin(id, x, y); changeFile(result.file) })} onMetrics={setMetrics} />
             : <div className={`atlas-file-browser atlas-file-browser-${view}`} aria-label="Files">{displayFiles.map(file => <button key={file.id} className={`atlas-file-tile ${selectedId === file.id ? 'is-selected' : ''}`} onClick={() => selectFile(file)} onDoubleClick={() => setExpanded(true)}>
-              <span className={`atlas-tile-icon atlas-type-${file.category}`}>{file.mimeType.startsWith('image/') && view === 'grid' ? <img src={`http://127.0.0.1:${((import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT) ?? 7373}/api/file/${file.id}/raw`} alt="" loading="lazy" /> : file.name.split('.').pop()?.slice(0, 5).toUpperCase()}</span>
+              <span className={`atlas-tile-icon atlas-type-${file.category}`}>{file.mimeType.startsWith('image/') && view === 'grid' ? <img src={`http://127.0.0.1:${((import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT) ?? 7373}/api/file/${file.id}/raw`} alt="" loading="lazy" /> : <CelestialIcon type={celestialType(file)} size={view === 'grid' ? 90 : 40} />}</span>
               <span className="atlas-tile-title"><Highlighted text={file.name} query={query} /><small>{file.path}</small></span><span className="atlas-tile-meta">{file.isPinned ? '⌖ ' : ''}{new Date(file.modifiedAt).toLocaleDateString()}</span>
             </button>)}{!displayFiles.length && <div className="atlas-empty"><h2>{query ? 'No matching files' : 'No files in this scope'}</h2><p>Choose another region or adjust your filters.</p></div>}</div>}
           {view === 'map' && query.trim() && <section className="atlas-results" aria-label="Search results"><header><span>{search.results.length} matches</span><button onClick={() => setDialog('collection')}>Save results</button></header>
@@ -202,17 +213,18 @@ export default function AtlasApp() {
           {!loading && !summary.positioned && !query && <div className="atlas-empty"><span>✧</span><h2>{summary.total ? 'No visible regions' : 'A universe waiting to be discovered.'}</h2><p>{summary.total ? 'Show a source or clear your filters to return to your files.' : 'Add a folder. Your files will find a place in the atlas.'}</p><button className="atlas-primary-button" onClick={() => summary.total ? navigate({}) : setDialog('sources')}>{summary.total ? 'Show all files' : 'Add your first folder'}</button></div>}
           {loading && <div className="atlas-loading atlas-stage-loading">Opening your atlas…</div>}
         </div>
-        <div className="atlas-map-footer"><button onClick={back}>← Back</button>{view === 'map' ? <div><button onClick={() => map.current?.fit()}>Fit view</button><button onClick={() => map.current?.zoom(1 / 1.4)} aria-label="Zoom out">−</button><span>{sceneGroup ? 'Files' : region ? 'Neighborhoods' : 'Overview'}</span><button onClick={() => map.current?.zoom(1.4)} aria-label="Zoom in">+</button></div> : <div><button disabled={offset === 0 || !!query} onClick={() => setOffset(n => Math.max(0, n - 100))}>Previous</button><span>{query ? search.results.length : `${offset + (files.length ? 1 : 0)}–${offset + files.length} of ${fileTotal}`}</span><button disabled={offset + files.length >= fileTotal || !!query} onClick={() => setOffset(n => n + 100)}>Next</button></div>}</div>
+        <div className="atlas-map-footer"><div><button onClick={back}>← Back</button><button onClick={() => { const next = future.current.pop(); if (next) { history.current.push(scope); setScope(next) } }} disabled={!future.current.length}>Forward →</button></div>{view === 'map' ? <div><button onClick={() => map.current?.fit()}>Fit view</button><button onClick={() => map.current?.zoom(1 / 1.4)} aria-label="Zoom out">−</button><span>{sceneGroup ? 'Files' : region ? 'Neighborhoods' : 'Overview'}</span><button onClick={() => map.current?.zoom(1.4)} aria-label="Zoom in">+</button></div> : <div><button disabled={offset === 0 || !!query} onClick={() => setOffset(n => Math.max(0, n - 100))}>Previous</button><span>{query ? search.results.length : `${offset + (files.length ? 1 : 0)}–${offset + files.length} of ${fileTotal}`}</span><button disabled={offset + files.length >= fileTotal || !!query} onClick={() => setOffset(n => n + 100)}>Next</button></div>}</div>
         {showMetrics && metrics && <div className="atlas-metrics">{metrics.renderer} · {metrics.points} points · {metrics.labels} labels · {metrics.drawMs.toFixed(2)}ms draw · {(metrics.bytes / 1048576).toFixed(1)} MiB buffers</div>}
       </main>
       <div className="atlas-reader-resizer" role="separator" aria-label="Reader width" aria-orientation="vertical" tabIndex={0} onKeyDown={e => { if (e.key === 'ArrowLeft') setReaderWidth(w => Math.min(650, w + 20)); if (e.key === 'ArrowRight') setReaderWidth(w => Math.max(300, w - 20)) }} onPointerDown={e => {
         e.currentTarget.setPointerCapture(e.pointerId); e.currentTarget.dataset.dragging = 'true'
       }} onPointerMove={e => { if (e.currentTarget.dataset.dragging === 'true') setReaderWidth(Math.min(650, Math.max(300, window.innerWidth - e.clientX))) }} onPointerUp={e => { e.currentTarget.dataset.dragging = 'false'; e.currentTarget.releasePointerCapture(e.pointerId) }} />
-      <Reader file={selected} expanded={expanded} query={query} collections={collections} onExpand={() => setExpanded(v => !v)} onClose={() => { setSelectedId(null); setExpanded(false) }} onSelect={id => void selectId(id)} onChange={changeFile} hasSequence={sequence.length > 1} onPrevious={() => cycle(-1)} onNext={() => cycle(1)} />
+      <Suspense key={selected ? 'reading' : 'empty'} fallback={<aside className="atlas-reader"><p className="atlas-muted">Opening reader…</p></aside>}>{selected ? <Reader key={selected.id} file={selected} expanded={expanded} query={query} collections={collections} onExpand={() => setExpanded(v => !v)} onClose={() => { setSelectedId(null); setExpanded(false) }} onSelect={id => void selectId(id)} onChange={changeFile} hasSequence={sequence.length > 1} onPrevious={() => cycle(-1)} onNext={() => cycle(1)} /> : <aside className="atlas-reader atlas-reader-empty"><span>✧</span><h2>Room to think.</h2><p>Select a file to preview it here.<br />Your place in the atlas stays close.</p></aside>}</Suspense>
     </div>
     {error && <div className="atlas-toast atlas-toast-error" role="alert">{error}<button onClick={() => { setError(null); setRefresh(n => n + 1) }}>Retry</button><button aria-label="Dismiss error" onClick={() => setError(null)}>×</button></div>}
     {notice && <div className="atlas-toast" role="status">{notice}</div>}
     {progress.status === 'running' && <div className="atlas-index-status" role="status"><span className="atlas-status-dot" />Indexing · {progress.scanned} files{progress.stalled ? ' · Waiting for model' : ''}<button onClick={() => jobId && void cancelIndex(jobId)}>Stop</button></div>}
+    {dialog === 'objects' && <Modal title="A sky full of different things" onClose={() => setDialog(null)}><p className="atlas-muted">File types have their own celestial identities. They share the same neighborhoods. You can also choose any object in a file’s details.</p><div className="atlas-object-guide">{STAR_TYPES.map(type => <div key={type}><CelestialIcon type={type} /><span><strong>{CELESTIAL_LABELS[type]}</strong><small>{CELESTIAL_REASONS[type]}</small></span></div>)}</div></Modal>}
     {dialog === 'sources' && <Modal title="Your sources" onClose={() => setDialog(null)}><p className="atlas-muted">Index a folder to add its files. Names and previews work even when the embedding model is offline.</p><form className="atlas-form" onSubmit={e => { e.preventDefault(); const form = new FormData(e.currentTarget); void act(async () => { const job = await startIndex(String(form.get('path')), String(form.get('name')) || undefined); setJobId(job.jobId); setDialog(null); setNotice('Indexing started'); setRefresh(n => n + 1) }) }}><label>Folder path<input name="path" placeholder="/Users/you/Documents" required /></label><label>Name <span className="atlas-muted">optional</span><input name="name" placeholder="My library" /></label><button className="atlas-primary-button" disabled={busy}>{busy ? 'Starting…' : 'Index folder'}</button></form><div className="atlas-source-list">{galaxies.filter(g => !g.rootPath.startsWith('__default__')).map(g => <div key={g.id}><strong>{g.name}</strong><small>{g.rootPath}</small><button disabled={busy} onClick={() => void act(async () => { const job = await startIndex(g.rootPath, g.name); setJobId(job.jobId); setDialog(null) })}>Reindex</button></div>)}</div></Modal>}
     {dialog === 'collection' && <CollectionDialog activeId={scope.collectionId} selectedId={selectedId} hits={search.results} query={query} busy={busy} onClose={() => setDialog(null)} onAction={act} onDone={() => { setRefresh(n => n + 1); setDialog(null); setNotice('Collection updated') }} />}
     {dialog === 'settings' && <SettingsDialog theme={theme} onTheme={setTheme} onClose={() => setDialog(null)} onNotice={setNotice} onRefresh={() => setRefresh(n => n + 1)} />}

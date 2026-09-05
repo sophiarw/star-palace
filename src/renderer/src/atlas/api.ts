@@ -1,8 +1,7 @@
 import type { AtlasFile, AtlasPage, AtlasScope, AtlasSearchResponse, AtlasSnapshot, AtlasSummary } from '@shared/atlas'
 import type { FileContent } from '@shared/types'
 
-const env = import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }
-const BASE = `http://127.0.0.1:${env.env.VITE_DAEMON_PORT ?? 7373}/api/atlas`
+const BASE = `http://127.0.0.1:${(import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT ?? 7373}/api/atlas`
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(BASE + path, init)

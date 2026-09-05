@@ -13,7 +13,13 @@
     "build:web": "vite build --config vite.web.config.ts",
     "index": "tsx scripts/index-cli.ts",
     "seed:demo": "bash scripts/fetch-corpus.sh && tsx scripts/seed-mvp.ts",
-    "prepare": "bash scripts/install-git-hooks.sh"
+    "prepare": "bash scripts/install-git-hooks.sh",
+    "seed:atlas": "tsx scripts/seed-atlas.ts",
+    "dev:atlas:daemon": "STARPALACE_DIR=.atlas-dev STARPALACE_PORT=7374 tsx watch src/daemon/index.ts",
+    "dev:atlas:web": "VITE_DAEMON_PORT=7374 vite --config vite.web.config.ts --port 5174 --host 127.0.0.1",
+    "test:browser": "playwright test",
+    "benchmark:atlas": "tsx scripts/benchmark-atlas.ts",
+    "benchmark:atlas:browser": "node scripts/benchmark-atlas-browser.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",

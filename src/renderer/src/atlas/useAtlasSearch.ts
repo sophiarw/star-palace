@@ -37,7 +37,7 @@ export function useAtlasSearch(query: string, scope: AtlasScope, mode: 'all' | '
         }
       } catch (e) { if (valid()) setError(e instanceof Error ? e.message : 'Search is unavailable') }
       finally { if (valid()) setStatus('ready') }
-    }, mode === 'related' ? 160 : 45)
+    }, mode === 'related' ? 160 : 25)
     return () => { clearTimeout(timer); abort.abort() }
   }, [query, scopeKey, mode])
   return { results, status, error }

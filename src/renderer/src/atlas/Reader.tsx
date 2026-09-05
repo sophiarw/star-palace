@@ -9,21 +9,12 @@ import { STAR_TYPES } from '@shared/types'
 import { addCollectionMembers, fetchNeighborhood, openFile, rawUrl, revealFile, setStarType, setTags, reindexFile } from '../api'
 import { atlasApi } from './api'
 import { readStored, writeStored } from './storage'
+import { Highlighted } from './Highlighted'
+import { patternFor, markedParts } from './searchText'
 
 type TextContent = FileContent & { status: string; error: string | null }
 const cache = new Map<string, { modifiedAt: number; value: TextContent }>()
 const readableBytes = (n: number): string => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`
-export const queryTerms = (query: string): string[] => (query.match(/"[^"]+"|[\p{L}\p{N}_-]+/gu) ?? []).map(t => t.replace(/^"|"$/g, '')).filter(Boolean).slice(0, 16)
-const patternFor = (query: string): RegExp | null => {
-  const terms = queryTerms(query)
-  return terms.length ? new RegExp('(' + terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi') : null
-}
-
-export function Highlighted({ text, query }: { text: string; query: string }) {
-  const pattern = patternFor(query)
-  if (!pattern) return <>{text}</>
-  return <>{text.split(pattern).map((piece, i) => i % 2 ? <mark key={i} data-match>{piece}</mark> : piece)}</>
-}
 
 function highlightPlugin(query: string) {
   return () => (root: HtmlRoot) => {
@@ -36,7 +27,7 @@ function highlightPlugin(query: string) {
         const child = children[i]
         if (child.type === 'element') { if (child.tagName !== 'mark') visit(child); continue }
         if (child.type !== 'text') continue
-        const pieces = child.value.split(regex)
+        const pieces = markedParts(child.value, regex, budget)
         if (pieces.length < 2) continue
         const nodes: (HtmlElement | HtmlText)[] = pieces.map((piece, index) => index % 2
           ? { type: 'element', tagName: 'mark', properties: { 'data-match': true }, children: [{ type: 'text', value: piece }] }
@@ -89,9 +80,10 @@ function CodeView({ text, name, query }: { text: string; name: string; query: st
   const language = aliases[ext] ?? ext
   const output = useMemo(() => hljs.getLanguage(language) ? hljs.highlight(text.slice(0, 150000), { language, ignoreIllegals: true }).value : null, [text, language])
   // Search mode favors directly navigable text matches over syntax color.
-  return <pre className="atlas-code" tabIndex={0}>{query || !output
+  const shown = query || !output ? text : text.slice(0, 150000)
+  return <><div className="atlas-code-layout"><pre className="atlas-line-numbers" aria-hidden="true">{shown.split('\n').map((_, i) => i + 1).join('\n')}</pre><pre className="atlas-code" tabIndex={0}>{query || !output
     ? <code><Highlighted text={text} query={query} /></code>
-    : <code className="hljs" dangerouslySetInnerHTML={{ __html: output }} />}</pre>
+    : <code className="hljs" dangerouslySetInnerHTML={{ __html: output }} />}</pre></div>{output && !query && text.length > 150000 && <p className="atlas-muted">Syntax preview limited to 150,000 characters. Search still covers the indexed document.</p>}</>
 }
 
 function ImageView({ file }: { file: AtlasFile }) {
@@ -130,7 +122,7 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
       setLoading(true)
       atlasApi.text(fileId, abort.signal).then(value => {
         if (abort.signal.aborted) return
-        setContent(value); cache.delete(fileId); cache.set(fileId, { value, modifiedAt })
+        setContent(value); cache.delete(fileId); if (value.status !== 'unavailable') cache.set(fileId, { value, modifiedAt })
         while (cache.size > 12) cache.delete(cache.keys().next().value!)
       }).catch(e => { if (!abort.signal.aborted) setError(String(e)) }).finally(() => { if (!abort.signal.aborted) setLoading(false) })
     }

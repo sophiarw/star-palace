@@ -2,24 +2,40 @@
 
 Branch: `feat/atlas-revamp` · worktree: `worktrees/atlas-revamp`
 
-The original checkout is preserved. The first commit on this branch checkpoints its existing source edits and approved design references. All runtime validation uses fixtures or a SQLite backup in `.atlas-dev/`, never the primary database.
+The original checkout and its pre-existing source edits are preserved. Runtime work used generated fixtures in `.atlas-dev/` and `.atlas-benchmark/`, plus a SQLite backup in `.atlas-real/`. The primary library was never migrated.
 
-## Delivery checklist
+## Delivered
 
-- [x] Agent reading map and isolated Git baseline.
-- [ ] Additive atlas/search storage, complete file coverage, scoped lexical and semantic retrieval, shared extraction.
-- [ ] Stable region → neighborhood → file hierarchy, world pins, snapshots and restoration.
-- [ ] Default atlas shell matching the visual concept, GPU/Canvas rendering, bounded labels, coherent navigation.
-- [ ] Persistent search/results, accessible file list/grid, reader and content-specific previews.
-- [ ] Collections, sources/indexing, tags, manual classification, saved places, themes and advanced workspace.
-- [ ] Integration/browser tests, actual-data review, rendering/search benchmarks, documentation and final checkpoint.
+- Agent reading map and isolated Git baseline (`2111795`).
+- Persistent atlas, search, redesigned shell and reader (`94002be`).
+- Metadata-first insertion; shared bounded extraction; trigram filename/path lookup and passage search; off-thread PCA with stale-result rejection (`ca08c96`).
+- Complete file coverage, stable source/folder/semantic neighborhoods, world pins, renamed regions, reversible snapshots, saved camera positions, and Back/Forward navigation.
+- GPU default with Canvas fallback, bounded scene/labels, mixed celestial file types, an object guide, smooth close-up zoom, and deterministic per-file artwork in a fixed-size cache.
+- Map/list/grid browsing, keyboard search, matching-passage navigation, Markdown/code/data/image/PDF readers, source management, collections, tags, and manual classifications. The classic advanced workspace remains available.
+- Integrity/HTTP/browser tests, real-library migration audit, foreground GPU/Canvas comparisons at 10k/50k/100k, and documented performance limits.
 
-## Validation record
+See [validation results](atlas-validation.md) for measured numbers and the remaining limits of the measurements. The user approved the live visual direction and explicitly asked to retain celestial identities, intermix file types, and restore procedural close-up exploration; those refinements are implemented.
 
-Baseline: typecheck and lint pass. Default tests: 384 pass, 3 fixture-dependent graphics checks skipped in the worktree. The same three checks passed in the original checkout with its audit corpus. The legacy HTTP contract suite remains opt-in due to its documented native teardown crash.
+## Run the review build
+
+From the worktree, run `npm run seed:atlas`, `npm run dev:atlas:daemon`, and in another terminal `npm run dev:atlas:web`. Open `http://127.0.0.1:5174`. The generated demo contains 124 files and demonstrates manual celestial classifications as well as automatic file-type mapping.
+
+## Real-library review
+
+A separate local preview at `http://127.0.0.1:5176` uses daemon port `7376` and a fresh SQLite backup under `.atlas-real/preview-20260904-213353/`. All 1,748 indexed files were verified to exist. The original database is opened read-only for the backup; the new daemon reads and writes only the copy. Source files remain at their existing paths. Changes to tags, collections, and pins in this preview belong to the copy. Full-text extraction fills in the background. The generated demo remains on port `5174`.
+
+To restart that preview from this worktree:
+
+```sh
+STARPALACE_DIR=.atlas-real/preview-20260904-213353 STARPALACE_PORT=7376 npm run dev:daemon
+# In another terminal:
+VITE_DAEMON_PORT=7376 npm run dev:web -- --port 5176 --host 127.0.0.1
+```
 
 ## Rollback
 
-Use the original checkout on `main` to run the original app. This implementation will retain the legacy UI behind an explicit view switch. Atlas coordinates and search data use additive tables; legacy PCA positions and embeddings remain available. The isolated development database can be discarded without affecting the primary library.
+The primary checkout on `main` still contains the original app and the user's pre-existing changes. It can be run independently. Do not reset or clean that checkout.
 
-Do not reset the original checkout: it contains pre-existing uncommitted user work. Revert implementation commits on this branch if an individual change needs to be backed out.
+Within the new UI, `?view=classic` opens the preserved interface. Atlas/search tables are additive; original file metadata, vectors, PCA positions, and collections remain present. New atlas pins and snapshots are separate from legacy PCA pins. Atlas snapshot restoration creates a backup before applying saved positions/names and keeps files indexed after the snapshot.
+
+Use `git log --oneline` in this worktree to review the implementation checkpoints. To undo a change on this branch, revert its commit. To inspect the pre-revamp baseline without changing this worktree, create another worktree at `2111795`. No implementation commits have been merged into `main`.

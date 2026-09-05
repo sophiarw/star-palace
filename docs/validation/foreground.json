@@ -1,0 +1,192 @@
+{
+  "timestamp": "2026-09-05T04:18:32.964Z",
+  "browser": "151.0.7922.174",
+  "os": "darwin 25.5.0",
+  "cpu": "Apple M4",
+  "viewport": [
+    1440,
+    960
+  ],
+  "dpr": 2,
+  "foreground": true,
+  "production": true,
+  "scenes": [
+    {
+      "count": 10000,
+      "startupMs": 117.85458400000016,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 436,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.300000000000182,
+      "frameP99": 17.59999999999991,
+      "drawP95": 0.7000000178813934,
+      "inputTwoRafP95": 33,
+      "longTasks": [],
+      "jsHeapMiB": 6.325362205505371,
+      "rendererProcesses": 3
+    },
+    {
+      "count": 10000,
+      "startupMs": 76.43437499999982,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 436,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.5,
+      "frameP99": 17.600000000000364,
+      "drawP95": 1.4000000059604645,
+      "inputTwoRafP95": 32.70000001788139,
+      "longTasks": [],
+      "jsHeapMiB": 6.111444473266602,
+      "rendererProcesses": 3
+    },
+    {
+      "count": 50000,
+      "startupMs": 94.79508299999907,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 1584,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.199999999999818,
+      "frameP99": 17.59999999999991,
+      "drawP95": 0.9000000059604645,
+      "inputTwoRafP95": 32.69999998807907,
+      "longTasks": [],
+      "jsHeapMiB": 7.083827018737793,
+      "rendererProcesses": 3
+    },
+    {
+      "count": 50000,
+      "startupMs": 50.78212499999972,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 1584,
+      "frameP50": 16.699999999999818,
+      "frameP95": 16.800000000000182,
+      "frameP99": 17.300000000000182,
+      "drawP95": 2,
+      "inputTwoRafP95": 31.799999982118607,
+      "longTasks": [],
+      "jsHeapMiB": 7.954322814941406,
+      "rendererProcesses": 3
+    },
+    {
+      "count": 100000,
+      "startupMs": 93.7122500000005,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 2904,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.200000000000045,
+      "frameP99": 17.5,
+      "drawP95": 1.100000023841858,
+      "inputTwoRafP95": 33,
+      "longTasks": [],
+      "jsHeapMiB": 20.162694931030273,
+      "rendererProcesses": 3
+    },
+    {
+      "count": 100000,
+      "startupMs": 49.57708300000013,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 2904,
+      "frameP50": 16.699999999999818,
+      "frameP95": 16.799999999999727,
+      "frameP99": 17,
+      "drawP95": 2.4000000059604645,
+      "inputTwoRafP95": 31.30000001192093,
+      "longTasks": [],
+      "jsHeapMiB": 16.343412399291992,
+      "rendererProcesses": 3
+    },
+    {
+      "count": "actual",
+      "startupMs": 64.35729199999696,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 807,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.199999999999818,
+      "frameP99": 17.5,
+      "drawP95": 1,
+      "inputTwoRafP95": 33.20000001788139,
+      "longTasks": [],
+      "jsHeapMiB": 16.961825370788574,
+      "rendererProcesses": 3
+    },
+    {
+      "count": "actual",
+      "startupMs": 43.59458299999824,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 807,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.299999999999955,
+      "frameP99": 17.59999999999991,
+      "drawP95": 1.600000023841858,
+      "inputTwoRafP95": 32.69999998807907,
+      "longTasks": [],
+      "jsHeapMiB": 14.155810356140137,
+      "rendererProcesses": 3
+    }
+  ],
+  "stress": [
+    {
+      "count": 10000,
+      "renderer": "gpu",
+      "visibility": "visible",
+      "frameP95": 17.200000000000273,
+      "frameP99": 17.59999999999991,
+      "drawP95": 0.20000001788139343,
+      "bufferMiB": 0.41961669921875
+    },
+    {
+      "count": 10000,
+      "renderer": "canvas",
+      "visibility": "visible",
+      "frameP95": 16.800000000000182,
+      "frameP99": 17.300000000000182,
+      "drawP95": 4.800000011920929,
+      "bufferMiB": 0.41961669921875
+    },
+    {
+      "count": 50000,
+      "renderer": "gpu",
+      "visibility": "visible",
+      "frameP95": 17.5,
+      "frameP99": 17.600000000000364,
+      "drawP95": 0.20000001788139343,
+      "bufferMiB": 2.09808349609375
+    },
+    {
+      "count": 50000,
+      "renderer": "canvas",
+      "visibility": "visible",
+      "frameP95": 83.39999999999964,
+      "frameP99": 83.40000000000146,
+      "drawP95": 50.5,
+      "bufferMiB": 2.09808349609375
+    },
+    {
+      "count": 100000,
+      "renderer": "gpu",
+      "visibility": "visible",
+      "frameP95": 17.599999999998545,
+      "frameP99": 17.700000000000728,
+      "drawP95": 0.19999998807907104,
+      "bufferMiB": 4.1961669921875
+    },
+    {
+      "count": 100000,
+      "renderer": "canvas",
+      "visibility": "visible",
+      "frameP95": 135.20000000000073,
+      "frameP99": 150,
+      "drawP95": 132.5,
+      "bufferMiB": 4.1961669921875
+    }
+  ],
+  "errors": []
+}

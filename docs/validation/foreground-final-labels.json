@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-09-05T04:25:50.784Z",
+  "browser": "151.0.7922.174",
+  "os": "darwin 25.5.0",
+  "cpu": "Apple M4",
+  "viewport": [
+    1440,
+    960
+  ],
+  "dpr": 2,
+  "foreground": true,
+  "production": true,
+  "scenes": [
+    {
+      "count": 100000,
+      "startupMs": 106.77308300000004,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 2904,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.200000000000045,
+      "frameP99": 17.5,
+      "drawP95": 1.699999988079071,
+      "inputTwoRafP95": 33,
+      "longTasks": [],
+      "jsHeapMiB": 8.68004035949707,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 499.640625
+    },
+    {
+      "count": 100000,
+      "startupMs": 64.1191659999995,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 2904,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.600000000000364,
+      "frameP99": 17.700000000000273,
+      "drawP95": 2.5,
+      "inputTwoRafP95": 32,
+      "longTasks": [],
+      "jsHeapMiB": 10.040760040283203,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 543
+    },
+    {
+      "count": "actual",
+      "startupMs": 105.08075000000099,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 796,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.59999999999991,
+      "frameP99": 17.699999999999818,
+      "drawP95": 1.699999988079071,
+      "inputTwoRafP95": 33.099999994039536,
+      "longTasks": [],
+      "jsHeapMiB": 7.070916175842285,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 546.4375
+    },
+    {
+      "count": "actual",
+      "startupMs": 61.52483399999983,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 796,
+      "frameP50": 16.699999999999818,
+      "frameP95": 17.600000000000364,
+      "frameP99": 17.600000000000364,
+      "drawP95": 2.0999999940395355,
+      "inputTwoRafP95": 32.900000005960464,
+      "longTasks": [],
+      "jsHeapMiB": 10.028155326843262,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 549.875
+    }
+  ],
+  "stress": [],
+  "errors": []
+}

@@ -180,3 +180,9 @@ The first implemented slice should already feel substantially better using the c
 Working assumptions: the persistent map remains the home view; local files and local inference remain primary; current capabilities should survive; experimental knobs can move into an advanced surface. The prototype review should establish the dominant file formats, typical and desired corpus sizes, whether the reader deserves most of the window by default, and how much theme richness matters relative to file legibility.
 
 These choices can change the emphasis without invalidating the architecture above.
+
+## Accepted implementation refinements
+
+During the live review, the user approved the calmer graphic design and asked to restore intermixed celestial file types, improve their artwork, and preserve the playful ability to zoom into procedural objects unique to each file. The atlas therefore shares the existing automatic/manual classifications, uses a small sprite atlas at ordinary scales, and generates deterministic close-up artwork only for visible files. The bounded cache is part of the design, not a reason to remove those identities.
+
+The implemented layout uses stable source/folder regions and bounded neighborhoods seeded by existing semantic edges. It does not claim that arbitrary two-dimensional distance is a semantic score. PCA and embedding experiments remain in the advanced workspace; automatic indexing does not replace the established atlas layout.

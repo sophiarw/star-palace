@@ -68,6 +68,7 @@ export function useIndexProgress(jobId: string | null): IndexProgressSnapshot {
       try {
         const parsed = JSON.parse(ev.data) as IndexProgressEvent
         setSnap(deriveSnapshot(parsed))
+        if (parsed.status !== 'running') es.close()
       } catch {
         // malformed frame — keep last good snapshot
       }

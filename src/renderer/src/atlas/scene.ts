@@ -1,5 +1,6 @@
+import type { StarType } from '@shared/types'
 export interface Camera { x: number; y: number; zoom: number }
-export interface ScenePoint { id: string; x: number; y: number; radius: number; color: string; alpha: number }
+export interface ScenePoint { id: string; x: number; y: number; radius: number; color: string; alpha: number; objectType?: StarType; rotation?: number; zoomable?: boolean }
 export interface LabelBox { x: number; y: number; width: number; height: number }
 
 export function project(x: number, y: number, camera: Camera, width: number, height: number): [number, number] {
@@ -21,4 +22,8 @@ export function seedFor(id: string): number {
   let seed = 2166136261
   for (let i = 0; i < id.length; i++) seed = Math.imul(seed ^ id.charCodeAt(i), 16777619)
   return seed >>> 0
+}
+
+export function objectRadius(point: Pick<ScenePoint, 'radius' | 'zoomable'>, zoom: number): number {
+  return point.radius * (point.zoomable ? Math.max(.6, Math.min(8, Math.sqrt(zoom / 1.5))) : 1)
 }

@@ -20,6 +20,8 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 
 ## Code map
 
+- `src/daemon/atlas/`: additive persistent atlas, FTS retrieval, region summaries, snapshots, and background service.
+- `src/daemon/index/extractors/`: bounded worker extraction shared by search, readers, and embedding paths.
 - `src/daemon/index.ts`: HTTP composition and legacy routes.
 - `src/daemon/db/FileIndex.ts`: SQLite schema and file/collection persistence.
 - `src/daemon/pipeline/Insert.ts`: indexing transactions and ANN ordering.
@@ -27,6 +29,12 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 - `src/daemon/search/`: retrieval implementations.
 - `src/daemon/layout/`: projection and clustering.
 - `src/daemon/embedding/`: model adapter, strategies, and experiments.
+- `src/renderer/src/atlas/`: default workspace, reader, search, semantic zoom, GPU/Canvas renderer, and bounded per-file procedural sprite cache.
+- `src/renderer/src/LegacyApp.tsx`: preserved advanced workspace.
+- `src/shared/celestial.ts`: canonical file-type/object mapping; both renderers share it.
+- `src/shared/atlas.ts`: new atlas HTTP contracts.
+- `tests/atlas/`, `tests/browser/`: persistence/search integrity and end-to-end interaction checks.
+- `docs/atlas-validation.md`: measured performance and limitations.
 - `src/renderer/src/App.tsx`: default application entry.
 - `src/renderer/src/components/`: existing map, viewers, and advanced panels.
 - `src/renderer/src/themes/`: retained theme artwork and contracts.
@@ -34,3 +42,5 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 - `tests/`: automated checks; the default suite excludes the legacy HTTP contract test for its documented native teardown issue.
 
 Renderer code must not import Node APIs. Embeddings entering HNSW remain L2 normalized. ANN lookup precedes the SQL transaction and ANN insertion follows commit. Derived search/layout indexes should be recoverable and versioned; user-authored state remains authoritative in SQLite.
+
+The user specifically wants intermixed celestial file types and deterministic per-file artwork. Preserve these. Close-up generation must remain bounded and must not create a per-file texture cache for the whole library. New file placement must not separate neighborhoods solely by file type.
