@@ -6,6 +6,8 @@ These are review artifacts, not approved website assets.
 
 The user rejected all ten constellation-logo studies below. The new direction is **calligraphy made of stars**: the brushstroke silhouette provides the character's structure, with stellar colors and luminous particles filling the strokes.
 
+- [Three stellar visual languages](stellar-atlas-study.html): interactive atlas proposals using the same fictional files and positions. [Semantic proposals and recommendation](stellar-semantics.md) explain what the artwork could mean.
+- [Website and calligraphic identity study](stellar-brand/index.html): the supplied artwork in a hero composition, plus an editable simplified brush-mark study with stellar/silhouette comparison. This is separate from the deployed website.
 - [Revised user-supplied reference](palace-stellar-calligraphy-reference.jpg), saved unchanged September 5, 2026. The user created this revision with Gemini; original filename: `Gemini_Generated_Image_8rhx5i8rhx5i8rhx.jpg`.
 - Preserve the expressive weight, taper, and movement of 宫, the bright blue/white/yellow/orange/red stars, and their surrounding glow. This revision replaces the earlier image with purple contour lines.
 - The user explicitly wants this bright, glowing color treatment for the main atlas icons; see [the deferred feature request](../future-features.md#bright-glowing-celestial-icons).
