@@ -66,3 +66,7 @@ The primary checkout on `main` still contains the original app and the user's pr
 Within the new UI, `?view=classic` opens the preserved interface. Atlas/search tables are additive; original file metadata, vectors, PCA positions, and collections remain present. New atlas pins and snapshots are separate from legacy PCA pins. Atlas snapshot restoration creates a backup before applying saved positions/names and keeps files indexed after the snapshot.
 
 Use `git log --oneline` in this worktree to review the implementation checkpoints. To undo a change on this branch, revert its commit. To inspect the pre-revamp baseline without changing this worktree, create another worktree at `2111795`. No implementation commits have been merged into `main`.
+
+## September 5: logo refinement
+
+Replaced the soft, irregular constellation mark with a geometric 宫: parallel strokes share one intentional slant, ivory lines have enough weight for small placements, and three flat gold stars establish a clear visual hierarchy. Logo and favicon are generated from the same coordinates. The SVG contains no blur filters or raster images; the social card is regenerated separately.
