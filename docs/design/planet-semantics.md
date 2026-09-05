@@ -1,6 +1,10 @@
 # Solar-system proposals
 
-September 5, 2026 · proposals for review, not production features.
+September 5, 2026 · Contents approved; production integration remains pending.
+
+## Approved direction
+
+The user selected **Contents** as the meaning of the planets after approving the procedural surface study. The document is the sun; its substantial internal sections are planets. Start with Markdown headings and exact reader anchors. Figures, subsections, or annotations can be moons belonging to their section. Code functions/classes and workbook sheets are later format extensions. Sources, milestones, and reading routes remain alternative proposals, not selected features.
 
 [Interactive planet study](planet-study.html) explores six seeded procedural surfaces: ocean/cloud, banded giant, dune, fractured ice, volcanic night, and veiled world. One active WebGL sphere uses spherical noise, surface lighting, an atmosphere rim, and independent cloud motion. Six small cached thumbnails supply the catalog and orbit sketch. No image-generation service, external assets, library data, or production app changes are involved.
 
@@ -13,7 +17,7 @@ September 5, 2026 · proposals for review, not production features.
 | Milestones | How did this get here? Which draft did I mean? | A few deliberately saved versions | Individual changes within a selected milestone | Visually promising once named milestones exist. Hundreds of automatic saves need a timeline, not hundreds of planets. |
 | Reading route | What mattered to me here? | User-bookmarked passages, decisions, or questions | The user's notes on each bookmark | A personal memory palace rather than a structural table of contents. Strong utility, but requires new authored anchors and annotation storage. |
 
-Recommendation: begin with **Contents**, then explore **Sources** as an explicitly selected alternate system. Do not put sections, revisions, tags, and other files into one unlabeled orbital population. Existing related files remain stars in the outer atlas; a Sources system is a local relationship view with links back to those stars, not a new permanent classification.
+Begin with the approved **Contents** system. **Sources** is a possible later, explicitly selected alternate view. Do not put sections, revisions, tags, and other files into one unlabeled orbital population. Existing related files remain stars in the outer atlas; a Sources system would be a local relationship view with links back to those stars, not a new permanent classification.
 
 For a project folder, a different scale is coherent: a central project with its files as planets. That is an alternative to the document-interior design, not something to silently switch to mid-zoom. Compare it only if folder browsing becomes the primary use case.
 
@@ -34,6 +38,6 @@ Use very slow deterministic orbits, stable orbital tracks, and a paused or follo
 
 The study caps the active render at 1,000 square pixels per side and 30 requested frames per second, skips hidden-tab rendering, and stops drawing while paused unless a control changes. Those are budgets, not measured performance claims. A production implementation would generate detail only for the active system and retain the atlas's bounded close-up cache. The current study evaluates appearance; its section buttons select a fictional world rather than navigate real document content.
 
-## Review
+## Integration requirements
 
-Choose the strongest surface families and the meaning of the first solar-system view before integrating it. An implemented system needs an in-app screenshot tutorial, exact reader anchors, keyboard navigation, reliable pointer selection during motion, and regression checks for persistent identity and camera return.
+The surface study and Contents direction are approved. An implemented system needs an in-app screenshot tutorial, exact reader anchors, keyboard navigation, reliable pointer selection during motion, and regression checks for persistent identity and camera return.

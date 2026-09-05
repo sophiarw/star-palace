@@ -84,6 +84,8 @@ The user explicitly prefers **very slow moving orbits**, somewhat sped up from r
 
 FR-09 visual follow-up: the user requested generated close-up surfaces/atmospheres and alternative meanings for orbiting planets. [Six procedural surface studies](design/planet-study.html) and [solar-system proposals](design/planet-semantics.md) are ready for review. Compare Contents (sections/functions/sheets), Sources (explicit references/dependencies), Milestones (selected versions), and Reading routes (authored passage bookmarks). No production solar-system navigation or format extraction is implemented by this study.
 
+**Decision:** the user approved the surface study and selected **Contents** for the planets. Use the document as the sun and its internal sections as planets, beginning with Markdown headings and exact passage navigation. Moons can represent subordinate contents such as figures or annotations. Other orbital meanings and additional document formats remain deferred; production integration is still pending.
+
 ### FR-10: Binary stars and stellar families
 
 Give explicitly related files a paired or family appearance: paper/supplement, original/edited image, manuscript/translation. Users can establish the relationship or accept an evidence-backed suggestion. Distinguish authored pairing from generic content similarity, duplicate detection, favorites, and folder membership. Explore connecting or shared-halo treatments at existing atlas positions before considering any motion or relocation.
