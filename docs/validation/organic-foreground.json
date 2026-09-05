@@ -1,0 +1,81 @@
+{
+  "timestamp": "2026-09-05T04:56:54.489Z",
+  "browser": "151.0.7922.174",
+  "os": "darwin 25.5.0",
+  "cpu": "Apple M4",
+  "viewport": [
+    1440,
+    960
+  ],
+  "dpr": 2,
+  "foreground": true,
+  "production": true,
+  "scenes": [
+    {
+      "count": 100000,
+      "startupMs": 159.89487500000007,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 3132,
+      "frameP50": 16.699999999999818,
+      "frameP95": 18.200000000000273,
+      "frameP99": 18.600000000000136,
+      "drawP95": 2.899999976158142,
+      "inputTwoRafP95": 35.5,
+      "longTasks": [],
+      "jsHeapMiB": 9.084609985351562,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 510.984375
+    },
+    {
+      "count": 100000,
+      "startupMs": 199.50724999999966,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 3132,
+      "frameP50": 16.699999999999818,
+      "frameP95": 18.40000000000009,
+      "frameP99": 18.799999999999727,
+      "drawP95": 2.700000047683716,
+      "inputTwoRafP95": 34.90000003576279,
+      "longTasks": [],
+      "jsHeapMiB": 11.987154006958008,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 607.28125
+    },
+    {
+      "count": "actual",
+      "startupMs": 91.01324999999997,
+      "renderer": "WebGL2",
+      "visibility": "visible",
+      "points": 1748,
+      "frameP50": 16.699999999999818,
+      "frameP95": 18.59999999999991,
+      "frameP99": 18.700000000000045,
+      "drawP95": 2.399999976158142,
+      "inputTwoRafP95": 34.59999996423721,
+      "longTasks": [],
+      "jsHeapMiB": 19.376081466674805,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 615.03125
+    },
+    {
+      "count": "actual",
+      "startupMs": 75.08004100000107,
+      "renderer": "Canvas2D",
+      "visibility": "visible",
+      "points": 1748,
+      "frameP50": 16.699999999999818,
+      "frameP95": 18.600000000000023,
+      "frameP99": 18.699999999999818,
+      "drawP95": 2.300000011920929,
+      "inputTwoRafP95": 33.60000002384186,
+      "longTasks": [],
+      "jsHeapMiB": 9.627238273620605,
+      "rendererProcesses": 3,
+      "combinedRendererRssMiB": 576.1875
+    }
+  ],
+  "stress": [],
+  "errors": []
+}

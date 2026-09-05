@@ -107,7 +107,7 @@ test('GPU loss falls back to Canvas and idle scenes do not redraw continuously',
     await expect(scene).toHaveAttribute('data-renderer', 'Canvas2D')
   }
   await page.mouse.move(5, 5)
-  await page.waitForTimeout(100)
+  await page.waitForTimeout(500)
   const before = Number(await scene.getAttribute('data-draws'))
   await page.waitForTimeout(1000)
   expect(Number(await scene.getAttribute('data-draws')) - before).toBeLessThanOrEqual(1)
@@ -151,6 +151,7 @@ test('zoom reveals deterministic per-file artwork with a bounded close-up cache'
   await expect(page.locator('.atlas-map-footer')).toContainText('Files')
   destinations = page.getByRole('navigation', { name: 'Map destinations' })
   await destinations.getByRole('button').first().focus(); await page.keyboard.press('Enter')
+  await page.waitForTimeout(500) // Explicit destination navigation has a short camera flight.
   for (let i = 0; i < 9; i++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
   await expect.poll(async () => Number(await page.locator('.atlas-point-canvas').getAttribute('data-detail-sprites'))).toBeGreaterThan(0)
   expect(Number(await page.locator('.atlas-point-canvas').getAttribute('data-detail-sprites'))).toBeLessThanOrEqual(16)
@@ -166,4 +167,88 @@ test('zoom reveals deterministic per-file artwork with a bounded close-up cache'
     return { same: hash('file-a') === hash('file-a'), different: hash('file-a') !== hash('file-b') }
   })
   expect(hashes).toEqual({ same: true, different: true })
+})
+
+
+test('wheel zoom crosses detail levels without scope changes, anchor drift, or late-response camera jumps', async ({ page }) => {
+  await page.route('**/api/atlas/viewport?**', async route => {
+    const response = await route.fetch()
+    await new Promise(resolve => setTimeout(resolve, 550))
+    await route.fulfill({ response })
+  })
+  const scene = page.locator('.atlas-map')
+  await expect(scene).toHaveAttribute('data-camera', /zoom/)
+  const box = (await scene.boundingBox())!
+  const read = async () => JSON.parse((await scene.getAttribute('data-camera'))!) as { x: number; y: number; zoom: number }
+  const original = await read()
+  const summary = await page.request.get('http://127.0.0.1:7374/api/atlas/summary').then(r => r.json())
+  const marker = summary.markers[0] as { id: string; x: number; y: number }
+  const anchor = { x: (marker.x - original.x) * original.zoom + box.width / 2, y: (marker.y - original.y) * original.zoom + box.height / 2 }
+  const mouseX = Math.round(box.x + anchor.x), mouseY = Math.round(box.y + anchor.y)
+  anchor.x = mouseX - box.x; anchor.y = mouseY - box.y
+  marker.x = (anchor.x - box.width / 2) / original.zoom + original.x
+  marker.y = (anchor.y - box.height / 2) / original.zoom + original.y
+  await page.mouse.move(mouseX, mouseY)
+  for (const direction of [-1, 1]) {
+    for (let i = 0; i < 20; i++) {
+      const before = await read()
+      await page.mouse.wheel(0, direction * 180)
+      await page.waitForTimeout(210)
+      const after = await read()
+      expect(after.zoom / before.zoom).toBeCloseTo(Math.exp(-direction * 180 * .0015), 5)
+      expect((marker.x - after.x) * after.zoom + box.width / 2).toBeCloseTo(anchor.x, 4)
+      expect((marker.y - after.y) * after.zoom + box.height / 2).toBeCloseTo(anchor.y, 4)
+      await expect(page.getByRole('heading', { name: 'Your atlas', exact: true })).toBeVisible()
+    }
+  }
+  const final = await read()
+  await page.waitForTimeout(800)
+  expect(await read()).toEqual(final)
+  expect(final.zoom).toBeCloseTo(original.zoom, 6)
+  expect(final.x).toBeCloseTo(original.x, 5); expect(final.y).toBeCloseTo(original.y, 5)
+})
+
+
+test('hover does not reshuffle headings or keep the map repainting', async ({ page }) => {
+  const scene = page.locator('.atlas-map')
+  await expect(scene).toHaveAttribute('data-labels', /[a-f0-9]/)
+  await page.waitForTimeout(500)
+  const labels = await scene.getAttribute('data-labels')
+  const pixels = await page.locator('.atlas-label-canvas').evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL())
+  const box = (await scene.boundingBox())!
+  for (let i = 1; i < 8; i++) await page.mouse.move(box.x + box.width * i / 8, box.y + box.height * .5)
+  await page.waitForTimeout(500)
+  expect(await scene.getAttribute('data-labels')).toBe(labels)
+  expect(await page.locator('.atlas-label-canvas').evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL())).toBe(pixels)
+  const draws = Number(await scene.getAttribute('data-draws'))
+  await page.waitForTimeout(600)
+  expect(Number(await scene.getAttribute('data-draws')) - draws).toBeLessThanOrEqual(1)
+})
+
+
+test('home returns to the full galaxy after continuous zoom without a scope change', async ({ page }) => {
+  const scene = page.locator('.atlas-map'), read = async () => JSON.parse((await scene.getAttribute('data-camera'))!) as { zoom: number }
+  const initial = await read()
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+  await page.waitForTimeout(250)
+  expect((await read()).zoom).toBeGreaterThan(initial.zoom * 3)
+  await page.getByRole('button', { name: 'Star Palace home' }).click()
+  await page.waitForTimeout(550)
+  expect((await read()).zoom).toBeCloseTo(initial.zoom, 5)
+})
+
+test('zoom buttons do not pull the camera toward an offscreen selection', async ({ page }) => {
+  await searchFor(page, 'camera.ts')
+  await page.locator('.atlas-result').first().click()
+  await page.waitForTimeout(550)
+  const button = page.getByRole('button', { name: 'Zoom in', exact: true })
+  await button.focus()
+  for (let i = 0; i < 30; i++) await page.keyboard.press('l')
+  await page.waitForTimeout(100)
+  const scene = page.locator('.atlas-map'), read = async () => JSON.parse((await scene.getAttribute('data-camera'))!) as { x: number; y: number; zoom: number }
+  const before = await read()
+  await button.click(); await page.waitForTimeout(250)
+  const after = await read()
+  expect(after.x).toBeCloseTo(before.x, 5); expect(after.y).toBeCloseTo(before.y, 5)
+  expect(after.zoom / before.zoom).toBeCloseTo(1.4, 5)
 })

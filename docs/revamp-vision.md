@@ -186,3 +186,9 @@ These choices can change the emphasis without invalidating the architecture abov
 During the live review, the user approved the calmer graphic design and asked to restore intermixed celestial file types, improve their artwork, and preserve the playful ability to zoom into procedural objects unique to each file. The atlas therefore shares the existing automatic/manual classifications, uses a small sprite atlas at ordinary scales, and generates deterministic close-up artwork only for visible files. The bounded cache is part of the design, not a reason to remove those identities.
 
 The implemented layout uses stable source/folder regions and bounded neighborhoods seeded by existing semantic edges. It does not claim that arbitrary two-dimensional distance is a semantic score. PCA and embedding experiments remain in the advanced workspace; automatic indexing does not replace the established atlas layout.
+
+## September 4 evening review: continuity and file-driven form
+
+The real-library review rejected the square grid and the subsequent imposed spiral pattern. The organic structure of the original semantic projection is part of the product, alongside mixed celestial identities. Restore that structure, include files without embeddings using their relationships/folders, and treat region headings as annotations over the files. Do not force file positions into geometric region slots.
+
+Zoom is one continuous camera, from the whole library through close-up artwork. Detail loading does not navigate or move objects. Headings keep their placement during hover and fade between scales. Explicit navigation, saved views, and returning home remain available, independently of wheel gestures.

@@ -1,0 +1,37 @@
+{
+  "date": "2026-09-05T05:01:28.614Z",
+  "browser": "151.0.7922.174",
+  "cpu": "Apple M4",
+  "production": true,
+  "mockedApi": false,
+  "phases": [
+    {
+      "visibility": "visible",
+      "renderer": "WebGL2",
+      "markers": 1748,
+      "frameP95": 18.199999999999818,
+      "frameP99": 18.599999999999454,
+      "drawP95": 1.800000011920929,
+      "peakZoom": 18.95531148691268,
+      "longTasks": [],
+      "cameraReturnError": 2.842170943040401e-14,
+      "zoomReturnError": 3.469446951953614e-17,
+      "labelTransitions": 50,
+      "jsHeapMiB": 24.721177101135254
+    },
+    {
+      "visibility": "visible",
+      "renderer": "Canvas2D",
+      "markers": 1748,
+      "frameP95": 18.599999999999454,
+      "frameP99": 18.699999999999818,
+      "drawP95": 2.300000011920929,
+      "peakZoom": 18.955311486912667,
+      "longTasks": [],
+      "cameraReturnError": 2.842170943040401e-14,
+      "zoomReturnError": 3.8163916471489756e-17,
+      "labelTransitions": 49,
+      "jsHeapMiB": 9.669333457946777
+    }
+  ]
+}

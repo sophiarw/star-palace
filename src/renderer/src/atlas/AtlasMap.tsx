@@ -1,13 +1,19 @@
+import { LabelPainter, type MapLabel } from './labelPainter'
+import { galaxyHaze } from './galaxyHaze'
+import { useAtlasTiles } from './useAtlasTiles'
 import { celestialType, CELESTIAL_LABELS } from '@shared/celestial'
-import type { StarType } from '@shared/types'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import type { AtlasFile, AtlasRegion } from '@shared/atlas'
+import type { AtlasFile, AtlasRegion, AtlasMarker, AtlasScope } from '@shared/atlas'
 import { canvasRenderer, gpuRenderer, SPRITE_BYTES, type PointRenderer } from './pointRenderer'
-import { fitCamera, objectRadius, labelFits, project, seedFor, unproject, type Camera, type LabelBox, type ScenePoint } from './scene'
+import { fitCamera, zoomAt, objectRadius, project, seedFor, unproject, type Camera, type ScenePoint } from './scene'
 import { readStored, writeStored } from './storage'
 
 interface Props {
   regions: AtlasRegion[]
+  markers: AtlasMarker[]
+  filter: AtlasScope
+  revision: number
+  destination: AtlasRegion | null
   files: AtlasFile[]
   scopeKey: string
   selectedId: string | null
@@ -16,13 +22,14 @@ interface Props {
   onRegion: (region: AtlasRegion) => void
   onSelect: (file: AtlasFile) => void
   onRead: () => void
-  onBack: () => void
+  onFiles: (files: AtlasFile[]) => void
+  onSelectId: (id: string) => void
   onPin: (id: string, x: number, y: number) => void
   onMetrics?: (metrics: MapMetrics) => void
 }
 export interface MapMetrics { renderer: string; points: number; labels: number; drawMs: number; draws: number; bytes: number }
-export interface MapHandle { fit(): void; zoom(factor: number): void; pan(dx: number, dy: number): void; focus(file: AtlasFile): void; camera(): Camera; restore(camera: Camera): void }
-interface HitTarget { id: string; x: number; y: number; radius: number; file?: AtlasFile; region?: AtlasRegion }
+export interface MapHandle { overview(): void; fit(): void; zoom(factor: number): void; pan(dx: number, dy: number): void; focus(file: AtlasFile): void; camera(): Camera; restore(camera: Camera): void }
+interface HitTarget { id: string; x: number; y: number; radius: number; file?: AtlasFile; marker?: AtlasMarker; region?: AtlasRegion }
 const THEMES: Record<string, { point?: string; label: string }> = {
   jwst: { label: '#e7dfcf' }, vapor: { point: '#e6a1cd', label: '#efc9f1' },
   atari: { point: '#9be0af', label: '#d6eeb2' }, lost: { point: '#dcbf95', label: '#e8dcc8' }, bio: { point: '#8ecdbd', label: '#bfdfb0' },
@@ -32,9 +39,21 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const host = useRef<HTMLDivElement>(null), labelCanvas = useRef<HTMLCanvasElement>(null)
   const pointCanvas = useRef<HTMLCanvasElement | null>(null), renderer = useRef<PointRenderer | null>(null)
   const camera = useRef<Camera>({ x: 0, y: 0, zoom: .3 }), size = useRef({ width: 800, height: 600, dpr: 1 })
-  const latest = useRef(props); latest.current = props
-  const previousSelection = useRef<string | null>(null)
+  const tiles = useAtlasTiles(props.filter, props.revision)
+  const files = useMemo(() => [...new Map([...tiles.files, ...props.files].map(f => [f.id, f])).values()], [tiles.files, props.files])
+  const { onFiles } = props
+  useEffect(() => { onFiles(files) }, [files, onFiles])
+  const latest = useRef({ ...props, files }); latest.current = { ...props, files }
+  const requestVisible = useRef(tiles.requestVisible); requestVisible.current = tiles.requestVisible
+  const initialized = useRef(false)
+  const zoomMotion = useRef<{ from: number; to: number; world: [number, number]; screen: [number, number]; at: number; direction: number } | null>(null)
+  const travel = useRef<{ from: Camera; to: Camera; at: number } | null>(null)
+  const hazeCanvas = useRef<HTMLCanvasElement>(null)
+  const hazeKey = JSON.stringify(props.markers.map(r => [r.x, r.y]))
+  const haze = useMemo(() => galaxyHaze(JSON.parse(hazeKey).map(([x, y]: [number, number]) => ({ x, y }))), [hazeKey])
+  const hazeRef = useRef(haze); hazeRef.current = haze
   const hovered = useRef<string | null>(null), targets = useRef<HitTarget[]>([])
+  const labelPainter = useRef(new LabelPainter())
   const frame = useRef(0), drawCount = useRef(0), scope = useRef(''), renderCallback = useRef<() => void>(() => {})
   const pointsRef = useRef<ScenePoint[]>([]), metricsAt = useRef(0)
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean; file?: AtlasFile; wx?: number; wy?: number } | null>(null)
@@ -42,28 +61,20 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const scene = useMemo(() => {
     const theme = THEMES[props.theme] ?? THEMES.jwst
     const points: ScenePoint[] = []
-    for (const region of props.regions) {
-      let seed = seedFor(region.id)
-      const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296 }
-      const count = Math.min(65, Math.max(10, Math.ceil(Math.sqrt(region.count) * 3)))
-      const types = Object.entries(region.objectTypes ?? {}) as [StarType, number][]
-      const typedTotal = types.reduce((sum, [, n]) => sum + n, 0)
-      for (let i = 0; i < count; i++) {
-        let ordinal = (i + .5) / count * typedTotal
-        const objectType = types.find(([, n]) => { ordinal -= n; return ordinal < 0 })?.[0]
-        const angle = random() * Math.PI * 2, radius = Math.sqrt(random()) * region.radius * .7
-        points.push({ id: `${region.id}:${i}`, x: region.x + Math.cos(angle) * radius, y: region.y + Math.sin(angle) * radius * .62,
-          radius: objectType ? 9 + random() * 7 : 2.5, objectType, rotation: (random() - .5) * .7, color: theme.point ?? region.color, alpha: .55 + random() * .4 })
-      }
-      points.push({ id: region.id, x: region.x, y: region.y, radius: 7, color: theme.point ?? region.color, alpha: 1 })
+    const realFiles = new Map(files.map(f => [f.id, f]))
+    for (const marker of props.markers) {
+      if (realFiles.has(marker.id)) continue
+      points.push({ id: marker.id, x: marker.x, y: marker.y, radius: marker.id === props.selectedId ? 31 : props.highlights.has(marker.id) ? 28 : 25, objectType: marker.type ?? 'main-sequence', zoomable: true,
+        rotation: (seedFor(marker.id) % 100 / 100 - .5) * .5, color: '#b9d5d7',
+        alpha: props.highlights.size && !props.highlights.has(marker.id) ? .2 : .9 })
     }
-    for (const file of props.files) points.push({ id: file.id, x: file.x, y: file.y,
+    for (const file of files) points.push({ id: file.id, x: file.x, y: file.y,
       objectType: celestialType(file), zoomable: true, rotation: (seedFor(file.id) % 100 / 100 - .5) * .5,
       radius: file.id === props.selectedId ? 31 : props.highlights.has(file.id) ? 28 : 25,
       color: file.id === props.selectedId ? '#f4d9a4' : theme.point ?? '#b9d5d7',
       alpha: props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9 })
     return points
-  }, [props.regions, props.files, props.selectedId, props.highlights, props.theme])
+  }, [props.markers, files, props.selectedId, props.highlights, props.theme])
 
   const invalidate = useCallback((): void => {
     if (!frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; renderCallback.current() })
@@ -71,7 +82,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingCamera = useRef<{ key: string; value: Camera } | null>(null)
   const flushCamera = useCallback(() => {
-    if (pendingCamera.current) writeStored('camera.' + pendingCamera.current.key, pendingCamera.current.value)
+    if (pendingCamera.current) writeStored('camera.continuous.' + pendingCamera.current.key, pendingCamera.current.value)
     pendingCamera.current = null
   }, [])
   const saveCamera = useCallback((): void => {
@@ -84,81 +95,115 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     window.addEventListener('pagehide', flushCamera)
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); flushCamera(); window.removeEventListener('pagehide', flushCamera) }
   }, [flushCamera])
-  const fit = useCallback((): void => {
-    const { regions, files } = latest.current
-    camera.current = fitCamera(regions.length ? regions : files, size.current.width, size.current.height)
-    saveCamera(); invalidate()
-  }, [saveCamera, invalidate])
-  const zoomTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const maybeExplore = useCallback((direction: number, x: number, y: number): void => {
-    if (zoomTimer.current) clearTimeout(zoomTimer.current)
-    zoomTimer.current = setTimeout(() => {
-      const { regions, files } = latest.current, { width, height } = size.current
-      if (direction > 0 && regions.length) {
-        const [wx, wy] = unproject(x, y, camera.current, width, height)
-        const nearest = [...regions].sort((a, b) => Math.hypot(a.x - wx, a.y - wy) - Math.hypot(b.x - wx, b.y - wy))[0]
-        const size = nearest.radius * camera.current.zoom
-        if (size > (nearest.kind === 'region' ? 220 : 160) && Math.hypot(nearest.x - wx, nearest.y - wy) < nearest.radius * 1.4) latest.current.onRegion(nearest)
-      } else if (direction < 0 && (files.length || regions.some(r => r.kind === 'neighborhood'))) {
-        const initial = fitCamera(regions.length ? regions : files, width, height)
-        if (camera.current.zoom < initial.zoom * .45) latest.current.onBack()
-      }
-    }, 160)
+  const fitted = useCallback((): Camera => {
+    const { regions, destination, markers } = latest.current
+    const samples = destination ? markers.filter(m => destination.kind === 'region' ? m.regionId === destination.id : m.neighborhoodId === destination.id) : markers
+    const extent = destination ? (destination.kind === 'region' ? regions.filter(r => r.parentId === destination.id) : [destination]) : regions.filter(r => r.kind === 'region')
+    return fitCamera(samples.length ? samples : extent, size.current.width, size.current.height)
   }, [])
-  useEffect(() => () => { if (zoomTimer.current) clearTimeout(zoomTimer.current) }, [])
+  const animateTo = useCallback((to: Camera): void => {
+    zoomMotion.current = null
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { camera.current = to; saveCamera() }
+    else travel.current = { from: { ...camera.current }, to, at: performance.now() }
+    invalidate()
+  }, [invalidate, saveCamera])
+  const fit = useCallback((): void => { animateTo(fitted()) }, [animateTo, fitted])
+  const smoothZoom = useCallback((factor: number, x: number, y: number): void => {
+    travel.current = null
+    const direction = Math.sign(factor - 1), old = zoomMotion.current
+    const start = old?.direction === direction ? old.to : camera.current.zoom
+    const to = Math.max(.003, Math.min(120, start * factor))
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      camera.current = zoomAt(camera.current, to / camera.current.zoom, x, y, size.current.width, size.current.height)
+      saveCamera()
+    } else zoomMotion.current = { from: camera.current.zoom, to,
+      world: unproject(x, y, camera.current, size.current.width, size.current.height), screen: [x, y], at: performance.now(), direction }
+    invalidate()
+  }, [invalidate, saveCamera])
   useImperativeHandle(ref, () => ({
+    overview() { animateTo(fitCamera(latest.current.markers, size.current.width, size.current.height)) },
     fit,
     zoom(factor) {
       const selected = latest.current.files.find(f => f.id === latest.current.selectedId)
-      if (factor > 1 && selected) { camera.current.x = selected.x; camera.current.y = selected.y }
-      camera.current.zoom = Math.max(.003, Math.min(120, camera.current.zoom * factor)); maybeExplore(factor - 1, size.current.width / 2, size.current.height / 2); saveCamera(); invalidate() },
-    pan(dx, dy) { camera.current.x += dx / camera.current.zoom; camera.current.y += dy / camera.current.zoom; saveCamera(); invalidate() },
-    focus(file) { camera.current = { x: file.x, y: file.y, zoom: Math.max(1.5, camera.current.zoom) }; saveCamera(); invalidate() },
+      const { width, height } = size.current
+      const selectedAt = selected ? project(selected.x, selected.y, camera.current, width, height) : null
+      const at = selectedAt && selectedAt[0] >= 0 && selectedAt[0] <= width && selectedAt[1] >= 0 && selectedAt[1] <= height ? selectedAt : [width / 2, height / 2]
+      // Keep a selected object anchored where it already is, rather than snapping it to center.
+      smoothZoom(factor, at[0], at[1])
+    },
+    pan(dx, dy) { travel.current = null; zoomMotion.current = null; camera.current.x += dx / camera.current.zoom; camera.current.y += dy / camera.current.zoom; saveCamera(); invalidate() },
+    focus(file) { animateTo({ x: file.x, y: file.y, zoom: Math.max(1.5, camera.current.zoom) }) },
     camera() { return { ...camera.current } },
-    restore(value) { camera.current = { ...value }; saveCamera(); invalidate() },
+    restore(value) { animateTo({ ...value }) },
   }))
 
   renderCallback.current = () => {
     const start = performance.now(), { width, height, dpr } = size.current
     if (!width || !height || !renderer.current) return
+    if (travel.current) {
+      const { from, to, at } = travel.current, t = Math.min(1, (performance.now() - at) / 420), ease = t * t * (3 - 2 * t)
+      camera.current = { x: from.x + (to.x - from.x) * ease, y: from.y + (to.y - from.y) * ease, zoom: Math.exp(Math.log(from.zoom) + Math.log(to.zoom / from.zoom) * ease) }
+      if (t < 1) invalidate()
+      else { travel.current = null; saveCamera() }
+    }
+    if (zoomMotion.current) {
+      const { from, to, world, screen, at } = zoomMotion.current
+      const t = Math.min(1, (performance.now() - at) / 140), ease = 1 - (1 - t) ** 3
+      const zoom = Math.exp(Math.log(from) + Math.log(to / from) * ease)
+      camera.current = { zoom, x: world[0] - (screen[0] - width / 2) / zoom, y: world[1] - (screen[1] - height / 2) / zoom }
+      if (t < 1) invalidate()
+      else { zoomMotion.current = null; saveCamera() }
+    }
+    requestVisible.current(camera.current, width, height)
     const moving = drag.current
     if (moving?.file && moving.wx !== undefined && moving.wy !== undefined) renderer.current.setPoints(pointsRef.current.map(p => p.id === moving.file!.id ? { ...p, x: moving.wx!, y: moving.wy! } : p))
+    const sky = hazeCanvas.current?.getContext('2d'), glow = hazeRef.current
+    if (sky) {
+      sky.setTransform(dpr, 0, 0, dpr, 0, 0); sky.clearRect(0, 0, width, height)
+      if (glow && camera.current.zoom < .3) {
+        const [x, y] = project(glow.x, glow.y, camera.current, width, height)
+        sky.globalAlpha = .45 * Math.max(0, Math.min(1, (.3 - camera.current.zoom) / .2))
+        sky.drawImage(glow.canvas, x, y, glow.width * camera.current.zoom, glow.height * camera.current.zoom)
+      }
+    }
     renderer.current.draw(camera.current, width, height, dpr)
     const ctx = labelCanvas.current?.getContext('2d')
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height)
     const { regions, files, selectedId, highlights, theme } = latest.current
-    const used: LabelBox[] = [], hitTargets: HitTarget[] = []
+    const labelCandidates: MapLabel[] = [], hitTargets: HitTarget[] = []
     const themeColors = THEMES[theme] ?? THEMES.jwst
     // Labels are capped by the viewport, with selected/search/hover first.
     const labelBudget = Math.min(70, Math.max(10, Math.floor(width * height / 16000)))
-    let labels = 0
-    for (const region of [...regions].sort((a, b) => Number(b.id === hovered.current) - Number(a.id === hovered.current) || b.count - a.count)) {
+    const levelAlpha = (region: AtlasRegion): number => {
+      const smooth = (a: number, b: number) => { const t = Math.max(0, Math.min(1, (camera.current.zoom - a) / (b - a))); return t * t * (3 - 2 * t) }
+      return region.kind === 'region' ? 1 - smooth(.09, .22) : smooth(.07, .18) * (1 - smooth(.65, 1.3))
+    }
+    for (const region of regions) {
+      const opacity = levelAlpha(region)
+      if (opacity < .05) continue
       const [x, y] = project(region.x, region.y, camera.current, width, height)
       if (x < -100 || y < -60 || x > width + 100 || y > height + 60) continue
       hitTargets.push({ id: region.id, x, y, radius: Math.max(50, Math.min(140, region.radius * camera.current.zoom * .7)), region })
-      const isHovered = hovered.current === region.id
-      const fontSize = region.kind === 'region' && regions.length < 14 ? 25 : 20
+      const fontSize = region.kind === 'region' ? 19 : 17
       ctx.font = `${fontSize}px Georgia, serif`
       const maxWidth = Math.min(220, width * .38)
       let title = region.label
       while (title.length > 4 && ctx.measureText(title).width > maxWidth) title = title.slice(0, -2).replace(/…$/, '') + '…'
-      const titleWidth = ctx.measureText(title).width
-      ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif'
-      const subtitle = region.count.toLocaleString() + ' files  ·  Explore ↗'
-      const labelWidth = Math.max(titleWidth, ctx.measureText(subtitle).width)
-      const box = { x: x + 15 + labelWidth > width - 15 ? x - labelWidth - 15 : x + 15, y: y - 5, width: labelWidth, height: 48 }
-      if (box.x < 8 || box.y < 8 || box.y + box.height > height - 65) continue
-      if (labels >= labelBudget || (!isHovered && !labelFits(box, used))) continue
-      used.push(box); labels++
-      ctx.fillStyle = themeColors.label; ctx.globalAlpha = isHovered ? 1 : .9
-      ctx.font = `${fontSize}px Georgia, serif`; ctx.fillText(title, box.x, y + 6)
-      ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif'; ctx.fillStyle = '#9aaabb'
-      ctx.fillText(subtitle, box.x, y + 27)
-      if (isHovered) { ctx.strokeStyle = region.color; ctx.globalAlpha = .3; ctx.beginPath(); ctx.arc(x, y, 13, 0, Math.PI * 2); ctx.stroke() }
+      labelCandidates.push({ id: region.id, x: region.x, y: region.y, offset: 15, title,
+        subtitle: region.count.toLocaleString() + ' files  ·  Explore ↗', color: themeColors.label,
+        font: `${fontSize}px Georgia, serif`, opacity: opacity * .95, priority: region.count })
+    }
+    if (camera.current.zoom > .25) {
+      const hydrated = new Set(files.map(f => f.id))
+      for (const marker of latest.current.markers) {
+        if (hydrated.has(marker.id)) continue
+        const [x, y] = project(marker.x, marker.y, camera.current, width, height)
+        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: Math.max(8, objectRadius({ radius: 25, zoomable: true }, camera.current.zoom) * .45), marker })
+      }
     }
     const ordered = [...files].sort((a, b) => {
-      const priority = (id: string) => id === selectedId ? 4 : id === hovered.current ? 3 : highlights.has(id) ? 2 : 0
+      const priority = (id: string) => id === selectedId ? 4 : highlights.has(id) ? 2 : 0
       return priority(b.id) - priority(a.id)
     })
     for (const file of ordered) {
@@ -169,7 +214,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       const radius = objectRadius({ radius: file.id === selectedId ? 31 : highlights.has(file.id) ? 28 : 25, zoomable: true }, camera.current.zoom)
       const markerRadius = Math.max(20, radius * .55)
       hitTargets.push({ id: file.id, x, y, radius: Math.max(16, radius * .45), file })
-      const focused = file.id === selectedId || file.id === hovered.current || highlights.has(file.id)
+      const focused = file.id === selectedId || highlights.has(file.id)
       if (file.id === selectedId) {
         ctx.globalAlpha = .85; ctx.strokeStyle = '#e7c68d'; ctx.lineWidth = 1
         ctx.beginPath(); ctx.arc(x, y, markerRadius, 0, Math.PI * 2); ctx.stroke()
@@ -177,17 +222,22 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       }
       ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif'
       const title = file.name.length > 32 ? file.name.slice(0, 29) + '…' : file.name
-      const box = { x: x + Math.max(28, markerRadius + 10), y: y - 8, width: ctx.measureText(title).width, height: 23 }
-      if (labels >= labelBudget || (!focused && (camera.current.zoom < .9 || !labelFits(box, used)))) continue
-      if (focused && !labelFits(box, used) && file.id !== selectedId && file.id !== hovered.current) continue
-      used.push(box); labels++
-      ctx.globalAlpha = 1; ctx.fillStyle = '#0c1420df'; ctx.fillRect(box.x - 5, box.y - 4, box.width + 10, 24)
-      ctx.fillStyle = focused ? '#efdab7' : '#b9c7d4'; ctx.fillText(title, box.x, y + 5)
+      const t = Math.max(0, Math.min(1, (camera.current.zoom - .6) / .5))
+      labelCandidates.push({ id: file.id, x: wx, y: wy, offset: Math.max(28, markerRadius + 10), title,
+        color: focused ? '#efdab7' : '#b9c7d4', font: '12px -apple-system, BlinkMacSystemFont, sans-serif',
+        opacity: focused ? 1 : t * t * (3 - 2 * t), priority: focused ? 10000 : 1,
+        selected: file.id === selectedId, background: true })
       if (file.isPinned) { ctx.fillStyle = '#e7c68d'; ctx.fillRect(x - 2, y + 16, 4, 4) }
     }
+    const painted = labelPainter.current.draw(ctx, labelCandidates, camera.current, width, height, labelBudget)
+    const labels = painted.count
+    if (painted.pending) invalidate()
     ctx.globalAlpha = 1; targets.current = hitTargets
     drawCount.current++
     if (host.current) {
+      host.current.dataset.labels = labelPainter.current.visibleIds.join(',')
+      host.current.dataset.camera = JSON.stringify(camera.current)
+      host.current.dataset.hydrated = String(files.length)
       host.current.dataset.objectTypes = [...new Set(pointsRef.current.flatMap(p => p.objectType ?? []))].join(',')
       host.current.dataset.renderer = renderer.current.kind
       host.current.dataset.points = String(pointsRef.current.length)
@@ -197,7 +247,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     if (performance.now() - metricsAt.current > 500) {
       metricsAt.current = performance.now()
       latest.current.onMetrics?.({ renderer: renderer.current.kind, points: pointsRef.current.length, labels, drawMs: performance.now() - start,
-        draws: drawCount.current, bytes: SPRITE_BYTES + pointsRef.current.length * 44 + width * height * dpr * dpr * 8 })
+        draws: drawCount.current, bytes: SPRITE_BYTES + 1024 ** 2 * 4 + pointsRef.current.length * 44 + width * height * dpr * dpr * 12 })
     }
   }
 
@@ -216,10 +266,8 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     const resize = () => {
       const rect = container.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1)
       if (!rect.width || !rect.height) return
-      const first = !overlay.width || scope.current === ''
       size.current = { width: rect.width, height: rect.height, dpr }
-      for (const layer of [canvas, overlay]) { layer.width = Math.round(rect.width * dpr); layer.height = Math.round(rect.height * dpr) }
-      if (first && (latest.current.regions.length || latest.current.files.length)) fit()
+      for (const layer of [canvas, overlay, hazeCanvas.current!]) { layer.width = Math.round(rect.width * dpr); layer.height = Math.round(rect.height * dpr) }
       invalidate()
     }
     const observer = new ResizeObserver(resize); observer.observe(container); resize()
@@ -231,6 +279,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     const at = (e: PointerEvent | WheelEvent): [number, number] => { const rect = container.getBoundingClientRect(); return [e.clientX - rect.left, e.clientY - rect.top] }
     const down = (e: PointerEvent) => {
       if (e.button !== 0) return
+      travel.current = null; zoomMotion.current = null
       const [x, y] = at(e), hit = pick(x, y)
       drag.current = { x, y, cx: camera.current.x, cy: camera.current.y, moved: false, file: e.shiftKey ? hit?.file : undefined }
       overlay.setPointerCapture(e.pointerId); container.style.cursor = e.shiftKey && hit?.file ? 'move' : 'grabbing'
@@ -255,19 +304,16 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       renderer.current?.setPoints(pointsRef.current)
       if (overlay.hasPointerCapture(e.pointerId)) overlay.releasePointerCapture(e.pointerId)
       if (current.file && current.moved && current.wx !== undefined && current.wy !== undefined) latest.current.onPin(current.file.id, current.wx, current.wy)
-      else if (!current.moved) { const [x, y] = at(e), hit = pick(x, y); if (hit?.file) latest.current.onSelect(hit.file); else if (hit?.region) latest.current.onRegion(hit.region) }
+      else if (!current.moved) { const [x, y] = at(e), hit = pick(x, y); if (hit?.file) latest.current.onSelect(hit.file); else if (hit?.marker) latest.current.onSelectId(hit.id); else if (hit?.region) latest.current.onRegion(hit.region) }
       container.style.cursor = 'grab'; saveCamera(); invalidate()
     }
     const cancel = () => { drag.current = null; renderer.current?.setPoints(pointsRef.current); container.style.cursor = 'grab'; invalidate() }
     const double = () => { if (hovered.current && latest.current.files.some(f => f.id === hovered.current)) latest.current.onRead() }
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
-      const [x, y] = at(e), { width, height } = size.current
-      const before = unproject(x, y, camera.current, width, height)
-      camera.current.zoom = Math.max(.003, Math.min(120, camera.current.zoom * Math.exp(-e.deltaY * .0015)))
-      const after = unproject(x, y, camera.current, width, height)
-      camera.current.x += before[0] - after[0]; camera.current.y += before[1] - after[1]
-      maybeExplore(-e.deltaY, x, y); saveCamera(); invalidate()
+      const [x, y] = at(e), { height } = size.current
+      const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? height : 1)
+      smoothZoom(Math.exp(-Math.max(-600, Math.min(600, delta)) * .0015), x, y)
     }
     const lost = (e: Event) => {
       e.preventDefault()
@@ -286,34 +332,30 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       overlay.removeEventListener('dblclick', double); overlay.removeEventListener('wheel', wheel)
       canvas.removeEventListener('webglcontextlost', lost); engine.destroy(); canvas.remove(); renderer.current = null
     }
-  }, [fit, saveCamera, invalidate, maybeExplore])
+  }, [saveCamera, invalidate, smoothZoom])
 
   useEffect(() => {
-    const wasEmpty = pointsRef.current.length === 0
     pointsRef.current = scene; renderer.current?.setPoints(scene)
-    if (scope.current !== props.scopeKey || (wasEmpty && scene.length > 0)) {
-      if (zoomTimer.current) clearTimeout(zoomTimer.current)
-      scope.current = props.scopeKey
-      const saved = readStored<Camera | null>('camera.' + props.scopeKey, null)
-      camera.current = saved && [saved.x, saved.y, saved.zoom].every(Number.isFinite) && saved.zoom > 0 ? saved : fitCamera(props.regions.length ? props.regions : props.files, size.current.width, size.current.height)
-    }
-    const selected = props.files.find(f => f.id === props.selectedId)
-    if (selected && previousSelection.current !== selected.id) {
-      previousSelection.current = selected.id
-      const [x, y] = project(selected.x, selected.y, camera.current, size.current.width, size.current.height)
-      if (x < 45 || x > size.current.width - 45 || y < 45 || y > size.current.height - 45 || camera.current.zoom > 6) {
-        camera.current.x = selected.x; camera.current.y = selected.y; saveCamera()
-      }
+    if (props.regions.length && (!initialized.current || scope.current !== props.scopeKey)) {
+      const first = !initialized.current
+      initialized.current = true; scope.current = props.scopeKey
+      const saved = readStored<Camera | null>('camera.continuous.' + props.scopeKey, null)
+      const next = saved && [saved.x, saved.y, saved.zoom].every(Number.isFinite) && saved.zoom > 0 ? saved : fitted()
+      if (first) camera.current = next
+      else animateTo(next)
     }
     invalidate()
-  }, [scene, props.scopeKey, props.regions, props.files, props.selectedId, invalidate, saveCamera])
+  }, [scene, props.scopeKey, props.regions, files, props.selectedId, invalidate, fitted, animateTo])
+
+  const destinations = props.destination ? props.regions.filter(r => r.parentId === props.destination!.id) : props.regions.filter(r => r.kind === 'region')
 
   return <div className="atlas-map" ref={host} role="region" aria-label="Spatial file atlas">
+    <canvas ref={hazeCanvas} className="atlas-haze-canvas" aria-hidden="true" />
     <canvas ref={labelCanvas} className="atlas-label-canvas" aria-hidden="true" />
     <nav className="atlas-sr-only" aria-label="Map destinations">
-      {props.files.map(f => <button key={f.id} onClick={() => props.onSelect(f)}>{f.name}, {CELESTIAL_LABELS[celestialType(f)]}</button>)}
-      {props.regions.map(r => <button key={r.id} onClick={() => props.onRegion(r)}>{r.label}, {r.count} files</button>)}
+      {destinations.map(r => <button key={r.id} onClick={() => props.onRegion(r)}>{r.label}, {r.count} files</button>)}
+      {(props.destination?.kind === 'neighborhood' ? files.filter(f => f.neighborhoodId === props.destination!.id) : files.slice(0, 100)).map(f => <button key={f.id} onClick={() => props.onSelect(f)}>{f.name}, {CELESTIAL_LABELS[celestialType(f)]}</button>)}
     </nav>
-    <div className="atlas-map-note" aria-hidden="true"><strong>{props.files.length ? 'A familiar neighborhood.' : 'A place for everything.'}</strong><span>{props.files.length ? 'Scroll closer to discover each object · Shift-drag to pin' : 'Select or zoom into a region to reveal its files'}</span></div>
+    <div className="atlas-map-note" aria-hidden="true"><strong>A galaxy of familiar places.</strong><span>Scroll closer to discover each object · Drag to explore · Shift-drag to pin</span></div>
   </div>
 })

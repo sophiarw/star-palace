@@ -25,5 +25,14 @@ export function seedFor(id: string): number {
 }
 
 export function objectRadius(point: Pick<ScenePoint, 'radius' | 'zoomable'>, zoom: number): number {
-  return point.radius * (point.zoomable ? Math.max(.6, Math.min(8, Math.sqrt(zoom / 1.5))) : 1)
+  return point.radius * (point.zoomable ? Math.max(.12, Math.min(8, Math.sqrt(zoom / 1.5))) : 1)
+}
+
+/** Zoom around a fixed screen point; content loading never changes this camera. */
+export function zoomAt(camera: Camera, factor: number, x: number, y: number, width: number, height: number): Camera {
+  const before = unproject(x, y, camera, width, height)
+  const next = { ...camera, zoom: Math.max(.003, Math.min(120, camera.zoom * factor)) }
+  const after = unproject(x, y, next, width, height)
+  next.x += before[0] - after[0]; next.y += before[1] - after[1]
+  return next
 }

@@ -24,17 +24,17 @@ export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = 
       layout(location=2) in float radius; layout(location=3) in vec4 color;
       layout(location=4) in vec4 artwork;
       uniform vec3 camera; uniform vec2 viewport;
-      out vec2 uv; out vec4 tint; flat out vec2 cell; flat out float closeup;
+      out vec2 uv; out vec4 tint; flat out vec2 cell; flat out float closeup; out float detailMix;
       void main(){ float c=cos(artwork.y),s=sin(artwork.y);
         vec2 rotated=vec2(corner.x*c-corner.y*s,corner.x*s+corner.y*c);
-        float scale=artwork.z>.5?clamp(sqrt(camera.z/1.5),.6,8.):1.;
+        float scale=artwork.z>.5?clamp(sqrt(camera.z/1.5),.12,8.):1.;
         vec2 screen=(position-camera.xy)*camera.z+viewport*.5+rotated*radius*scale;
         gl_Position=vec4(screen.x/viewport.x*2.-1.,1.-screen.y/viewport.y*2.,0.,1.);
-        uv=corner*.5+.5; tint=color; closeup=artwork.w; cell=vec2(mod(artwork.x,8.),floor(artwork.x/8.)); }`))
+        uv=corner*.5+.5; detailMix=smoothstep(35.,60.,radius*scale); tint=color; closeup=artwork.w; cell=vec2(mod(artwork.x,8.),floor(artwork.x/8.)); }`))
     gl.attachShader(program, compile(gl.FRAGMENT_SHADER, `#version 300 es
-      precision mediump float; in vec2 uv; in vec4 tint; flat in vec2 cell; flat in float closeup;
+      precision mediump float; in vec2 uv; in vec4 tint; flat in vec2 cell; flat in float closeup; in float detailMix;
       uniform sampler2D sprites; uniform sampler2D details; out vec4 pixel;
-      void main(){ vec4 art=closeup<0.?texture(sprites,(cell+uv)/vec2(8.,4.)):texture(details,(vec2(mod(closeup,4.),floor(closeup/4.))+uv)/4.); pixel=art*tint; }`))
+      void main(){ vec4 art=texture(sprites,(cell+uv)/vec2(8.,4.)); if(closeup>=0.) art=mix(art,texture(details,(vec2(mod(closeup,4.),floor(closeup/4.))+uv)/4.),detailMix); pixel=art*tint; }`))
     gl.linkProgram(program)
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('Shader linking failed')
   } catch {
@@ -101,8 +101,10 @@ export function canvasRenderer(canvas: HTMLCanvasElement, invalidate: () => void
       if (point.objectType) {
         ctx.save(); ctx.translate(x, y); ctx.rotate(point.rotation ?? 0)
         const slot = details.slot(point)
-        if (slot >= 0) ctx.drawImage(details.sheet, slot % DETAIL_COLUMNS * DETAIL_CELL, Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL, DETAIL_CELL, DETAIL_CELL, -r, -r, r * 2, r * 2)
-        else ctx.drawImage(sheet, point.sprite % SPRITE_COLUMNS * SPRITE_CELL, Math.floor(point.sprite / SPRITE_COLUMNS) * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, -r, -r, r * 2, r * 2)
+        const t = slot < 0 ? 0 : Math.max(0, Math.min(1, (r - 35) / 25)), mix = t * t * (3 - 2 * t)
+        ctx.globalAlpha = point.alpha * (1 - mix)
+        ctx.drawImage(sheet, point.sprite % SPRITE_COLUMNS * SPRITE_CELL, Math.floor(point.sprite / SPRITE_COLUMNS) * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, -r, -r, r * 2, r * 2)
+        if (slot >= 0) { ctx.globalAlpha = point.alpha * mix; ctx.drawImage(details.sheet, slot % DETAIL_COLUMNS * DETAIL_CELL, Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL, DETAIL_CELL, DETAIL_CELL, -r, -r, r * 2, r * 2) }
         ctx.restore()
       } else {
         ctx.fillStyle = point.color; ctx.beginPath(); ctx.arc(x, y, r * .35, 0, Math.PI * 2); ctx.fill()

@@ -44,3 +44,13 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 Renderer code must not import Node APIs. Embeddings entering HNSW remain L2 normalized. ANN lookup precedes the SQL transaction and ANN insertion follows commit. Derived search/layout indexes should be recoverable and versioned; user-authored state remains authoritative in SQLite.
 
 The user specifically wants intermixed celestial file types and deterministic per-file artwork. Preserve these. Close-up generation must remain bounded and must not create a per-file texture cache for the whole library. New file placement must not separate neighborhoods solely by file type.
+
+## Continuous map and organic layout
+
+- `src/daemon/atlas/organicLayout.ts` preserves the legacy semantic projection, separates coincident files locally, and places model-free files using neighbors/folders. File positions remain fixed during ordinary indexing.
+- `AtlasStore.summary()` returns real file markers at their persistent world coordinates. Coarse views must not substitute invented stars at unrelated positions.
+- `src/renderer/src/atlas/useAtlasTiles.ts` hydrates bounded spatial viewports. A data response must never move the camera.
+- `src/renderer/src/atlas/labelPainter.ts` retains visible labels and fades visibility changes. Hover must not reorder headings or flip their placement.
+- Scrolling changes one camera continuously; it must not change navigation scope or restore another camera. Explicit navigation may animate to a destination. Layout epochs invalidate cameras after an explicit reshaping/restore.
+- `scripts/reshape-atlas.ts` is an explicit, isolated-copy-only review helper, with a database backup and snapshot. Never run it against the primary library.
+- `tests/browser/atlas.spec.ts` includes delayed-response zoom continuity, hover pixel stability, home navigation, and offscreen-selection tests. `scripts/inspect-atlas-zoom.mjs` and `scripts/benchmark-atlas-navigation.mjs` validate the real-library preview.

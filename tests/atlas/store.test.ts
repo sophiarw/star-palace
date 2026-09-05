@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FileIndex, type IndexedFile } from '../../src/daemon/db/FileIndex'
-import { AtlasStore, chunkText, ftsQuery, spiralSlot } from '../../src/daemon/atlas/AtlasStore'
+import { AtlasStore, chunkText, ftsQuery } from '../../src/daemon/atlas/AtlasStore'
 
 function fixture(id: string, overrides: Partial<IndexedFile> = {}): IndexedFile {
   return { id, name: `${id}.md`, path: `/library/research/${id}.md`, platform: 'local', category: 'document', mimeType: 'text/markdown',
@@ -91,6 +91,41 @@ describe('Atlas persistence and retrieval', () => {
     expect(atlas.summary().regions.find(r => r.id === image.regionId)?.objectTypes).toEqual({ nebula: 1 })
   })
 
+  it('uses real file coordinates and identities in filtered, bounded overview markers', () => {
+    for (let i = 0; i < 120; i++) db.upsert(fixture(`note-${i}`))
+    db.upsert(fixture('image', { category: 'media', mimeType: 'image/png' })); sync()
+    const markers = atlas.summary().markers!
+    expect(markers.length).toBe(121)
+    for (const marker of markers) {
+      const file = atlas.file(marker.id)!
+      expect([marker.x, marker.y]).toEqual([file.x, file.y])
+    }
+    expect(atlas.summary({ category: 'media' }).markers!.map(m => m.id)).toEqual(['image'])
+    atlas.pin('image', 60000, 90000)
+    expect(atlas.summary().markers!.find(m => m.id === 'image')).toMatchObject({ x: 60000, y: 90000, type: 'nebula' })
+  })
+
+  it('reshapes only by explicit action, preserves pins, and snapshots restore the complete geometry', () => {
+    const galaxy = db.getOrCreateGalaxy('/library', 'Library')
+    for (let i = 0; i < 15; i++) db.upsert(fixture(`note-${i}`, { galaxyId: galaxy.id, path: `/library/folder-${i}/note.md` }))
+    sync()
+    // Simulate the previous grid without touching authoritative file records.
+    db.db.exec('UPDATE atlas_regions SET x=x+5000,y=y-3000; UPDATE atlas_positions SET x=x+5000,natural_x=natural_x+5000,y=y-3000,natural_y=natural_y-3000')
+    atlas.pin('note-3', 10101, -20202)
+    const before = atlas.list({}, 0, 200).files, regions = atlas.summary().regions
+    const originalMetadata = db.db.prepare('SELECT * FROM files ORDER BY id').all()
+    const snapshot = atlas.reshapeOrganic()
+    expect(atlas.file('note-3')).toMatchObject({ x: 10101, y: -20202, isPinned: true })
+    expect(atlas.file('note-4')!.x).not.toBe(before.find(f => f.id === 'note-4')!.x)
+    expect(db.db.prepare('SELECT * FROM files ORDER BY id').all()).toEqual(originalMetadata)
+    const newPositions = atlas.list({}, 0, 200).files
+    new AtlasStore(db).syncBatch()
+    expect(atlas.list({}, 0, 200).files).toEqual(newPositions)
+    atlas.restore(snapshot)
+    expect(atlas.summary().regions).toEqual(regions)
+    expect(atlas.list({}, 0, 200).files).toEqual(before)
+  })
+
   it('rejects stale extraction and removes deleted files from search', () => {
     db.upsert(fixture('note')); sync()
     expect(atlas.setText('note', 'obsolete result', 'ready', '1:100')).toBe(false)
@@ -109,9 +144,7 @@ describe('Atlas persistence and retrieval', () => {
   })
 })
 
-it('generates unique grid slots and safe literal FTS expressions', () => {
-  const slots = Array.from({ length: 1000 }, (_, i) => spiralSlot(i, 10).join(':'))
-  expect(new Set(slots).size).toBe(1000)
+it('generates safe literal FTS expressions', () => {
   expect(ftsQuery('foo OR bar*')).toBe('"foo"* AND "OR"* AND "bar"*')
   expect(ftsQuery('"two words"')).toBe('"two words"')
   expect(chunkText('a'.repeat(9000)).at(-1)?.offset).toBe(7400)

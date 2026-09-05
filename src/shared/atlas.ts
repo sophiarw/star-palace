@@ -31,7 +31,18 @@ export interface AtlasScope {
   tag?: string
 }
 
+export interface AtlasMarker {
+  regionId: string
+  neighborhoodId: string
+  id: string
+  x: number
+  y: number
+  type: Star['starType']
+}
+
 export interface AtlasSummary {
+  layoutEpoch?: number
+  markers?: AtlasMarker[]
   revision: number
   total: number
   positioned: number

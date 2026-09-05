@@ -20,7 +20,8 @@ page.on('pageerror', error => { errors.push(error.message); console.error(error.
 page.setDefaultTimeout(15000)
 try {
   for (const count of (process.env.ATLAS_BENCH_QUICK ? [100000, 'actual'] : [10000, 50000, 100000, 'actual'])) {
-    const fixture = JSON.parse(await readFile(count === 'actual' ? '.atlas-real/scene.json' : join(source, `scene-${count}.json`), 'utf8'))
+    const fixture = JSON.parse(await readFile(count === 'actual' ? (process.env.ATLAS_BENCH_REAL_SCENE ?? '.atlas-real/scene.json') : join(source, `scene-${count}.json`), 'utf8'))
+    if (!fixture.summary.markers?.length) throw new Error('Regenerate this scene with the current backend: real file markers are required for the continuous atlas benchmark.')
     for (const region of fixture.summary.regions) region.objectTypes ??= { 'main-sequence': region.count }
     await page.unrouteAll()
     await page.route('**/api/**', route => {

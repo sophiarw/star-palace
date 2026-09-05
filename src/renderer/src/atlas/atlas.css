@@ -399,6 +399,7 @@
       transparent);
   background-size: 411px 371px;
 }
+.atlas-haze-canvas,
 .atlas-point-canvas,
 .atlas-label-canvas {
   position: absolute;
@@ -406,10 +407,14 @@
   width: 100%;
   height: 100%;
 }
+.atlas-haze-canvas { z-index: 0; pointer-events: none; }
+.atlas-point-canvas { z-index: 1; pointer-events: none; }
 .atlas-label-canvas {
+  z-index: 2;
   touch-action: none;
 }
 .atlas-map-note {
+  z-index: 3;
   position: absolute;
   left: 29px;
   bottom: 25px;

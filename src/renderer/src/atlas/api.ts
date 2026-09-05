@@ -21,6 +21,7 @@ const body = (data: unknown): RequestInit => ({ method: 'POST', headers: { 'Cont
 export const atlasApi = {
   summary: (scope: AtlasScope = {}, signal?: AbortSignal) => request<AtlasSummary>('/summary' + params(scope), { signal }),
   files: (scope: AtlasScope = {}, offset = 0, limit = 100, signal?: AbortSignal) => request<AtlasPage>('/files' + params(scope, { offset: String(offset), limit: String(limit) }), { signal }),
+  viewport: (scope: AtlasScope, bounds: { minX: number; minY: number; maxX: number; maxY: number }, signal?: AbortSignal) => request<{ files: AtlasFile[]; revision: number }>('/viewport' + params(scope, Object.fromEntries(Object.entries(bounds).map(([k, v]) => [k, String(v)]))), { signal }),
   file: (id: string, signal?: AbortSignal) => request<AtlasFile>('/file/' + encodeURIComponent(id), { signal }),
   text: (id: string, signal?: AbortSignal) => request<FileContent & { status: string; error: string | null }>('/file/' + encodeURIComponent(id) + '/text', { signal }),
   search: (query: string, scope: AtlasScope, mode: 'exact' | 'related', signal?: AbortSignal) => request<AtlasSearchResponse>('/search', { ...body({ query, ...scope, mode, limit: 60 }), signal }),

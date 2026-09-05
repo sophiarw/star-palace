@@ -4,7 +4,7 @@ A persistent star map of your files. Each file is a star with a stable 2D positi
 
 ## Try the new atlas
 
-The default workspace has a persistent region → neighborhood → file map, local name/text search, map/list/grid browsing, and an expandable reader. Files remain available without an embedding model. Each file type has a celestial identity; manual classifications take precedence. Zooming closer reveals deterministic artwork based on the file ID.
+The default workspace has a persistent galaxy shaped by file relationships, local name/text search, map/list/grid browsing, and an expandable reader. Files remain available without an embedding model. Each file type has a celestial identity; manual classifications take precedence. Zooming closer reveals deterministic artwork based on the file ID.
 
 The revamp lives on `feat/atlas-revamp` in `worktrees/atlas-revamp`. From that directory, run an isolated demo:
 
@@ -22,6 +22,8 @@ This creates 124 fictional files and a separate database in `.atlas-dev/`. Some 
 
 ## Use your library
 
+The current real-library review runs at `http://127.0.0.1:5176` against an isolated backup. See [restart instructions](docs/revamp-progress.md#real-library-review) to resume that preview.
+
 Tested with Node 22.17. Start `npm run dev:daemon` and `npm run dev:web`, then open `http://localhost:5173`. The daemon uses `~/.starpalace` unless `STARPALACE_DIR` or `STARPALACE_DB` is set. Atlas tables are additive; the classic positions, embeddings, collections, and user metadata remain available. Back up a primary database before adopting any development branch.
 
 Choose **Manage sources → Index folder** to add or refresh a folder. Ollama with `nomic-embed-text` is optional for names, tags, text search, and browsing; it is required for semantic indexing and related-meaning search:
@@ -34,7 +36,7 @@ ollama pull nomic-embed-text
 
 | Action | How |
 |---|---|
-| Explore | Click a region or zoom into it; scroll back out to return |
+| Explore | Scroll continuously into the galaxy; click a heading to visit a region; use Your atlas to return to the full view |
 | Pan / zoom | Drag / wheel, `h j k l`, `+` / `−` |
 | Inspect an object | Select it and zoom in; close-up detail is seeded by its file ID |
 | Search | `⌘/Ctrl K` or `⌘/Ctrl F`; arrow keys select a result, Enter opens it |
@@ -46,7 +48,7 @@ ollama pull nomic-embed-text
 | Change an object's type | **Tags, pinning & file details → Star type** |
 | Learn the objects | **Object guide** |
 | Open / reveal original | `o` / `O` or reader buttons |
-| Settings / snapshots | Gear button; snapshots restore pins and region names with an automatic backup |
+| Settings / snapshots | Gear button; snapshots restore positions, pins, and region geometry with an automatic backup |
 | Advanced tools | **Commands → Embedding lab, PCA & classic themes**, or `?view=classic` |
 
 The reader supports Markdown with a contents list, highlighted text/code with line numbers, virtualized CSV/TSV tables, image zoom, and PDF pages or extracted text. Search opens matching passages. Text extraction is capped at 2 MiB; PDF/DOCX containers over 32 MiB remain accessible as metadata. Scanned PDFs need external OCR. Filename identity is path-derived: moving a file is currently an indexing change, not a guaranteed identity-preserving rename.

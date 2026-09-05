@@ -32,6 +32,17 @@ STARPALACE_DIR=.atlas-real/preview-20260904-213353 STARPALACE_PORT=7376 npm run 
 VITE_DAEMON_PORT=7376 npm run dev:web -- --port 5176 --host 127.0.0.1
 ```
 
+## Evening review corrections
+
+The initial real-library review exposed scope-switching zoom jumps, unstable headings, and an artificial arrangement. These are corrected together:
+
+- One pointer-anchored camera with eased wheel/button zoom, spatial metadata hydration, and real persistent markers at every scale. No zoom-triggered navigation or late-response refitting.
+- Retained label placement and opacity transitions; hover leaves heading pixels unchanged. Close-up artwork fades in, and an offscreen selection cannot pull button zoom away from the current view.
+- Original projected structure restored for 1,135 files; 613 unprojected files are placed near graph/folder relationships. Of the projected files, 1,113 retain their exact scaled coordinates; 22 receive small local collision adjustments (maximum 31.2 units across a roughly 20,000-unit map). No duplicate positions. File records and the primary library are unchanged.
+- The layout helper makes a whole-database backup and a snapshot. The real preview's snapshot 2 is the state before the organic arrangement; snapshot 1 is before the interim spiral arrangement. Restoring snapshots now restores full region geometry and natural coordinates as well as pins/names, and advances the layout epoch so stale cameras are not reused.
+
+The real preview remains on port 5176, with its daemon on 7376. Both preview databases have the organic layout; ordinary indexing preserves existing positions. The map includes all 1,748 real file markers. Refresh and use **Your atlas** to see the full arrangement. Validation is recorded in [atlas-validation.md](atlas-validation.md).
+
 ## Rollback
 
 The primary checkout on `main` still contains the original app and the user's pre-existing changes. It can be run independently. Do not reset or clean that checkout.

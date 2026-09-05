@@ -47,6 +47,17 @@ describe('Atlas HTTP and asynchronous retrieval', () => {
     expect((await request(app()).post('/atlas/search').send({ query: 'paper', collectionId: 999 })).status).toBe(404)
     expect((await request(app()).post('/atlas/search').send({ query: 'paper', galaxyIds: [] })).body.results).toEqual([])
   })
+  it('retrieves actual viewport files with filters and includes pins outside their original region', async () => {
+    add('paper'); add('other'); store.pin('paper', 30000, -40000)
+    const query = { minX: '29900', maxX: '30100', minY: '-40100', maxY: '-39900' }
+    const response = await request(app()).get('/atlas/viewport').query(query)
+    expect(response.status).toBe(200)
+    expect(response.body.files.map((f: { id: string }) => f.id)).toEqual(['paper'])
+    expect((await request(app()).get('/atlas/viewport').query({ ...query, category: 'media' })).body.files).toEqual([])
+    for (const invalid of [{}, { ...query, minX: 'NaN' }, { ...query, maxX: 'Infinity' }, { ...query, minY: '0' }]) {
+      expect((await request(app()).get('/atlas/viewport').query(invalid)).status).toBe(400)
+    }
+  })
   it('preserves a backup before restoring a snapshot through HTTP', async () => {
     add('paper'); const original = store.file('paper')!
     const snapshot = await request(app()).post('/atlas/snapshots').send({ name: 'Before' })

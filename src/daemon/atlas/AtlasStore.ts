@@ -1,9 +1,10 @@
+import { organicLayout, cloudOffset, LEGACY_ATLAS_SCALE, type LayoutFile } from './organicLayout'
 import { celestialType } from '../../shared/celestial'
 import type { StarType } from '../../shared/types'
 import { createHash } from 'crypto'
 import { basename, dirname, relative, sep } from 'path'
 import type { FileIndex, IndexedFile } from '../db/FileIndex'
-import type { AtlasFile, AtlasScope, AtlasRegion, AtlasSummary, AtlasHit, AtlasSnapshot } from '../../shared/atlas'
+import type { AtlasFile, AtlasScope, AtlasRegion, AtlasSummary, AtlasHit, AtlasSnapshot, AtlasMarker } from '../../shared/atlas'
 import { ATLAS_COLORS } from '../../shared/atlas'
 
 const GROUP_CAP = 96
@@ -15,14 +16,6 @@ interface PositionRow { id: string; region_id: string; neighborhood_id: string; 
 interface RegionRow { id: string; parent_id: string | null; galaxy_id: number | null; label: string; kind: 'region' | 'neighborhood'; x: number; y: number; radius: number; color: string; member_count: number; group_key: string }
 
 const identity = (value: string): string => createHash('sha1').update(value).digest('hex').slice(0, 16)
-export function spiralSlot(index: number, step: number): [number, number] {
-  if (index === 0) return [0, 0]
-  const ring = Math.ceil((Math.sqrt(index + 1) - 1) / 2)
-  const side = ring * 2, offset = index - (2 * ring - 1) ** 2
-  const edge = Math.floor(offset / side), n = offset % side
-  const pairs: [number, number][] = [[ring, -ring + n], [ring - n, ring], [-ring, ring - n], [-ring + n, -ring]]
-  return [pairs[edge][0] * step, pairs[edge][1] * step]
-}
 
 export function chunkText(text: string): { body: string; offset: number }[] {
   const chunks: { body: string; offset: number }[] = []
@@ -91,6 +84,9 @@ export class AtlasStore {
       END;
       INSERT OR IGNORE INTO atlas_dirty SELECT id FROM files WHERE id NOT IN (SELECT id FROM atlas_positions) OR rowid NOT IN (SELECT rowid FROM atlas_names) OR id NOT IN (SELECT id FROM atlas_object_types);
     `)
+    if (!(index.db.prepare('PRAGMA table_info(atlas_state)').all() as { name: string }[]).some(c => c.name === 'layout_epoch')) {
+      index.db.exec('ALTER TABLE atlas_state ADD COLUMN layout_epoch INTEGER NOT NULL DEFAULT 0')
+    }
   }
 
   get revision(): number { return (this.index.db.prepare('SELECT revision FROM atlas_state WHERE id=1').get() as { revision: number }).revision }
@@ -155,7 +151,8 @@ export class AtlasStore {
     if (!region) {
       const count = (this.index.db.prepare("SELECT count(*) n FROM atlas_regions WHERE kind='region'").get() as { n: number }).n
       const siblings = (this.index.db.prepare("SELECT count(*) n FROM atlas_regions WHERE group_key=? AND kind='region'").get(key) as { n: number }).n
-      const [x, y] = spiralSlot(count, 3200)
+      const center = file.x !== null && file.y !== null ? { x: file.x * LEGACY_ATLAS_SCALE, y: file.y * LEGACY_ATLAS_SCALE } : cloudOffset(key + ':' + siblings, 3500 * Math.sqrt(siblings + 1))
+      const { x, y } = center
       region = { id: identity(`region:${key}:${siblings}`), parent_id: null, galaxy_id: file.galaxyId,
         label: branch.replace(/[-_]/g, ' ') + (siblings ? ` · ${siblings + 1}` : ''), kind: 'region', x, y, radius: 1350,
         color: ATLAS_COLORS[count % ATLAS_COLORS.length], member_count: 0, group_key: key }
@@ -176,7 +173,7 @@ export class AtlasStore {
     }
     if (!group) {
       const slot = (this.index.db.prepare('SELECT count(*) n FROM atlas_regions WHERE parent_id=?').get(region.id) as { n: number }).n
-      const [dx, dy] = spiralSlot(slot, 450)
+      const { x: dx, y: dy } = cloudOffset(folderKey + ':' + slot, 600 * Math.sqrt(slot + 1))
       const label = dirname(rel) === '.' ? 'Mixed files' : basename(dirname(rel))
       group = { id: identity(`neighborhood:${region.id}:${slot}`), parent_id: region.id, galaxy_id: file.galaxyId,
         label: label.replace(/[-_]/g, ' '), kind: 'neighborhood', x: region.x + dx, y: region.y + dy, radius: 190,
@@ -186,13 +183,54 @@ export class AtlasStore {
     this.index.db.prepare('INSERT OR IGNORE INTO atlas_slots(id,next_slot) VALUES(?,?)').run(group.id, group.member_count)
     const ordinal = (this.index.db.prepare('SELECT next_slot FROM atlas_slots WHERE id=?').get(group.id) as { next_slot: number }).next_slot
     this.index.db.prepare('UPDATE atlas_slots SET next_slot=next_slot+1 WHERE id=?').run(group.id)
-    const angle = ordinal * 2.399963229728653
-    const radius = 16 * Math.sqrt(ordinal + 1)
-    const x = group.x + Math.cos(angle) * radius, y = group.y + Math.sin(angle) * radius
+    const offset = cloudOffset(file.id, 160 + Math.sqrt(ordinal) * 8)
+    const related = this.index.db.prepare(`SELECT p.natural_x x,p.natural_y y FROM edges e
+      JOIN atlas_positions p ON p.id=e.dst_id WHERE e.src_id=? ORDER BY e.weight DESC LIMIT 1`).get(file.id) as { x: number; y: number } | undefined
+    const projected = file.x !== null && file.y !== null ? { x: file.x * LEGACY_ATLAS_SCALE, y: file.y * LEGACY_ATLAS_SCALE } : null
+    const center = projected ?? related ?? group
+    let x = center.x + (projected ? 0 : offset.x), y = center.y + (projected ? 0 : offset.y)
+    // Only the new file moves when a location is crowded. Existing files never relax.
+    const occupied = this.index.db.prepare('SELECT 1 FROM atlas_positions WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ? LIMIT 1')
+    for (let attempt = 1; occupied.get(x - 9, x + 9, y - 9, y + 9); attempt++) {
+      const jitter = cloudOffset(file.id + ':' + attempt, 24 * Math.sqrt(attempt))
+      x = center.x + jitter.x; y = center.y + jitter.y
+    }
     const legacyPin = file.isPinned ? JSON.stringify({ x: file.x, y: file.y, alpha: file.pinAlpha, beta: file.pinBeta, axisA: file.pinAxisA, axisB: file.pinAxisB, at: file.pinnedAt }) : null
     this.index.db.prepare(`INSERT INTO atlas_positions(id,region_id,neighborhood_id,natural_x,natural_y,x,y,pinned,legacy_pin) VALUES(?,?,?,?,?,?,?,?,?)`)
       .run(file.id, region.id, group.id, x, y, x, y, file.isPinned ? 1 : 0, legacyPin)
     this.index.db.prepare('UPDATE atlas_regions SET member_count=member_count+1 WHERE id IN (?,?)').run(region.id, group.id)
+    for (const area of [region, group]) this.index.db.prepare('UPDATE atlas_regions SET radius=max(radius,?) WHERE id=?')
+      .run(Math.hypot(x - area.x, y - area.y) + 60, area.id)
+  }
+
+  reshapeOrganic(): number {
+    const files = this.index.db.prepare('SELECT id,path,x,y FROM files ORDER BY id').all() as LayoutFile[]
+    const neighbors = new Map<string, string[]>()
+    for (const edge of this.index.db.prepare('SELECT src_id,dst_id FROM edges ORDER BY weight DESC').all() as { src_id: string; dst_id: string }[]) {
+      const list = neighbors.get(edge.src_id) ?? []
+      if (list.length < 6) list.push(edge.dst_id)
+      neighbors.set(edge.src_id, list)
+    }
+    const points = organicLayout(files, neighbors)
+    return this.index.db.transaction(() => {
+      const snapshot = this.snapshot('Before organic arrangement')
+      const update = this.index.db.prepare(`UPDATE atlas_positions SET natural_x=?,natural_y=?,
+        x=CASE WHEN pinned=1 THEN x ELSE ? END,y=CASE WHEN pinned=1 THEN y ELSE ? END WHERE id=?`)
+      for (const [id, p] of points) update.run(p.x, p.y, p.x, p.y, id)
+      // Region labels describe the files; they do not dictate their positions.
+      for (const area of this.index.db.prepare('SELECT * FROM atlas_regions').all() as RegionRow[]) {
+        const column = area.kind === 'region' ? 'region_id' : 'neighborhood_id'
+        const members = this.index.db.prepare(`SELECT natural_x x,natural_y y FROM atlas_positions WHERE ${column}=?`).all(area.id) as { x: number; y: number }[]
+        if (!members.length) continue
+        const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)]
+        const x = median(members.map(p => p.x)), y = median(members.map(p => p.y))
+        const radius = Math.max(100, ...members.map(p => Math.hypot(p.x - x, p.y - y) + 60))
+        this.index.db.prepare('UPDATE atlas_regions SET x=?,y=?,radius=? WHERE id=?').run(x, y, radius, area.id)
+      }
+      this.index.db.exec('UPDATE atlas_state SET layout_epoch=layout_epoch+1')
+      this.bump()
+      return snapshot
+    })()
   }
 
   private insertRegion(r: RegionRow): void {
@@ -264,7 +302,20 @@ export class AtlasStore {
       const region = byId.get(id)
       if (region) { region.objectTypes ??= {}; region.objectTypes[row.type] = (region.objectTypes[row.type] ?? 0) + row.count }
     }
-    return { revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
+    // Real, stable file positions at every zoom. Never invent replacement stars
+    // for aggregates: hydration only adds detail to these same coordinates.
+    const groups = regions.filter(r => r.kind === 'neighborhood')
+    const sampleCount = Math.max(1, Math.floor(4096 / Math.max(1, groups.length)))
+    const markerJoin = filter.sql ? 'JOIN files f ON f.id=p.id' : ''
+    const sample = this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type FROM atlas_positions p
+      ${markerJoin} JOIN atlas_object_types o ON o.id=p.id
+      WHERE p.neighborhood_id=?${filter.sql} ORDER BY p.rowid LIMIT ?`)
+    const markers = regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0) <= 4096
+      ? this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type FROM atlas_positions p ${markerJoin} JOIN atlas_object_types o ON o.id=p.id WHERE 1${filter.sql}`).all(...filter.args) as AtlasMarker[] : []
+    const stride = Math.max(1, Math.ceil(groups.length / 4096))
+    if (!markers.length) for (let i = 0; i < groups.length; i += stride) markers.push(...sample.all(groups[i].id, ...filter.args, sampleCount) as AtlasMarker[])
+    const layoutEpoch = (this.index.db.prepare('SELECT layout_epoch FROM atlas_state WHERE id=1').get() as { layout_epoch: number }).layout_epoch
+    return { layoutEpoch, markers, revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
       searchable: (this.index.db.prepare("SELECT count(*) n FROM atlas_documents WHERE status != 'pending'").get() as { n: number }).n,
       pending: (this.index.db.prepare('SELECT count(*) n FROM atlas_dirty').get() as { n: number }).n, regions }
   }
@@ -285,6 +336,14 @@ export class AtlasStore {
     const total = (this.index.db.prepare(`SELECT count(*) n ${base}`).get(...filter.args) as { n: number }).n
     const ids = this.index.db.prepare(`SELECT f.id ${base} ORDER BY f.name COLLATE NOCASE,f.id LIMIT ? OFFSET ?`).all(...filter.args, limit, offset) as { id: string }[]
     return { files: ids.map(({ id }) => this.file(id)!).filter(Boolean), total, revision: this.revision }
+  }
+
+  viewport(scope: AtlasScope, bounds: { minX: number; minY: number; maxX: number; maxY: number }, limit = 500): AtlasFile[] {
+    const filter = this.scope(scope)
+    const ids = this.index.db.prepare(`SELECT p.id FROM atlas_positions p JOIN files f ON f.id=p.id
+      WHERE p.x BETWEEN ? AND ? AND p.y BETWEEN ? AND ?${filter.sql} ORDER BY p.id LIMIT ?`)
+      .all(bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, ...filter.args, limit) as { id: string }[]
+    return ids.map(({ id }) => this.file(id)!).filter(Boolean)
   }
 
   lexical(query: string, scope: AtlasScope, limit: number): AtlasHit[] {
@@ -353,8 +412,9 @@ export class AtlasStore {
     if (!snapshot) return false
     const data = JSON.parse(snapshot.payload) as { positions: PositionRow[]; regions: RegionRow[] }
     this.index.db.transaction(() => {
-      for (const r of data.regions) this.index.db.prepare('UPDATE atlas_regions SET label=? WHERE id=?').run(r.label, r.id)
-      for (const p of data.positions) this.index.db.prepare('UPDATE atlas_positions SET x=?,y=?,pinned=? WHERE id=?').run(p.x, p.y, p.pinned, p.id)
+      for (const r of data.regions) this.index.db.prepare('UPDATE atlas_regions SET label=?,x=?,y=?,radius=? WHERE id=?').run(r.label, r.x, r.y, r.radius, r.id)
+      for (const p of data.positions) this.index.db.prepare('UPDATE atlas_positions SET x=?,y=?,natural_x=?,natural_y=?,pinned=? WHERE id=?').run(p.x, p.y, p.natural_x, p.natural_y, p.pinned, p.id)
+      this.index.db.exec('UPDATE atlas_state SET layout_epoch=layout_epoch+1')
       this.bump()
     })()
     return true

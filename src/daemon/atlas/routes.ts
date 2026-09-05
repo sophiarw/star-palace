@@ -39,6 +39,18 @@ export function atlasRoutes(service: AtlasService): Router {
     try { res.json(store.list(parseScope(req.query), bounded(req.query.offset, 0, 10_000_000), bounded(req.query.limit, 100, 500))) }
     catch (e) { res.status(400).json({ error: String(e) }) }
   })
+  router.get('/viewport', (req, res) => {
+    try {
+      const bounds = Object.fromEntries(['minX', 'minY', 'maxX', 'maxY'].map(key => {
+        if (typeof req.query[key] !== 'string' || req.query[key] === '') throw new Error('Invalid viewport bounds')
+        const value = Number(req.query[key])
+        if (!Number.isFinite(value) || Math.abs(value) > 1e9) throw new Error('Invalid viewport bounds')
+        return [key, value]
+      })) as { minX: number; minY: number; maxX: number; maxY: number }
+      if (bounds.minX > bounds.maxX || bounds.minY > bounds.maxY) throw new Error('Invalid viewport bounds')
+      res.json({ files: store.viewport(parseScope(req.query), bounds), revision: store.revision })
+    } catch (e) { res.status(400).json({ error: String(e) }) }
+  })
   router.get('/file/:id', (req, res) => {
     const file = store.file(req.params.id)
     if (!file) return res.status(404).json({ error: 'File not found' })
