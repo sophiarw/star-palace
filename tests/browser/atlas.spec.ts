@@ -215,6 +215,33 @@ test('wheel zoom crosses detail levels without scope changes, anchor drift, or l
 })
 
 
+test('a cluster heading stays visible across every former zoom fade threshold', async ({ page }) => {
+  const scene = page.locator('.atlas-map')
+  await expect(scene).toHaveAttribute('data-labels', /[a-f0-9]/)
+  const summary = await page.request.get((process.env.STARPALACE_TEST_API ?? 'http://127.0.0.1:7374/api/atlas') + '/summary').then(r => r.json())
+  const box = (await scene.boundingBox())!
+  const camera = JSON.parse((await scene.getAttribute('data-camera'))!)
+  const visible = (await scene.getAttribute('data-labels'))!.split(',')
+  const parents = new Set(summary.regions.map((r: { parentId: string }) => r.parentId))
+  const region = summary.regions.find((r: { id: string; x: number; y: number }) => {
+    const x = (r.x - camera.x) * camera.zoom + box.width / 2, y = (r.y - camera.y) * camera.zoom + box.height / 2
+    return !parents.has(r.id) && visible.includes(r.id) && x > 70 && x < box.width - 200 && y > 70 && y < box.height - 100
+  })
+  expect(region).toBeTruthy()
+  for (let i = 0; i < 22; i++) {
+    // WheelEvent coordinates round to pixels in Chrome. Track the actual heading
+    // so a subpixel seed offset doesn't magnify offscreen at extreme zoom.
+    const current = JSON.parse((await scene.getAttribute('data-camera'))!)
+    const anchor = { x: box.x + (region.x - current.x) * current.zoom + box.width / 2, y: box.y + (region.y - current.y) * current.zoom + box.height / 2 }
+    await scene.locator('.atlas-label-canvas').evaluate((canvas, at) => {
+      canvas.dispatchEvent(new WheelEvent('wheel', { clientX: at.x, clientY: at.y, deltaY: -300, bubbles: true, cancelable: true }))
+      return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    }, anchor)
+    expect((await scene.getAttribute('data-labels'))!.split(',')).toContain(region.id)
+  }
+  expect(JSON.parse((await scene.getAttribute('data-camera'))!).zoom).toBeGreaterThan(1.3)
+})
+
 test('hover does not reshuffle headings or keep the map repainting', async ({ page }) => {
   const scene = page.locator('.atlas-map')
   await expect(scene).toHaveAttribute('data-labels', /[a-f0-9]/)

@@ -75,7 +75,7 @@ Close-up generation remains bounded (16 slots, two generations per frame); never
 - `src/daemon/atlas/organicLayout.ts` preserves the legacy semantic projection, separates coincident files locally, and places model-free files using neighbors/folders. File positions remain fixed during ordinary indexing.
 - `AtlasStore.summary()` returns real file markers at their persistent world coordinates. Coarse views must not substitute invented stars at unrelated positions.
 - `src/renderer/src/atlas/useAtlasTiles.ts` hydrates bounded spatial viewports. A data response must never move the camera.
-- `src/renderer/src/atlas/labelPainter.ts` retains visible labels and fades visibility changes. Hover must not reorder headings or flip their placement.
+- `src/renderer/src/atlas/regionLabels.ts` selects one persistent name per leaf cluster (or childless region), with small 10–14px type. `labelPainter.ts` anchors those names without zoom fades, collision eviction, or edge clamping. File captions retain their separate collision/fade budget. Hover must not reorder headings or flip their placement.
 - Wheel/trackpad gestures update the camera directly; do not restart an easing animation on each event. Buttons and explicit navigation may animate.
 - Scrolling changes one camera continuously; it must not change navigation scope or restore another camera. Explicit navigation may animate to a destination. Layout epochs invalidate cameras after an explicit reshaping/restore.
 - `scripts/reshape-atlas.ts` is an explicit, isolated-copy-only review helper, with a database backup and snapshot. Never run it against the primary library.

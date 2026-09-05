@@ -13,10 +13,11 @@ export interface MapLabel {
   priority: number
   selected?: boolean
   background?: boolean
+  persistent?: boolean
 }
 interface Entry { label: MapLabel; opacity: number }
 
-/** Retain readable labels, independent of hover; resolve collisions before fading. */
+/** Cluster names are fixed landmarks; only file captions compete and fade. */
 export class LabelPainter {
   private entries = new Map<string, Entry>()
   private lastAt = 0
@@ -25,8 +26,26 @@ export class LabelPainter {
   draw(ctx: CanvasRenderingContext2D, candidates: MapLabel[], camera: Camera, width: number, height: number, budget: number): { count: number; pending: boolean } {
     const now = performance.now(), elapsed = this.lastAt ? Math.min(50, now - this.lastAt) : 16
     this.lastAt = now
-    const current = new Map(candidates.map(label => [label.id, label]))
-    for (const label of candidates) {
+    const used: LabelBox[] = []
+    let count = 0, pending = false
+    this.visibleIds = []
+    for (const label of candidates.filter(label => label.persistent)) {
+      this.entries.delete(label.id)
+      const [x, y] = project(label.x, label.y, camera, width, height)
+      ctx.font = label.font
+      const metrics = ctx.measureText(label.title)
+      const box = { x: x + label.offset, y: y - 10, width: metrics.width, height: 19 }
+      // Let the canvas clip naturally: no edge clamping or competing placements.
+      if (box.x + box.width < 0 || box.x > width || box.y + box.height < 0 || box.y > height) continue
+      ctx.globalAlpha = label.opacity; ctx.fillStyle = label.color
+      ctx.shadowColor = '#030405'; ctx.shadowBlur = 5
+      ctx.fillText(label.title, box.x, y + 4)
+      ctx.shadowBlur = 0
+      used.push(box); count++; this.visibleIds.push(label.id)
+    }
+    const persistentCount = count
+    const current = new Map(candidates.filter(label => !label.persistent).map(label => [label.id, label]))
+    for (const label of current.values()) {
       const entry = this.entries.get(label.id)
       if (entry) entry.label = label
       else this.entries.set(label.id, { label, opacity: 0 })
@@ -35,9 +54,6 @@ export class LabelPainter {
       Number(!!b.label.selected) - Number(!!a.label.selected) ||
       Number(b.opacity > .05) - Number(a.opacity > .05) ||
       b.label.priority - a.label.priority || a.label.id.localeCompare(b.label.id))
-    const used: LabelBox[] = []
-    let count = 0, pending = false
-    this.visibleIds = []
     for (const entry of ordered) {
       const label = entry.label, [x, y] = project(label.x, label.y, camera, width, height)
       ctx.font = label.font
@@ -47,7 +63,7 @@ export class LabelPainter {
       // Clamp smoothly at the edge. Never flip the whole heading to the other side.
       const box = { x: Math.max(8, Math.min(width - labelWidth - 15, x + label.offset)), y: y - 10, width: labelWidth, height: label.subtitle ? 43 : 24 }
       let target = current.get(label.id)?.opacity ?? 0
-      if (x < 0 || x > width || box.y < 8 || box.y + box.height > height - 65 || count >= budget || !labelFits(box, used)) target = 0
+      if (x < 0 || x > width || box.y < 8 || box.y + box.height > height - 65 || count - persistentCount >= budget || !labelFits(box, used)) target = 0
       entry.opacity += (target - entry.opacity) * (1 - Math.exp(-elapsed / 65))
       if (Math.abs(target - entry.opacity) < .008) entry.opacity = target
       else pending = true

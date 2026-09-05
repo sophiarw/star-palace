@@ -1,6 +1,7 @@
 import { lensAppearance } from './lenses'
 import type { AtlasLens } from '@shared/atlas'
 import { LabelPainter, type MapLabel } from './labelPainter'
+import { clusterLabelRegions, regionLabelSize } from './regionLabels'
 import { galaxyHaze } from './galaxyHaze'
 import { fileStellarAppearance } from './stellarVisual'
 import { useAtlasTiles } from './useAtlasTiles'
@@ -192,26 +193,20 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     const { regions, files, selectedId, highlights, theme } = latest.current
     const labelCandidates: MapLabel[] = [], hitTargets: HitTarget[] = []
     const themeColors = THEMES[theme] ?? THEMES.jwst
-    // Labels are capped by the viewport, with selected/search/hover first.
+    // File captions have a viewport budget; cluster headings stay present.
     const labelBudget = Math.min(70, Math.max(10, Math.floor(width * height / 16000)))
-    const levelAlpha = (region: AtlasRegion): number => {
-      const smooth = (a: number, b: number) => { const t = Math.max(0, Math.min(1, (camera.current.zoom - a) / (b - a))); return t * t * (3 - 2 * t) }
-      return region.kind === 'region' ? 1 - smooth(.09, .22) : smooth(.07, .18) * (1 - smooth(.65, 1.3))
-    }
-    for (const region of regions) {
-      const opacity = levelAlpha(region)
-      if (opacity < .05) continue
+    for (const region of clusterLabelRegions(regions)) {
       const [x, y] = project(region.x, region.y, camera.current, width, height)
-      if (x < -100 || y < -60 || x > width + 100 || y > height + 60) continue
+      if (x < -250 || y < -60 || x > width + 100 || y > height + 60) continue
       hitTargets.push({ id: region.id, x, y, radius: Math.max(50, Math.min(140, region.radius * camera.current.zoom * .7)), region })
-      const fontSize = region.kind === 'region' ? 19 : 17
+      const fontSize = regionLabelSize(camera.current.zoom)
       ctx.font = `${fontSize}px Georgia, serif`
       const maxWidth = Math.min(220, width * .38)
       let title = region.label
       while (title.length > 4 && ctx.measureText(title).width > maxWidth) title = title.slice(0, -2).replace(/…$/, '') + '…'
-      labelCandidates.push({ id: region.id, x: region.x, y: region.y, offset: 15, title,
-        subtitle: region.count.toLocaleString() + ' files  ·  Explore ↗', color: themeColors.label,
-        font: `${fontSize}px Georgia, serif`, opacity: opacity * .95, priority: region.count })
+      labelCandidates.push({ id: region.id, x: region.x, y: region.y, offset: 10, title,
+        color: themeColors.label, persistent: true,
+        font: `${fontSize}px Georgia, serif`, opacity: .85, priority: region.count })
     }
     if (camera.current.zoom > .25) {
       const hydrated = new Set(files.map(f => f.id))
