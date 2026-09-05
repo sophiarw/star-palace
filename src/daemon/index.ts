@@ -34,6 +34,9 @@ import {
 import { listSnapshots } from './embedding/snapshots'
 import { prepareLabMix, mixLab, releaseLabMix } from './embedding/labMix'
 import { searchSpotlight, SpotlightUnavailable } from './search/spotlight'
+import { AtlasStore } from './atlas/AtlasStore'
+import { AtlasService } from './atlas/service'
+import { atlasRoutes } from './atlas/routes'
 
 const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|svg\+xml)|application\/pdf)$/
 
@@ -80,6 +83,10 @@ if (needsRetrain) {
 export const app = express()
 app.use(cors())
 app.use(express.json({ limit: '5mb' }))
+
+export const atlasStore = new AtlasStore(db)
+export const atlasService = new AtlasService(atlasStore, embedEngine)
+app.use('/api/atlas', atlasRoutes(atlasService))
 
 // B10 — body-parser surfaces SyntaxError/PayloadTooLargeError as Express's
 // default HTML stack-trace page (which leaks absolute paths). Convert to a
@@ -1165,7 +1172,9 @@ app.post('/api/file/:id/reindex', async (req, res) => {
   }
 })
 
-export function startDaemon(port = DAEMON_PORT): void {
+export function startDaemon(port = Number(process.env.STARPALACE_PORT) || DAEMON_PORT): void {
+  atlasStore.syncBatch(64)
+  atlasService.start()
   app.listen(port, '127.0.0.1', () => {
     console.log(`Star Palace daemon listening on http://127.0.0.1:${port}`)
     console.log(`  DB: ${DB_PATH}`)

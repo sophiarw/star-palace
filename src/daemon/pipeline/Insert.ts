@@ -18,6 +18,7 @@ import type { StrategyId } from '../embedding/strategies'
 // 1500-file index doesn't flood the SSE channel. The final-frame emit on
 // completion bypasses this.
 const PROGRESS_THROTTLE_MS = 100
+const embeddingRetryAt = new WeakMap<EmbeddingEngine, number>()
 
 // F17 — pluggable progress reporter. Pipeline-side stays unaware of SSE /
 // transport so unit tests can pass a no-op reporter (or capture calls) and
@@ -143,8 +144,17 @@ export async function insertOne(
     }
     // Call embed() directly with the already-built prompt; no need to
     // route back through embedFile and rebuild it.
-    const result = await embedEngine.embed(prompt)
-    embedResult = { embedding: result.embedding, contentHash: result.contentHash, strategy }
+    if (Date.now() >= (embeddingRetryAt.get(embedEngine) ?? 0)) {
+      try {
+        const result = await embedEngine.embed(prompt)
+        embedResult = { embedding: result.embedding, contentHash: result.contentHash, strategy }
+      } catch (error) {
+        // Metadata and lexical coverage survive an unavailable model. A short
+        // cooldown prevents an offline model delaying every file in a batch.
+        embeddingRetryAt.set(embedEngine, Date.now() + 15_000)
+        console.warn('[index] Semantic indexing paused; retaining file metadata:', String(error))
+      }
+    }
   }
 
   // ANN search runs against the existing index — the new point is not added

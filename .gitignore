@@ -11,3 +11,7 @@ tiny-corpus-2/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 worktrees/
+.atlas-dev/
+.atlas-benchmark/
+test-results/
+playwright-report/

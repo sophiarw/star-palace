@@ -26,6 +26,7 @@ export class OllamaClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: this.model, prompt: truncated, options: { num_ctx: 8192 } }),
+      signal: AbortSignal.timeout(15_000),
     })
     if (!res.ok) {
       throw new Error(`Ollama embed failed: ${res.status} ${await res.text()}`)

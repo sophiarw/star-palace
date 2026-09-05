@@ -6,6 +6,7 @@ import { categoryFromPath, mimeFromPath } from './extractors/category'
 import { MAX_FILE_BYTES } from '../../shared/types'
 import { readUsageMetadata, type UsageMetadata } from './usageMetadata'
 import type { IgnoreMatcher } from './ignoreMatcher'
+import { TextExtractor } from './extractors/text'
 
 const DEFAULT_IGNORE = new Set([
   'node_modules', '.git', '.DS_Store', 'dist', 'dist-electron', 'dist-web',
@@ -48,7 +49,9 @@ export async function walkDirectory(
   const matcher = opts.matcher
 
   async function* gen(): AsyncGenerator<FileWithContent> {
-    yield* walkDir(root, root, ignore, maxBytes, galaxyScope, matcher)
+    const extractor = new TextExtractor()
+    try { yield* walkDir(root, root, ignore, maxBytes, galaxyScope, matcher, extractor, opts.maxBytes !== undefined) }
+    finally { extractor.close() }
   }
   return gen()
 }
@@ -60,6 +63,8 @@ async function* walkDir(
   maxBytes: number,
   galaxyScope: string | number | undefined,
   matcher: IgnoreMatcher | undefined,
+  extractor: TextExtractor,
+  skipLarge: boolean,
 ): AsyncGenerator<FileWithContent> {
   let entries
   try {
@@ -75,14 +80,18 @@ async function* walkDir(
       if (rel && !rel.startsWith('..') && matcher.matchesRelative(rel, entry.isDirectory())) continue
     }
     if (entry.isDirectory()) {
-      yield* walkDir(full, root, ignore, maxBytes, galaxyScope, matcher)
+      yield* walkDir(full, root, ignore, maxBytes, galaxyScope, matcher, extractor, skipLarge)
     } else if (entry.isFile()) {
       try {
         const s = await stat(full)
-        if (s.size > maxBytes) continue
+        if (skipLarge && s.size > maxBytes) continue
         const category = categoryFromPath(full)
-        if (category === 'unknown') continue
-        const content = category === 'media' ? Buffer.alloc(0) : await readFile(full)
+        let content = Buffer.alloc(0)
+        if (/\.(pdf|docx)$/i.test(full)) content = Buffer.from((await extractor.extract(full)).text)
+        else if (category !== 'media' && category !== 'unknown' && s.size <= maxBytes) {
+          const raw = await readFile(full)
+          if (!raw.subarray(0, 4096).includes(0)) content = raw
+        }
         const node: FileNode = {
           id: fileIdFromPath(full, galaxyScope),
           name: basename(full),

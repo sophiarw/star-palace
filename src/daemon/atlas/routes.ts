@@ -1,0 +1,96 @@
+import { Router } from 'express'
+import type { AtlasScope } from '../../shared/atlas'
+import type { FileCategory } from '../../shared/types'
+import type { AtlasService } from './service'
+
+function bounded(value: unknown, fallback: number, max: number): number {
+  if (value === undefined) return fallback
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < 0 || n > max) throw new Error(`Expected an integer between 0 and ${max}`)
+  return n
+}
+export function parseScope(raw: Record<string, unknown>): AtlasScope {
+  const scope: AtlasScope = {}
+  if (raw.galaxyIds !== undefined) {
+    const ids = Array.isArray(raw.galaxyIds) ? raw.galaxyIds : String(raw.galaxyIds).split(',').filter(Boolean)
+    if (ids.length > 1000) throw new Error('Too many sources')
+    scope.galaxyIds = ids.map(id => bounded(id, 0, 2 ** 31 - 1))
+  }
+  for (const key of ['regionId', 'neighborhoodId', 'tag'] as const) if (raw[key] !== undefined) {
+    if (typeof raw[key] !== 'string' || raw[key].length > 200) throw new Error(`Invalid ${key}`)
+    scope[key] = raw[key]
+  }
+  if (raw.collectionId !== undefined) scope.collectionId = bounded(raw.collectionId, 0, 2 ** 31 - 1)
+  if (raw.category !== undefined) {
+    if (!['document', 'code', 'data', 'media', 'unknown'].includes(String(raw.category))) throw new Error('Invalid file type')
+    scope.category = raw.category as FileCategory
+  }
+  return scope
+}
+
+export function atlasRoutes(service: AtlasService): Router {
+  const router = Router(), store = service.store
+  router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
+  router.get('/summary', (req, res) => {
+    try { res.json(store.summary(parseScope(req.query))) } catch (e) { res.status(400).json({ error: String(e) }) }
+  })
+  router.get('/files', (req, res) => {
+    try { res.json(store.list(parseScope(req.query), bounded(req.query.offset, 0, 10_000_000), bounded(req.query.limit, 100, 500))) }
+    catch (e) { res.status(400).json({ error: String(e) }) }
+  })
+  router.get('/file/:id', (req, res) => {
+    const file = store.file(req.params.id)
+    if (!file) return res.status(404).json({ error: 'File not found' })
+    return res.json(file)
+  })
+  router.get('/file/:id/text', async (req, res) => {
+    await service.text(req.params.id)
+    const file = store.file(req.params.id), doc = store.document(req.params.id)
+    if (!file || !doc) return res.status(404).json({ error: 'File not found' })
+    return res.json({ content: doc.text, status: doc.status, error: doc.error, mimeType: file.mimeType, size: file.size, truncated: doc.status === 'truncated' })
+  })
+  router.post('/search', async (req, res) => {
+    try {
+      const query: unknown = req.body?.query
+      if (typeof query !== 'string' || !query.trim() || query.length > 2000) return res.status(400).json({ error: 'Enter a search of 1–2000 characters' })
+      const scope = parseScope(req.body), limit = bounded(req.body.limit, 50, 100)
+      if (scope.collectionId !== undefined && !store.index.getCollection(scope.collectionId)) return res.status(404).json({ error: 'Collection not found' })
+      const start = performance.now()
+      if (req.body.mode === 'related') {
+        try {
+          const results = await service.related(query, scope, limit, () => res.destroyed)
+          if (!res.destroyed) res.json({ results, semanticAvailable: true, elapsedMs: performance.now() - start })
+        } catch { if (!res.destroyed) res.json({ results: [], semanticAvailable: false, elapsedMs: performance.now() - start }) }
+      } else res.json({ results: store.lexical(query, scope, limit), semanticAvailable: true, elapsedMs: performance.now() - start })
+    } catch (e) { res.status(400).json({ error: String(e) }) }
+  })
+  router.post('/file/:id/pin', (req, res) => {
+    const { x, y } = req.body ?? {}
+    const unpin = x === null && y === null
+    if (!unpin && (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 1e8 || Math.abs(y) > 1e8)) return res.status(400).json({ error: 'Invalid position' })
+    if (!store.pin(req.params.id, x, y)) return res.status(404).json({ error: 'File not found' })
+    return res.json({ revision: store.revision, file: store.file(req.params.id) })
+  })
+  router.patch('/region/:id', (req, res) => {
+    const label: unknown = req.body?.label
+    if (typeof label !== 'string' || !label.trim() || label.length > 120) return res.status(400).json({ error: 'Name must be 1–120 characters' })
+    if (!store.renameRegion(req.params.id, label.trim())) return res.status(404).json({ error: 'Region not found' })
+    return res.json({ revision: store.revision })
+  })
+  router.get('/snapshots', (_req, res) => res.json(store.snapshots()))
+  router.post('/snapshots', (req, res) => {
+    const name: unknown = req.body?.name
+    if (typeof name !== 'string' || !name.trim() || name.length > 120) return res.status(400).json({ error: 'Enter a snapshot name' })
+    return res.json({ id: store.snapshot(name.trim()) })
+  })
+  router.post('/snapshots/:id/restore', (req, res) => {
+    try {
+      const id = bounded(req.params.id, 0, 2 ** 31 - 1)
+      if (!store.snapshots().some(s => s.id === id)) return res.status(404).json({ error: 'Snapshot not found' })
+      store.snapshot('Before restore · ' + new Date().toISOString())
+      store.restore(id)
+      return res.json({ revision: store.revision })
+    } catch (e) { return res.status(400).json({ error: String(e) }) }
+  })
+  return router
+}

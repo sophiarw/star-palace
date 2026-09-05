@@ -15,6 +15,9 @@ const EXT_TO_CATEGORY: Record<string, FileCategory> = {
   // media
   png: 'media', jpg: 'media', jpeg: 'media', gif: 'media', svg: 'media',
   mp3: 'media', mp4: 'media', wav: 'media', mov: 'media', avi: 'media',
+  webp: 'media', avif: 'media', heic: 'media', flac: 'media', ogg: 'media', webm: 'media',
+  mdx: 'document', markdown: 'document', tex: 'document', bib: 'document',
+  mjs: 'code', cjs: 'code', toml: 'data', jsonl: 'data', ini: 'data',
 }
 
 const EXT_TO_MIME: Record<string, string> = {
@@ -27,6 +30,8 @@ const EXT_TO_MIME: Record<string, string> = {
   py: 'text/x-python', go: 'text/x-go', rs: 'text/x-rust',
   html: 'text/html', css: 'text/css',
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml',
+  gif: 'image/gif', webp: 'image/webp', avif: 'image/avif',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   mp3: 'audio/mpeg', mp4: 'video/mp4', wav: 'audio/wav',
 }
 
