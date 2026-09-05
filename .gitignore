@@ -17,3 +17,6 @@ test-results/
 playwright-report/
 
 .atlas-real/
+
+dist-site/
+dist-daemon/

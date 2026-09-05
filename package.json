@@ -6,7 +6,7 @@
     "dev:web": "vite --config vite.web.config.ts",
     "dev:daemon": "tsx watch src/daemon/index.ts",
     "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit && tsc --noEmit -p tsconfig.site.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:contract": "VITEST_INCLUDE_CONTRACT=1 vitest run tests/api/contract.test.ts",
@@ -19,7 +19,13 @@
     "dev:atlas:web": "VITE_DAEMON_PORT=7374 vite --config vite.web.config.ts --port 5174 --host 127.0.0.1",
     "test:browser": "playwright test",
     "benchmark:atlas": "tsx scripts/benchmark-atlas.ts",
-    "benchmark:atlas:browser": "node scripts/benchmark-atlas-browser.mjs"
+    "benchmark:atlas:browser": "node scripts/benchmark-atlas-browser.mjs",
+    "dev:site": "vite --config vite.site.config.ts",
+    "build:site": "vite build --config vite.site.config.ts",
+    "start": "node scripts/start-local.mjs",
+    "start:demo": "node scripts/start-local.mjs --demo",
+    "test:site": "playwright test --config playwright.site.config.mjs",
+    "build:daemon": "tsc -p tsconfig.daemon.build.json"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
@@ -56,5 +62,10 @@
     "typescript": "^5.5.2",
     "vite": "^5.3.1",
     "vitest": "^1.6.0"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sophiarw/star-palace.git"
   }
 }

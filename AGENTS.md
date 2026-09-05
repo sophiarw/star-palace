@@ -9,6 +9,9 @@
 - [repo-state.md](repo-state.md): historical implementation map. Prefer current code when the snapshot is stale.
 - [REQUIREMENTS.md](REQUIREMENTS.md): existing capabilities and original product rationale. The approved revamp supersedes old presentation constraints.
 - [docs/revamp-progress.md](docs/revamp-progress.md), when present: implementation checkpoints, validation, remaining work, and rollback instructions.
+- [docs/future-features.md](docs/future-features.md): user-requested ideas intentionally deferred, including folder constellation lines and zodiac-like illustrations.
+- [website/README.md](website/README.md): public website, fictional demo, feedback handoff, GitHub Pages deployment, and Squarespace DNS.
+- [docs/mac-distribution.md](docs/mac-distribution.md): Mac packaging investigation, tested build foundation, and remaining distribution work.
 
 ## Working agreement
 
@@ -19,6 +22,11 @@ Develop the revamp in `worktrees/atlas-revamp` on `feat/atlas-revamp`. Keep the 
 Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Build the renderer for integration milestones. Add meaningful regression tests for data integrity, search correctness, layout stability, and user interactions. Record measured performance separately from targets; do not infer foreground frame rate from background or headless timing.
 
 ## Code map
+
+- `website/`: static marketing/tutorial site; `vite.site.config.ts` builds `dist-site/`. Uses the app's existing Canvas artwork and fictional files only. Never publish real-library screenshots or data.
+- `scripts/start-local.mjs`: one-command source launcher, including isolated demo mode.
+- `tsconfig.daemon.build.json`: distributable daemon/worker compilation; `scripts/check-mac-runtime.mjs` checks it using temporary fixtures.
+- `LICENSE`: PolyForm Noncommercial with the user's explicit personal/internal workplace-use permission. Describe the project as source available, not open source.
 
 - `src/daemon/atlas/`: additive persistent atlas, FTS retrieval, region summaries, snapshots, and background service.
 - `src/daemon/index/extractors/`: bounded worker extraction shared by search, readers, and embedding paths.

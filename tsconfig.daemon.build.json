@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-daemon",
+    "allowJs": true,
+    "checkJs": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": ["src/daemon", "src/shared"],
+  "exclude": []
+}

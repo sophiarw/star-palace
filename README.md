@@ -2,6 +2,27 @@
 
 A persistent star map of your files. Each file is a star with a stable 2D position. Semantically related files cluster together into constellations. Search pans the camera; it does not rebuild the graph.
 
+Website: [starpalace.ai](https://starpalace.ai). The website's source, local preview, feedback behavior, and domain setup are documented in [website/README.md](website/README.md).
+
+## License
+
+Star Palace is source available under [PolyForm Noncommercial 1.0.0 with an additional workplace-use permission](LICENSE). You can use and modify it for personal use and internal workplace use, including paid professional work. Selling or monetizing Star Palace itself, modified versions, or paid services offering its functionality requires a separate license. Third-party components retain their own licenses. The full license controls.
+
+## Install from source on Mac
+
+Install Node.js 22, Git, and the macOS command line tools (`xcode-select --install`), then:
+
+```sh
+git clone --branch feat/atlas-revamp https://github.com/sophiarw/star-palace.git
+cd star-palace
+npm ci
+npm start
+```
+
+Open [127.0.0.1:5173](http://127.0.0.1:5173). One terminal runs both processes; Control C stops them. Existing users should back up `~/.starpalace` before adopting the development branch. After `npm run seed:atlas`, `npm run start:demo` runs a separate fictional library at port 5174.
+
+A standalone Mac app is being investigated; there is no signed installer yet. See [Mac distribution findings](docs/mac-distribution.md) for the tested runtime foundation and remaining release work.
+
 ## Try the new atlas
 
 The default workspace has a persistent galaxy shaped by file relationships, local name/text search, map/list/grid browsing, and an expandable reader. Files remain available without an embedding model. Each file type has a celestial identity; manual classifications take precedence. Zooming closer reveals deterministic artwork based on the file ID.

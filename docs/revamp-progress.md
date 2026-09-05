@@ -47,6 +47,18 @@ The real preview remains on port 5176, with its daemon on 7376. Both preview dat
 
 Celestial sprites now settle into a larger screen size at browsing distances, with slower growth as the camera continues inward. The distant overview keeps its existing density. Procedural details fade in between sprite radii of 25–42 CSS pixels, with the same 16-slot cache and two-generation-per-frame limit. GPU, Canvas, labels, and hit targets use the matching size curve. The real-library preview was inspected at zoom 0.5 in both renderers, and the six zoom/hover/fallback browser checks passed.
 
+## September 5: website, licensing, and Mac distribution investigation
+
+- Replaced the compass logo with the user's 宫 constellation mark across the header, hero, footer, favicon, and social card.
+- Applied the user's editorial review: direct memory-palace headline, stargazing/Sharepoint description, concise headings, and celestial artwork in place of redundant prose cards.
+- Added the static starpalace.ai site in `website/`, with an interactive fictional file galaxy, shared celestial artwork, four-step keyboard-accessible tutorial, source install instructions, social image, and an explicit GitHub issue draft form.
+- The user made the GitHub repository public and renamed it to `sophiarw/star-palace`. Origin and public-facing links use the new name.
+- Added `LICENSE`: PolyForm Noncommercial 1.0.0 plus permission for personal/internal workplace use. The user permits workplace use but prohibits selling or monetizing the software.
+- Added GitHub Pages build/deployment automation and documented the account-side Pages/Squarespace configuration in `website/README.md`.
+- Added `npm start` and `npm run start:demo`. Compiled daemon/PCA/text workers and source startup/shutdown were checked with temporary fixtures. A signed Mac executable is not yet available; findings and concrete remaining work are in `docs/mac-distribution.md`.
+- Recorded two intentionally deferred ideas in `docs/future-features.md`: folder constellation lines with zodiac-like illustrations, and stellar visual classes as inspiration for file-size encoding.
+- Validation: typecheck/lint, 412 passing unit/integration tests (3 historical skips), six website browser checks, renderer/site/daemon builds, and isolated runtime smoke checks. Desktop/mobile designs were visually inspected; no real files appear on the site.
+
 ## Rollback
 
 The primary checkout on `main` still contains the original app and the user's pre-existing changes. It can be run independently. Do not reset or clean that checkout.

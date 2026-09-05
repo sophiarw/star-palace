@@ -1,0 +1,85 @@
+import { test, expect } from '@playwright/test'
+
+test('search highlights stationary example files and Enter previews a result', async ({ page }) => {
+  const calls: string[] = []
+  page.on('request', request => { if (/\/api\//.test(request.url())) calls.push(request.url()) })
+  await page.goto('/')
+  const file = page.getByRole('button', { name: 'Preview A small garden.md', exact: true })
+  const before = await file.boundingBox()
+  await page.getByRole('searchbox', { name: 'Search example files' }).fill('garden')
+  await expect(page.locator('#demo-status')).toHaveText('4 matches. Choose a star to preview it.')
+  expect(await file.boundingBox()).toEqual(before)
+  await page.getByRole('searchbox', { name: 'Search example files' }).fill('lighthouse')
+  await page.getByRole('searchbox', { name: 'Search example files' }).press('Enter')
+  await expect(page.locator('#preview-name')).toHaveText('Coastal walk.pdf')
+  await page.getByRole('searchbox', { name: 'Search example files' }).fill('no-such-file')
+  await expect(page.locator('#demo-status')).toContainText('0 matches')
+  await page.getByRole('button', { name: 'Reset view' }).click()
+  await expect(file).toHaveAttribute('aria-pressed', 'true')
+  expect(calls).toEqual([])
+})
+
+test('tutorial supports keyboard navigation and all four steps', async ({ page }) => {
+  await page.goto('/#guide')
+  const first = page.getByRole('tab').first()
+  await first.focus()
+  await first.press('ArrowDown')
+  await expect(page.getByRole('tab').nth(1)).toBeFocused()
+  await expect(page.locator('#tutorial-title')).toHaveText('Search')
+  await page.getByRole('button', { name: 'Next tutorial step' }).click()
+  await expect(page.locator('#tutorial-title')).toHaveText('The reader')
+  await page.getByRole('tab').nth(3).click()
+  await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'step-3')
+  await expect(page.locator('#tutorial-description')).toContainText('Shift-drag')
+  await page.getByRole('button', { name: 'Next tutorial step' }).click()
+  await expect(first).toHaveAttribute('aria-selected', 'true')
+})
+
+test('feedback requires a draft and opens an encoded GitHub review without sending it', async ({ page }) => {
+  await page.goto('/#feedback')
+  await page.getByRole('button', { name: 'Continue on GitHub' }).click()
+  await expect(page).toHaveURL(/#feedback$/)
+  await page.getByLabel('A short summary').fill('A & B # café')
+  await page.getByLabel('Tell us a little more').fill('Line one\n<script>alert("hello")</script>\nA private draft to review.')
+  let destination = ''
+  await page.route('https://github.com/sophiarw/star-palace/issues/new?**', async route => {
+    destination = route.request().url()
+    expect(route.request().method()).toBe('GET')
+    await route.fulfill({ body: '<title>GitHub draft</title>' })
+  })
+  await page.getByRole('button', { name: 'Continue on GitHub' }).click()
+  await expect.poll(() => destination).not.toBe('')
+  const url = new URL(destination)
+  expect(url.searchParams.get('title')).toBe('A & B # café')
+  expect(url.searchParams.get('body')).toContain('<script>alert("hello")</script>')
+})
+
+test('commands copy exactly, including newlines', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/#install')
+  await page.locator('[data-copy="install-code"]').click()
+  await expect(page.locator('[data-copy="install-code"]')).toHaveText('Copied')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'git clone --branch feat/atlas-revamp https://github.com/sophiarw/star-palace.git\ncd star-palace\nnpm ci\nnpm start')
+})
+
+test('mobile and reduced motion remain readable without horizontal overflow', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await page.getByRole('button', { name: 'Preview Window light.jpg', exact: true }).click()
+    await expect(page.locator('#preview-name')).toHaveText('Window light.jpg')
+  }
+})
+
+test('static explanations and install instructions survive disabled JavaScript', async ({ browser }) => {
+  const page = await browser.newPage({ javaScriptEnabled: false })
+  await page.goto('http://127.0.0.1:5180')
+  await expect(page.getByRole('heading', { name: 'Humans are visual creatures.' })).toBeVisible()
+  await expect(page.locator('#install-code')).toContainText('npm start')
+  await expect(page.getByRole('link', { name: 'open a GitHub issue', exact: true })).toBeVisible()
+  await page.close()
+})
