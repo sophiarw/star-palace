@@ -6,6 +6,8 @@ These are review artifacts, not approved website assets.
 
 The user rejected all ten constellation-logo studies below. The new direction is **calligraphy made of stars**: the brushstroke silhouette provides the character's structure, with stellar colors and luminous particles filling the strokes.
 
+Atlas review update: the user selected **Clouds & landmarks**, requested the quieter [star-cluster palette](stellar-cluster-palette-reference.png), and asked for mostly smaller stars with a few larger outliers. Special objects such as pulsars and black holes now signify explicit **favorites**, independent of file bytes. The interactive study includes a favorite toggle; production integration remains separate. This palette clarification applies to the atlas; the calligraphy remains the brand reference.
+
 - [Three stellar visual languages](stellar-atlas-study.html): interactive atlas proposals using the same fictional files and positions. [Semantic proposals and recommendation](stellar-semantics.md) explain what the artwork could mean.
 - [Website and calligraphic identity study](stellar-brand/index.html): the supplied artwork in a hero composition, plus an editable simplified brush-mark study with stellar/silhouette comparison. This is separate from the deployed website.
 - [Revised user-supplied reference](palace-stellar-calligraphy-reference.jpg), saved unchanged September 5, 2026. The user created this revision with Gemini; original filename: `Gemini_Generated_Image_8rhx5i8rhx5i8rhx.jpg`.

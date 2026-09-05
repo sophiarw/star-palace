@@ -2,6 +2,8 @@
 
 September 5, 2026. Design proposals for review, not a new production classification. The user has explicitly allowed rethinking the old extension-to-celestial-object mapping.
 
+**Review decision:** the user selected proposal 3, Clouds & landmarks, with a less saturated star-cluster palette and a wider, mostly-small size distribution. Pulsars and black holes should mark explicit favorites, not automatically large files. The current [interactive study](stellar-atlas-study.html) implements that revised review direction. The proposals and recommendation below record the earlier comparison; the user's decision supersedes the size-led recommendation and automatic exceptional-file silhouettes.
+
 The common reference is [the user's stellar calligraphy](palace-stellar-calligraphy-reference.jpg): saturated blue, white, gold, orange, and red cores with luminous halos, a dark field, and organic concentrations of stars. The [interactive comparison](stellar-atlas-study.html) uses the same fictional files and positions across alternatives.
 
 ## 1. Size-led galaxy

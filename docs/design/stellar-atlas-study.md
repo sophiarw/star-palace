@@ -4,7 +4,17 @@
 
 This review explores the user's updated permission to rethink file-type identities. The three systems share the same fictional file positions, byte sizes, seeds, and reference-derived blue/white/yellow/orange/red palette. Switching proposals changes presentation only. No production sprites, database, user metadata, or actual file positions are changed.
 
-## The three proposals
+## Selected direction and latest refinement
+
+The user selected **Clouds & landmarks** and supplied a [star-cluster reference](stellar-cluster-palette-reference.png) to replace the overly saturated calligraphy palette for atlas objects. The image is saved unchanged from the user's attachment; its original astronomical source was not identified in the conversation. The calligraphy remains the brand reference.
+
+The study now starts in this direction: predominantly ivory and warm white stars, with pale gold, blue, and peach variation. Halos are quieter and ordinary files have a wider, mostly-small size distribution. This is an art-directed skew inspired by the reference, not a simulation or fit to an observed stellar population.
+
+The user also chose **favorites as special celestial objects**. Pulsars/black holes are not automatically assigned by file size. The study starts with three explicitly marked favorites, independent of density, byte size, or indexing. Click a file and toggle **Favorite file**; use **Favorite appearance** to compare pulsar and black-hole treatments. Changes live only in the review page's memory and Reset/reload restores the three demo favorites. The production app does not yet have this favorite state.
+
+A production implementation must persist favorite state separately from positional pins and automatic stellar classes, preserve it through re-indexing, and offer a discoverable favorite/unfavorite action. A star can be spatially pinned without being a favorite, and vice versa. Similarity nebulae remain a group treatment.
+
+## Earlier proposals (retained for comparison)
 
 | Proposal | What color means | What size means | What a cloud means | Main tradeoff |
 | --- | --- | --- | --- | --- |
@@ -12,13 +22,13 @@ This review explores the user's updated permission to rethink file-type identiti
 | File families | Documents/code blue; data white; images gold; PDFs/presentations orange; archives red | Same byte mapping | A similar file series | Strongest everyday file recognition; color is no longer a main-sequence size metaphor |
 | Clouds & landmarks | Decorative deterministic stellar variation | Same byte mapping | Primary group identity, more visible | Strong memory-palace places; requires trustworthy similarity groups and restrained cloud density |
 
-Every proposal makes most files main-sequence stars. A file at or above **256 MiB** gets the selected large-file landmark: static pulsar jets (the initial choice) or a broader giant disk and halo. The selector preserves all byte thresholds and file coordinates. The giant retains the active proposal’s color and is labeled simply “Giant”; the color is not a claim about its physical spectral class. This is an illustrative threshold for review, not a committed product rule. Pulsars are physically compact; using one to mark a large file is an artistic landmark convention, not an astrophysical classification. The study deliberately does not animate flashes or twinkles.
+Every proposal makes ordinary files main-sequence stars. Only user-marked favorites receive a pulsar or black-hole silhouette. Their presence is bounded independently of bytes, so even a small favorite is recognizable; marking one does not alter its file coordinates. The earlier automatic 256 MiB landmark threshold has been removed. No flashing, twinkling, or automatic favorites are introduced.
 
 ## Byte mapping
 
-The continuous magnitude is `clamp((log2(max(bytes, 1024)) - 10) / 20, 0, 1)`. Diameter varies from 0.85× to 1.35× between 1 KiB and 1 GiB. This limits the largest/smallest diameter ratio to about 1.59×; halos scale within the same bounded sprite. Labels do not inherit these multipliers. Missing, negative, or nonfinite sizes use the midpoint. A production guide should show exact bytes alongside any visual class.
+The continuous magnitude is `clamp((log2(max(bytes, 1024)) - 10) / 20, 0, 1)`. The ordinary-star multiplier is `0.38 + 1.72 * magnitude ** 3.4`. This makes most stars smaller, with a sparse upper tail and a bounded maximum of 2.1×. In the 650-file fixture the median is 0.557×, p90 is 1.550×, and the maximum is 2.074×, compared with the previous median near 1.1×. Halos scale within the same bounded sprite; favorites use a separate 1.8× multiplier so their identity is recognizable even for tiny files. Labels do not inherit these multipliers. Missing, negative, or nonfinite sizes use the midpoint. A production guide should show exact bytes alongside any visual class.
 
-Size-led color uses five bands sampled along that magnitude: red, orange, yellow, white, blue. These are stable absolute bands; indexing an unrelated large file does not recolor existing files. This preserves familiarity better than continuously recomputing library percentiles. Exact boundaries and the exceptional-file threshold should be reviewed against aggregate size counts before shipping.
+Size-led color uses five bands sampled along that magnitude: red, orange, yellow, white, blue. These are stable absolute bands; indexing an unrelated large file does not recolor existing files. This preserves familiarity better than continuously recomputing library percentiles. Exact byte boundaries and the size curve should be reviewed against aggregate library size counts before shipping. No byte threshold controls favorites.
 
 ## Similarity clouds
 
@@ -28,7 +38,7 @@ A production cloud must follow the existing world coordinates of its members, ke
 
 ## Artwork and performance boundaries
 
-The core is pale with a saturated rim; the halo drops off quickly. Most objects have simple disk silhouettes. Pulsar jets and the original-type baseline use deterministic procedural geometry. The optional baseline table keeps all ten previous identities available for comparison and illustrates the conflict caused by recoloring a red giant blue.
+The core is pale, with restrained warm/cool color and a quickly diminishing halo. Most objects have simple disk silhouettes. Pulsar jets and the original-type baseline use deterministic procedural geometry. The optional baseline table keeps all ten previous identities available for comparison and illustrates the conflict caused by recoloring a red giant blue.
 
 The standalone review uses Canvas 2D, static seeded particles, and a 320-entry bounded cache of 256×256 canvases. The raw canvas pixel ceiling is approximately 80 MiB, excluding browser overhead. This is **not a proposed production cache budget**. The production renderer should retain its fixed overview sheet and bounded close-up cache, using a finite class/palette atlas or vertex tint instead of a new texture per file. Do not regenerate nebula particles or gradients on camera frames.
 
@@ -37,10 +47,10 @@ The prototype renders only on interactions/resizing, with a capped 2× backing r
 ## Review controls
 
 - Select one of the three cards to compare semantic systems without changing positions.
-- Compare **Large-file landmark → Pulsar / Giant** to choose narrow jets or a broad luminous disk.
+- Compare **Favorite appearance → Pulsar / Black hole**, then click any file and toggle **Favorite file**. The initial scene has only three special objects, even at higher densities.
 - Turn glow and byte scaling off independently; increase object scale for ordinary-zoom detail inspection.
 - Switch density while preserving the initial files and their positions.
 - Drag or wheel within the atlas; Fit restores the initial camera.
 - Click a star for a close-up. The collapsed original-type table also offers keyboard-focusable object buttons; Escape closes detail.
 
-The artwork is a reviewable implementation sketch. The user should choose the semantic system before production integration.
+The artwork is a reviewable implementation sketch. Clouds & landmarks is selected; the refined palette, size balance, and favorite treatment remain in this review before production integration.

@@ -60,6 +60,8 @@ The user specifically wants intermixed celestial file types and deterministic pe
 
 September 5 clarification: the user now permits rethinking which file properties determine celestial appearance. The three stellar-language proposals explore main-sequence stars, exceptional-file landmarks, and similarity nebulae. Keep the current production artwork until that design is selected; preserve manual metadata and stable positions under any future automatic mapping.
 
+Latest visual decision: **Clouds & landmarks** is selected, with a quieter star-cluster palette and mostly small stars with occasional outliers. Pulsars/black holes represent explicit **favorites**, not automatic byte-size or file-type classes. The review prototype contains this treatment; production integration and persistent favorite metadata remain to be implemented. Favorites and spatial pins are separate user concepts.
+
 ## Continuous map and organic layout
 
 - `src/daemon/atlas/organicLayout.ts` preserves the legacy semantic projection, separates coincident files locally, and places model-free files using neighbors/folders. File positions remain fixed during ordinary indexing.
