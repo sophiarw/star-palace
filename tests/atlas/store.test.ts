@@ -15,6 +15,28 @@ describe('Atlas persistence and retrieval', () => {
   afterEach(() => db.close())
   const sync = (): void => { while (atlas.syncBatch()) { /* drain bounded migration */ } }
 
+  it('returns consistent favorite and byte metadata in summary, hydration, list, search, and reload', () => {
+    db.upsert(fixture('favorite', { size: 987654321, starType: 'nebula' })); sync()
+    atlas.pin('favorite', 33, 44)
+    const before = atlas.file('favorite')!, revision = atlas.revision
+    expect(atlas.favorite('favorite', true, 'black-hole')).toBe(true)
+    expect(atlas.revision).toBeGreaterThan(revision)
+    const expected = { id: 'favorite', size: 987654321, isFavorite: true, favoriteAppearance: 'black-hole', x: 33, y: 44 }
+    expect(atlas.summary().markers?.[0]).toMatchObject(expected)
+    expect(atlas.viewport({}, { minX: 0, minY: 0, maxX: 100, maxY: 100 })[0]).toMatchObject(expected)
+    expect(atlas.list().files[0]).toMatchObject(expected)
+    expect(atlas.lexical('favorite', {}, 10)[0].file).toMatchObject(expected)
+    expect(atlas.file('favorite')).toMatchObject({ ...before, isFavorite: true, favoriteAppearance: 'black-hole' })
+    const changed = atlas.revision
+    expect(atlas.favorite('favorite', true, 'black-hole')).toBe(true)
+    expect(atlas.revision).toBe(changed)
+    expect(new AtlasStore(db).file('favorite')).toMatchObject(expected)
+    const snapshot = atlas.snapshot('Favorite stays independent')
+    atlas.favorite('favorite', false); atlas.restore(snapshot)
+    expect(atlas.file('favorite')).toMatchObject({ isFavorite: false, favoriteAppearance: 'black-hole', isPinned: true, starType: 'nebula', x: 33, y: 44 })
+    expect(atlas.favorite('missing', true)).toBe(false)
+  })
+
   it('covers small libraries and media without embeddings or a PCA model', () => {
     db.upsert(fixture('photo', { category: 'media', mimeType: 'image/png' }))
     db.upsert(fixture('note')); sync()

@@ -24,7 +24,7 @@ interface Options<Place> {
   help: () => void
   metrics: () => void
   collection: (ids: string[]) => void
-  action: (action: 'open' | 'reveal' | 'pin' | 'unpin', file: AtlasFile) => void
+  action: (action: 'open' | 'reveal' | 'pin' | 'unpin' | 'favorite' | 'unfavorite', file: AtlasFile) => void
   notice: (message: string) => void
   capture: () => Place
   restore: (place: Place) => void
@@ -186,7 +186,7 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
     else if (text === 'fit') o.map.current?.fit()
     else if (text === 'collection') o.collection(range.length ? range : o.selectedId ? [o.selectedId] : [])
     else if (text === 'marks') o.notice(marks.current.size ? `Session marks: ${[...marks.current.keys()].join(', ')}` : 'No marks. Use ma to save mark a.')
-    else if (['open', 'reveal', 'pin', 'unpin'].includes(text)) { if (o.selected) o.action(text as 'open' | 'reveal' | 'pin' | 'unpin', o.selected) }
+    else if (['open', 'reveal', 'pin', 'unpin', 'favorite', 'unfavorite'].includes(text)) { if (o.selected) o.action(text as 'open' | 'reveal' | 'pin' | 'unpin' | 'favorite' | 'unfavorite', o.selected) }
     else if (['next', 'n', 'previous', 'prev', 'N'].includes(text)) {
       const step = text === 'next' || text === 'n' ? 1 : -1, i = o.sequence.findIndex(f => f.id === o.selectedId)
       const next = o.sequence[(i + step + o.sequence.length) % o.sequence.length]; if (next) o.select(next)

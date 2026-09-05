@@ -1,4 +1,4 @@
-import type { FileCategory, Star, StarType } from './types'
+import type { FavoriteAppearance, FileCategory, Star, StarType } from './types'
 
 export interface AtlasRegion {
   id: string
@@ -15,6 +15,8 @@ export interface AtlasRegion {
 }
 
 export interface AtlasFile extends Star {
+  isFavorite: boolean
+  favoriteAppearance: FavoriteAppearance
   regionId: string
   neighborhoodId: string
   tags: string[]
@@ -42,9 +44,21 @@ export interface AtlasMarker {
   x: number
   y: number
   type: Star['starType']
+  size: number
+  isFavorite: boolean
+  favoriteAppearance: FavoriteAppearance
+}
+
+export interface AtlasNebula {
+  id: string
+  members: { id: string; x: number; y: number }[]
+  kind: 'duplicates' | 'related'
+  color: string
 }
 
 export interface AtlasSummary {
+  nebulaEpoch?: number
+  nebulae?: AtlasNebula[]
   layoutEpoch?: number
   markers?: AtlasMarker[]
   revision: number

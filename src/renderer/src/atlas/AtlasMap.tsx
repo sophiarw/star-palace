@@ -1,9 +1,10 @@
 import { LabelPainter, type MapLabel } from './labelPainter'
 import { galaxyHaze } from './galaxyHaze'
+import { fileStellarAppearance } from './stellarVisual'
 import { useAtlasTiles } from './useAtlasTiles'
-import { celestialType, CELESTIAL_LABELS } from '@shared/celestial'
+import { CELESTIAL_LABELS } from '@shared/celestial'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import type { AtlasFile, AtlasRegion, AtlasMarker, AtlasScope } from '@shared/atlas'
+import type { AtlasFile, AtlasRegion, AtlasMarker, AtlasScope, AtlasNebula } from '@shared/atlas'
 import { canvasRenderer, gpuRenderer, SPRITE_BYTES, type PointRenderer } from './pointRenderer'
 import { fitCamera, zoomAt, objectRadius, project, seedFor, unproject, type Camera, type ScenePoint } from './scene'
 import { readStored, writeStored } from './storage'
@@ -12,6 +13,7 @@ import { FolderConstellationPainter, folderFor, visibleFolderEdges, type Constel
 interface Props {
   regions: AtlasRegion[]
   markers: AtlasMarker[]
+  nebulae?: AtlasNebula[]
   filter: AtlasScope
   revision: number
   destination: AtlasRegion | null
@@ -58,8 +60,8 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const zoomMotion = useRef<{ from: number; to: number; world: [number, number]; screen: [number, number]; at: number; direction: number } | null>(null)
   const travel = useRef<{ from: Camera; to: Camera; at: number } | null>(null)
   const hazeCanvas = useRef<HTMLCanvasElement>(null)
-  const hazeKey = JSON.stringify(props.markers.map(r => [r.x, r.y]))
-  const haze = useMemo(() => galaxyHaze(JSON.parse(hazeKey).map(([x, y]: [number, number]) => ({ x, y }))), [hazeKey])
+  const hazeKey = JSON.stringify({ points: props.markers.map(({ x, y }) => ({ x, y })), groups: props.nebulae ?? [] })
+  const haze = useMemo(() => { const data = JSON.parse(hazeKey); return galaxyHaze(data.points, data.groups) }, [hazeKey])
   const hazeRef = useRef(haze); hazeRef.current = haze
   const hovered = useRef<string | null>(null), targets = useRef<HitTarget[]>([])
   const labelPainter = useRef(new LabelPainter())
@@ -68,22 +70,15 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean; file?: AtlasFile; wx?: number; wy?: number } | null>(null)
 
   const scene = useMemo(() => {
-    const theme = THEMES[props.theme] ?? THEMES.jwst
-    const points: ScenePoint[] = []
     const realFiles = new Map(files.map(f => [f.id, f]))
-    for (const marker of props.markers) {
-      if (realFiles.has(marker.id)) continue
-      points.push({ id: marker.id, x: marker.x, y: marker.y, radius: marker.id === props.selectedId ? 31 : props.highlights.has(marker.id) ? 28 : 25, objectType: marker.type ?? 'main-sequence', zoomable: true,
-        rotation: (seedFor(marker.id) % 100 / 100 - .5) * .5, color: '#b9d5d7',
-        alpha: props.highlights.size && !props.highlights.has(marker.id) ? .2 : .9 })
-    }
-    for (const file of files) points.push({ id: file.id, x: file.x, y: file.y,
-      objectType: celestialType(file), zoomable: true, rotation: (seedFor(file.id) % 100 / 100 - .5) * .5,
-      radius: file.id === props.selectedId ? 31 : props.highlights.has(file.id) ? 28 : 25,
-      color: file.id === props.selectedId ? '#f4d9a4' : theme.point ?? '#b9d5d7',
-      alpha: props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9 })
-    return points
-  }, [props.markers, files, props.selectedId, props.highlights, props.theme])
+    const samples = [...props.markers.filter(marker => !realFiles.has(marker.id)), ...files]
+    return samples.map((file): ScenePoint => ({
+      id: file.id, x: file.x, y: file.y, radius: 25, stellar: true, sizeBytes: file.size,
+      objectType: fileStellarAppearance(file).objectType, zoomable: true,
+      rotation: (seedFor(file.id) % 100 / 100 - .5) * .5, color: '#f1f1e9',
+      alpha: props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9,
+    }))
+  }, [props.markers, files, props.selectedId, props.highlights])
 
   const invalidate = useCallback((): void => {
     if (!frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; renderCallback.current() })
@@ -169,9 +164,9 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     const sky = hazeCanvas.current?.getContext('2d'), glow = hazeRef.current
     if (sky) {
       sky.setTransform(dpr, 0, 0, dpr, 0, 0); sky.clearRect(0, 0, width, height)
-      if (glow && camera.current.zoom < .3) {
+      if (glow) {
         const [x, y] = project(glow.x, glow.y, camera.current, width, height)
-        sky.globalAlpha = .45 * Math.max(0, Math.min(1, (.3 - camera.current.zoom) / .2))
+        sky.globalAlpha = .65 / (1 + camera.current.zoom * .7)
         sky.drawImage(glow.canvas, x, y, glow.width * camera.current.zoom, glow.height * camera.current.zoom)
       }
       const selection = latest.current.files.find(file => file.id === latest.current.selectedId)
@@ -216,7 +211,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       for (const marker of latest.current.markers) {
         if (hydrated.has(marker.id)) continue
         const [x, y] = project(marker.x, marker.y, camera.current, width, height)
-        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: Math.max(8, objectRadius({ radius: 25, zoomable: true }, camera.current.zoom) * .45), marker })
+        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: Math.max(8, objectRadius({ id: marker.id, radius: 25, zoomable: true, stellar: true, sizeBytes: marker.size, objectType: fileStellarAppearance(marker).objectType }, camera.current.zoom) * .45), marker })
       }
     }
     const ordered = [...files].sort((a, b) => {
@@ -228,7 +223,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       if (drag.current?.file?.id === file.id) { wx = drag.current.wx ?? wx; wy = drag.current.wy ?? wy }
       const [x, y] = project(wx, wy, camera.current, width, height)
       if (x < -25 || y < -25 || x > width + 25 || y > height + 25) continue
-      const radius = objectRadius({ radius: file.id === selectedId ? 31 : highlights.has(file.id) ? 28 : 25, zoomable: true }, camera.current.zoom)
+      const radius = objectRadius({ id: file.id, radius: 25, zoomable: true, stellar: true, sizeBytes: file.size, objectType: fileStellarAppearance(file).objectType }, camera.current.zoom)
       const markerRadius = Math.max(20, radius * .55)
       hitTargets.push({ id: file.id, x, y, radius: Math.max(16, radius * .45), file })
       const focused = file.id === selectedId || highlights.has(file.id)
@@ -255,6 +250,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       host.current.dataset.labels = labelPainter.current.visibleIds.join(',')
       host.current.dataset.camera = JSON.stringify(camera.current)
       host.current.dataset.hydrated = String(files.length)
+      host.current.dataset.nebulae = String(latest.current.nebulae?.length ?? 0)
       host.current.dataset.objectTypes = [...new Set(pointsRef.current.flatMap(p => p.objectType ?? []))].join(',')
       host.current.dataset.renderer = renderer.current.kind
       host.current.dataset.points = String(pointsRef.current.length)
@@ -310,7 +306,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
         invalidate(); return
       }
       const hit = pick(x, y)
-      overlay.title = hit?.file ? `${hit.file.name} · ${CELESTIAL_LABELS[celestialType(hit.file)]}` : hit?.region?.label ?? ''
+      overlay.title = hit?.file ? `${hit.file.name} · ${CELESTIAL_LABELS[fileStellarAppearance(hit.file).objectType]}` : hit?.region?.label ?? ''
       container.style.cursor = hit ? 'pointer' : 'grab'
       if (hovered.current !== (hit?.id ?? null)) { hovered.current = hit?.id ?? null; invalidate() }
     }
@@ -371,7 +367,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     <canvas ref={labelCanvas} className="atlas-label-canvas" aria-hidden="true" />
     <nav className="atlas-sr-only" aria-label="Map destinations">
       {destinations.map(r => <button key={r.id} onClick={() => props.onRegion(r)}>{r.label}, {r.count} files</button>)}
-      {(props.destination?.kind === 'neighborhood' ? files.filter(f => f.neighborhoodId === props.destination!.id) : files.slice(0, 100)).map(f => <button key={f.id} onClick={() => props.onSelect(f)}>{f.name}, {CELESTIAL_LABELS[celestialType(f)]}</button>)}
+      {(props.destination?.kind === 'neighborhood' ? files.filter(f => f.neighborhoodId === props.destination!.id) : files.slice(0, 100)).map(f => <button key={f.id} onClick={() => props.onSelect(f)}>{f.name}, {CELESTIAL_LABELS[fileStellarAppearance(f).objectType]}</button>)}
     </nav>
     <div className="atlas-map-note" aria-hidden="true"><strong>A galaxy of familiar places.</strong><span>Scroll closer to discover each object · Drag to explore · Shift-drag to pin</span></div>
   </div>

@@ -14,7 +14,7 @@
 - [docs/mac-distribution.md](docs/mac-distribution.md): Mac packaging investigation, tested build foundation, and remaining distribution work.
 - [docs/vim-browsing.md](docs/vim-browsing.md): native browsing command mapping, context rules, and unsupported Vim semantics.
 - [docs/folder-constellations.md](docs/folder-constellations.md): stable folder graph, cache invalidation, rendering budgets, and measured cold construction costs.
-- [docs/design/stellar-semantics.md](docs/design/stellar-semantics.md): three proposed visual languages; the user permits rethinking file-type identities, but production artwork awaits selection.
+- [docs/design/stellar-semantics.md](docs/design/stellar-semantics.md): approved Clouds & landmarks language and historical alternatives.
 
 ## Working agreement
 
@@ -44,7 +44,9 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 - `src/renderer/src/atlas/useVimBrowsing.ts`, `vimCommands.ts`: context-aware browsing controller and bounded command grammar; preserve native typing and focused control activation.
 - `src/daemon/atlas/folderConstellations.ts`, `src/renderer/src/atlas/folderConstellations.ts`: complete-folder derived graph and bounded line painter. Geometry never depends on the current viewport.
 - `src/renderer/src/LegacyApp.tsx`: preserved advanced workspace.
-- `src/shared/celestial.ts`: canonical file-type/object mapping; both renderers share it.
+- `src/renderer/src/atlas/stellarVisual.ts`: canonical default-atlas/site palette, byte-size magnitude, and explicit favorite silhouettes. `src/shared/celestial.ts` retains classic file-type classifications.
+- `src/daemon/atlas/NebulaStore.ts`, `nebulaGroups.ts`: cached duplicate/strong-semantic group evidence, independent of folder lines.
+- [docs/favorites.md](docs/favorites.md): authored favorite persistence and UI/API contracts.
 - `src/shared/atlas.ts`: new atlas HTTP contracts.
 - `tests/atlas/`, `tests/browser/`: persistence/search integrity and end-to-end interaction checks.
 - `docs/atlas-validation.md`: measured performance and limitations.
@@ -56,11 +58,9 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 
 Renderer code must not import Node APIs. Embeddings entering HNSW remain L2 normalized. ANN lookup precedes the SQL transaction and ANN insertion follows commit. Derived search/layout indexes should be recoverable and versioned; user-authored state remains authoritative in SQLite.
 
-The user specifically wants intermixed celestial file types and deterministic per-file artwork. Preserve these. Close-up generation must remain bounded and must not create a per-file texture cache for the whole library. New file placement must not separate neighborhoods solely by file type.
+The approved default visual language is **Clouds & landmarks**, shared by the app and website: near-black sky, mostly small pale stars, sparse larger and moderately richer red/blue outliers, and faint colored similarity haze. Byte size changes bounded magnitude. Only explicit favorites become pulsars or black holes; favorites and positional pins remain separate. Preserve legacy manual classifications for the classic workspace and deterministic per-file details.
 
-September 5 clarification: the user now permits rethinking which file properties determine celestial appearance. The three stellar-language proposals explore main-sequence stars, exceptional-file landmarks, and similarity nebulae. Keep the current production artwork until that design is selected; preserve manual metadata and stable positions under any future automatic mapping.
-
-Latest visual decision: **Clouds & landmarks** is selected, with a quieter star-cluster palette and mostly small stars with occasional outliers. Pulsars/black holes represent explicit **favorites**, not automatic byte-size or file-type classes. The review prototype contains this treatment; production integration and persistent favorite metadata remain to be implemented. Favorites and spatial pins are separate user concepts.
+Close-up generation remains bounded (16 slots, two generations per frame); never build a per-file texture cache for the whole library. Summary markers and hydrated files must use identical size/identity rules. Nebulae use matching nonempty content hashes or strong indexed embedding links, never directory membership alone. Folder constellations remain a separate faint-line treatment. Neither changes file positions. Zodiac illustrations and image-specific similarity detection remain deferred.
 
 ## Continuous map and organic layout
 

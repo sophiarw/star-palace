@@ -1,4 +1,5 @@
-import { drawObject } from './celestialSprites'
+import { drawObject, drawStellarObject } from './celestialSprites'
+import { pointStellarAppearance } from './stellarVisual'
 import { objectRadius, project, seedFor, type Camera, type ScenePoint } from './scene'
 
 export const DETAIL_FADE_START = 25
@@ -21,7 +22,7 @@ export class DetailSprites {
       const [x, y] = project(point.x, point.y, camera, width, height), r = objectRadius(point, camera.zoom)
       return x > -r && x < width + r && y > -r && y < height + r
     }).sort((a, b) => Math.hypot(a.x - camera.x, a.y - camera.y) - Math.hypot(b.x - camera.x, b.y - camera.y)).slice(0, DETAIL_LIMIT)
-    const keyFor = (p: ScenePoint) => p.id + ':' + p.objectType
+    const keyFor = (p: ScenePoint) => this.key(p)
     this.enabled = new Set(candidates.map(keyFor))
     const uploads: { slot: number; image: HTMLCanvasElement }[] = []
     let pending = false
@@ -39,15 +40,17 @@ export class DetailSprites {
       const ctx = image.getContext('2d')!
       ctx.scale(DETAIL_CELL / 128, DETAIL_CELL / 128); ctx.translate(64, 64)
       ctx.beginPath(); ctx.rect(-63, -63, 126, 126); ctx.clip()
-      drawObject(ctx, point.objectType, seedFor(point.id), true)
+      if (point.stellar) drawStellarObject(ctx, point.objectType ?? 'main-sequence', seedFor(point.id), pointStellarAppearance(point).color, true)
+      else drawObject(ctx, point.objectType, seedFor(point.id), true)
       const sheet = this.sheet.getContext('2d')!, x = slot % DETAIL_COLUMNS * DETAIL_CELL, y = Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL
       sheet.clearRect(x, y, DETAIL_CELL, DETAIL_CELL); sheet.drawImage(image, x, y)
       this.entries.set(key, { slot, used: ++this.tick }); uploads.push({ slot, image })
     }
     return { uploads, pending }
   }
+  private key(point: ScenePoint): string { return point.id + ':' + point.objectType + (point.stellar ? ':' + pointStellarAppearance(point).color : '') }
   slot(point: ScenePoint): number {
-    const key = point.id + ':' + point.objectType
+    const key = this.key(point)
     return this.enabled.has(key) ? this.entries.get(key)?.slot ?? -1 : -1
   }
   get count(): number { return this.entries.size }

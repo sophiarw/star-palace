@@ -1,4 +1,4 @@
-import { STAR_TYPES, type StarType } from '../src/shared/types'
+import { STAR_TYPES, type FavoriteAppearance, type StarType } from '../src/shared/types'
 import { mkdirSync, statSync, writeFileSync } from 'fs'
 import { resolve, join } from 'path'
 import { createHash } from 'crypto'
@@ -35,6 +35,12 @@ add(join(library, 'Reference', 'analysis.v2_final.md'), '# Long document\n\n' + 
 add(join(library, 'Projects', 'inventory.csv'), 'Product,Quantity,Notes\n' + Array.from({ length: 1500 }, (_, i) => `Item ${i + 1},${i % 37},"A sample, with punctuation"`).join('\n'))
 add(join(library, 'Projects', 'camera.ts'), '// Preserve the point under the pointer while zooming.\nexport function zoomAt(camera: { x: number; y: number; zoom: number }, factor: number) {\n  return { ...camera, zoom: Math.max(0.01, camera.zoom * factor) }\n}\n')
 add(join(library, 'Reference', 'orbital-study.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="700" viewBox="0 0 900 700"><rect width="900" height="700" fill="#101925"/><g fill="none" stroke="#b5c4b1" stroke-width="2"><ellipse cx="450" cy="350" rx="280" ry="140"/><ellipse cx="450" cy="350" rx="180" ry="270" transform="rotate(35 450 350)"/></g><circle cx="450" cy="350" r="32" fill="#e4c897"/><circle cx="680" cy="270" r="11" fill="#a4baca"/></svg>')
+// Explicit favorites belong only to this fictional demo library. Legacy manual
+// classifications above remain stored independently for the classic workspace.
+for (const [relative, appearance] of [['Research/how-places-become-memories.md', 'pulsar'], ['Projects/an-atlas-for-everyday-work.md', 'black-hole']] as [string, FavoriteAppearance][]) {
+  const path = join(library, relative), id = createHash('sha1').update(`${galaxy.id}\0${path}`).digest('hex').slice(0, 16)
+  db.setFavorite(id, true, appearance)
+}
 while (atlas.syncBatch()) { /* complete fixture placement before serving */ }
 console.log(`Atlas fixture: ${db.count()} files in ${root}`)
 db.close()

@@ -1,3 +1,4 @@
+import type { FavoriteAppearance } from '../../shared/types'
 import { organicLayout, cloudOffset, LEGACY_ATLAS_SCALE, type LayoutFile } from './organicLayout'
 import { celestialType } from '../../shared/celestial'
 import type { StarType } from '../../shared/types'
@@ -7,6 +8,7 @@ import type { FileIndex, IndexedFile } from '../db/FileIndex'
 import type { AtlasFile, AtlasScope, AtlasRegion, AtlasSummary, AtlasHit, AtlasSnapshot, AtlasMarker } from '../../shared/atlas'
 import { ATLAS_COLORS } from '../../shared/atlas'
 import { folderConstellations, type FolderPoint } from './folderConstellations'
+import { NebulaStore } from './NebulaStore'
 
 const GROUP_CAP = 96
 const REGION_CAP = 24
@@ -36,6 +38,7 @@ export function ftsQuery(query: string): string {
 }
 
 export class AtlasStore {
+  private readonly nebulaStore: NebulaStore
   private folderGraph: { paths: Map<string, string>; links: ReturnType<typeof folderConstellations> } | null = null
   constructor(readonly index: FileIndex) {
     index.db.exec(`
@@ -69,6 +72,10 @@ export class AtlasStore {
       CREATE INDEX IF NOT EXISTS atlas_fts_rows_file ON atlas_fts_rows(file_id);
       INSERT OR IGNORE INTO atlas_fts_rows SELECT rowid,file_id FROM atlas_fts;
       CREATE TABLE IF NOT EXISTS atlas_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, payload TEXT NOT NULL, file_count INTEGER NOT NULL);
+      CREATE TRIGGER IF NOT EXISTS atlas_favorite_update AFTER UPDATE OF is_favorite,favorite_appearance ON files
+      WHEN new.is_favorite != old.is_favorite OR new.favorite_appearance != old.favorite_appearance BEGIN
+        UPDATE atlas_state SET revision=revision+1 WHERE id=1;
+      END;
       CREATE TRIGGER IF NOT EXISTS atlas_name_delete BEFORE DELETE ON files BEGIN
         DELETE FROM atlas_names WHERE rowid=old.rowid;
       END;
@@ -89,6 +96,7 @@ export class AtlasStore {
     if (!(index.db.prepare('PRAGMA table_info(atlas_state)').all() as { name: string }[]).some(c => c.name === 'layout_epoch')) {
       index.db.exec('ALTER TABLE atlas_state ADD COLUMN layout_epoch INTEGER NOT NULL DEFAULT 0')
     }
+    this.nebulaStore = new NebulaStore(index)
   }
 
   get revision(): number { return (this.index.db.prepare('SELECT revision FROM atlas_state WHERE id=1').get() as { revision: number }).revision }
@@ -312,18 +320,19 @@ export class AtlasStore {
     // for aggregates: hydration only adds detail to these same coordinates.
     const groups = regions.filter(r => r.kind === 'neighborhood')
     const sampleCount = Math.max(1, Math.floor(4096 / Math.max(1, groups.length)))
-    const markerJoin = filter.sql ? 'JOIN files f ON f.id=p.id' : ''
-    const sample = this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type FROM atlas_positions p
+    const markerJoin = 'JOIN files f ON f.id=p.id'
+    const sample = this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type,f.size,f.is_favorite isFavorite,f.favorite_appearance favoriteAppearance FROM atlas_positions p
       ${markerJoin} JOIN atlas_object_types o ON o.id=p.id
       WHERE p.neighborhood_id=?${filter.sql} ORDER BY p.rowid LIMIT ?`)
     const markers = regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0) <= 4096
-      ? this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type FROM atlas_positions p ${markerJoin} JOIN atlas_object_types o ON o.id=p.id WHERE 1${filter.sql}`).all(...filter.args) as AtlasMarker[] : []
+      ? this.index.db.prepare(`SELECT p.id,p.x,p.y,p.region_id regionId,p.neighborhood_id neighborhoodId,o.type,f.size,f.is_favorite isFavorite,f.favorite_appearance favoriteAppearance FROM atlas_positions p ${markerJoin} JOIN atlas_object_types o ON o.id=p.id WHERE 1${filter.sql}`).all(...filter.args) as AtlasMarker[] : []
     const stride = Math.max(1, Math.ceil(groups.length / 4096))
     if (!markers.length) for (let i = 0; i < groups.length; i += stride) markers.push(...sample.all(groups[i].id, ...filter.args, sampleCount) as AtlasMarker[])
     const layoutEpoch = (this.index.db.prepare('SELECT layout_epoch FROM atlas_state WHERE id=1').get() as { layout_epoch: number }).layout_epoch
-    return { layoutEpoch, markers, revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
+    return { layoutEpoch, nebulaEpoch: this.nebulaStore.epoch, markers: markers.map(marker => ({ ...marker, isFavorite: Boolean(marker.isFavorite) })), revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
       searchable: (this.index.db.prepare("SELECT count(*) n FROM atlas_documents WHERE status != 'pending'").get() as { n: number }).n,
-      pending: (this.index.db.prepare('SELECT count(*) n FROM atlas_dirty').get() as { n: number }).n, regions }
+      pending: (this.index.db.prepare('SELECT count(*) n FROM atlas_dirty').get() as { n: number }).n, regions,
+      nebulae: this.nebulaStore.groups(new Set(markers.map(marker => marker.id))) }
   }
 
   private region(r: RegionRow, count = r.member_count): AtlasRegion { return { id: r.id, parentId: r.parent_id, galaxyId: r.galaxy_id, label: r.label, kind: r.kind, x: r.x, y: r.y, radius: r.radius, color: r.color, count } }
@@ -332,7 +341,7 @@ export class AtlasStore {
     const f = this.index.get(id), p = this.position(id)
     if (!f || !p) return null
     const { embedding, contentHash: _hash, z: _z, embeddingStrategy: _strategy, ...rest } = f
-    return { ...rest, x: p.x, y: p.y, tags: f.tags ?? [], isPinned: p.pinned === 1, regionId: p.region_id,
+    return { ...rest, isFavorite: f.isFavorite ?? false, favoriteAppearance: f.favoriteAppearance ?? 'pulsar', x: p.x, y: p.y, tags: f.tags ?? [], isPinned: p.pinned === 1, regionId: p.region_id,
       neighborhoodId: p.neighborhood_id, hasEmbedding: embedding !== null, extractionStatus: (this.index.db.prepare('SELECT status FROM atlas_documents WHERE id=?').get(id) as { status: string } | undefined)?.status ?? 'pending' }
   }
 
@@ -400,6 +409,12 @@ export class AtlasStore {
     const filter = this.scope(scope)
     const rows = this.index.db.prepare(`SELECT f.id,f.embedding FROM files f JOIN atlas_positions p ON p.id=f.id WHERE f.embedding IS NOT NULL AND f.id > ?${filter.sql} ORDER BY f.id LIMIT ?`).all(after, ...filter.args, limit) as { id: string; embedding: Buffer }[]
     return rows.map(r => ({ id: r.id, embedding: new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4) }))
+  }
+
+  favorite(id: string, isFavorite: boolean, appearance?: FavoriteAppearance): boolean {
+    if (!this.position(id) || !this.index.get(id)) return false
+    this.index.setFavorite(id, isFavorite, appearance)
+    return true
   }
 
   pin(id: string, x: number | null, y: number | null): boolean {

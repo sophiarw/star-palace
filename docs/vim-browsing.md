@@ -2,7 +2,7 @@
 
 Star Palace has native Normal-mode browsing keys in the atlas, file list/grid, search results, and reader. Use **`:help`**, **F1**, or the **Commands** button for the in-app reference. `:` opens a command field; its Up/Down keys recall this session's command history.
 
-This first implementation covers navigation, search, file ranges, marks, and a small set of app commands. It does not emulate a text editor or implement all Vim commands. Original files stay unchanged by these commands; explicit `:pin` and `:unpin` update atlas metadata, and `:collection` opens the existing reviewable collection form.
+This first implementation covers navigation, search, file ranges, marks, and a small set of app commands. It does not emulate a text editor or implement all Vim commands. Original files stay unchanged by these commands; explicit `:favorite`, `:unfavorite`, `:pin`, and `:unpin` update atlas metadata, and `:collection` opens the existing reviewable collection form.
 
 ## Contexts and commands
 
@@ -41,7 +41,7 @@ Visual selection is highlighted in list/search cards and on the map, with a sele
 
 ## Command field
 
-Supported commands: `help`/`h`/`commands`, `map`, `list`, `grid`, `next`/`n`, `previous`/`prev`/`N`, `open`, `reveal`, `pin`, `unpin`, `collection`, `marks`, `fit`, `noh`/`nohlsearch`, and `q`/`quit`/`close`. `q` closes/collapses the reader, not the browser tab. Unknown commands produce a visible message. There is no shell execution or Ex expression evaluation.
+Supported commands: `help`/`h`/`commands`, `map`, `list`, `grid`, `next`/`n`, `previous`/`prev`/`N`, `open`, `reveal`, `favorite`, `unfavorite`, `pin`, `unpin`, `collection`, `marks`, `fit`, `noh`/`nohlsearch`, and `q`/`quit`/`close`. `q` closes/collapses the reader, not the browser tab. Unknown commands produce a visible message. There is no shell execution or Ex expression evaluation.
 
 ## Compatibility decisions and remaining vocabulary
 

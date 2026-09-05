@@ -1,5 +1,5 @@
 import type { AtlasFile, AtlasPage, AtlasScope, AtlasSearchResponse, AtlasSnapshot, AtlasSummary } from '@shared/atlas'
-import type { FileContent } from '@shared/types'
+import type { FavoriteAppearance, FileContent } from '@shared/types'
 
 const BASE = `http://127.0.0.1:${(import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT ?? 7373}/api/atlas`
 
@@ -25,6 +25,7 @@ export const atlasApi = {
   file: (id: string, signal?: AbortSignal) => request<AtlasFile>('/file/' + encodeURIComponent(id), { signal }),
   text: (id: string, signal?: AbortSignal) => request<FileContent & { status: string; error: string | null }>('/file/' + encodeURIComponent(id) + '/text', { signal }),
   search: (query: string, scope: AtlasScope, mode: 'exact' | 'related', signal?: AbortSignal) => request<AtlasSearchResponse>('/search', { ...body({ query, ...scope, mode, limit: 60 }), signal }),
+  favorite: (id: string, isFavorite: boolean, favoriteAppearance?: FavoriteAppearance) => request<{ file: AtlasFile; revision: number }>('/file/' + encodeURIComponent(id) + '/favorite', body({ isFavorite, favoriteAppearance })),
   pin: (id: string, x: number | null, y: number | null) => request<{ file: AtlasFile }>('/file/' + encodeURIComponent(id) + '/pin', body({ x, y })),
   rename: (id: string, label: string) => request('/region/' + encodeURIComponent(id), { ...body({ label }), method: 'PATCH' }),
   snapshots: () => request<AtlasSnapshot[]>('/snapshots'),

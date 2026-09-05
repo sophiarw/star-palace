@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { FileIndex } from '../../src/daemon/db/FileIndex'
 import type { IndexedFile } from '../../src/daemon/db/FileIndex'
@@ -48,6 +51,31 @@ describe('FileIndex', () => {
 
   afterEach(() => {
     idx.close()
+  })
+
+  it('preserves explicit favorites, their appearance, and legacy metadata across reindex', () => {
+    idx.upsert(makeFile({ isPinned: true, starType: 'nebula' }))
+    expect(idx.get('test001')).toMatchObject({ isFavorite: false, favoriteAppearance: 'pulsar' })
+    expect(idx.setFavorite('test001', true, 'black-hole')).toBe(true)
+    idx.upsert(makeFile({ name: 'changed.md', size: 999, isFavorite: false, favoriteAppearance: 'pulsar' }))
+    expect(idx.get('test001')).toMatchObject({ name: 'changed.md', size: 999, isFavorite: true, favoriteAppearance: 'black-hole', isPinned: true, starType: 'nebula' })
+    expect(idx.setFavorite('test001', false)).toBe(true)
+    expect(idx.get('test001')).toMatchObject({ isFavorite: false, favoriteAppearance: 'black-hole', isPinned: true, starType: 'nebula' })
+    expect(idx.setFavorite('test001', false)).toBe(false)
+  })
+
+  it('migrates a pre-favorite library additively and preserves preferences on reopen', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'starpalace-favorite-migration-')), dbPath = join(directory, 'index.db')
+    let library: FileIndex | null = null
+    try {
+      library = new FileIndex({ dbPath }); library.upsert(makeFile({ starType: 'quasar', isPinned: true, tags: ['keep'] }))
+      library.db.exec('ALTER TABLE files DROP COLUMN is_favorite; ALTER TABLE files DROP COLUMN favorite_appearance')
+      library.close(); library = new FileIndex({ dbPath })
+      expect(library.get('test001')).toMatchObject({ isFavorite: false, favoriteAppearance: 'pulsar', starType: 'quasar', isPinned: true, tags: ['keep'] })
+      library.setFavorite('test001', true, 'black-hole')
+      library.close(); library = new FileIndex({ dbPath })
+      expect(library.get('test001')).toMatchObject({ isFavorite: true, favoriteAppearance: 'black-hole', starType: 'quasar', isPinned: true, tags: ['keep'] })
+    } finally { library?.close(); rmSync(directory, { recursive: true, force: true }) }
   })
 
   it('upserts and retrieves a file', () => {

@@ -1,6 +1,7 @@
 import type { StarType } from '@shared/types'
+import { pointStellarAppearance } from './stellarVisual'
 export interface Camera { x: number; y: number; zoom: number }
-export interface ScenePoint { id: string; x: number; y: number; radius: number; color: string; alpha: number; objectType?: StarType; rotation?: number; zoomable?: boolean }
+export interface ScenePoint { id: string; x: number; y: number; radius: number; color: string; alpha: number; objectType?: StarType; rotation?: number; zoomable?: boolean; stellar?: boolean; sizeBytes?: number }
 export interface LabelBox { x: number; y: number; width: number; height: number }
 
 export function project(x: number, y: number, camera: Camera, width: number, height: number): [number, number] {
@@ -24,14 +25,15 @@ export function seedFor(id: string): number {
   return seed >>> 0
 }
 
-export function objectRadius(point: Pick<ScenePoint, 'radius' | 'zoomable'>, zoom: number): number {
-  if (!point.zoomable) return point.radius
+export function objectRadius(point: Pick<ScenePoint, 'radius' | 'zoomable'> & Partial<Pick<ScenePoint, 'id' | 'stellar' | 'sizeBytes' | 'objectType'>>, zoom: number): number {
+  const radius = point.radius * (point.stellar ? pointStellarAppearance(point).radiusScale : 1)
+  if (!point.zoomable) return radius
   // Retain the distant galaxy's density, then settle into a readable icon size.
   // At browsing distance, quadrupling zoom grows the icon by only about 40%.
   const distant = Math.max(.12, Math.min(8, Math.sqrt(zoom / 1.5)))
   const readable = Math.min(8, 1.6 * Math.pow(zoom / .5, .25))
   const t = Math.max(0, Math.min(1, (zoom - .06) / .34)), blend = t * t * (3 - 2 * t)
-  return point.radius * (distant + (readable - distant) * blend)
+  return radius * (distant + (readable - distant) * blend)
 }
 
 /** Zoom around a fixed screen point; content loading never changes this camera. */

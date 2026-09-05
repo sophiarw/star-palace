@@ -1,12 +1,18 @@
 import { STAR_TYPES, type StarType } from '@shared/types'
+import { FAVORITE_COLOR, STELLAR_PALETTE } from './stellarVisual'
 
-// One fixed sheet for every file: 31 sprites, 2 MiB; no per-file image cache.
+// Fixed legacy plus canonical stellar palette sheet; no per-file overview textures.
 export const SPRITE_CELL = 128
 export const SPRITE_COLUMNS = 8
-export const SPRITE_ROWS = 4
+export const SPRITE_ROWS = 16
 const VARIANTS = 3
 let sheet: HTMLCanvasElement | null = null
-export const spriteIndex = (type?: StarType, seed = 0): number => type ? 1 + STAR_TYPES.indexOf(type) * VARIANTS + (seed >>> 0) % VARIANTS : 0
+const STELLAR_OFFSET = 1 + STAR_TYPES.length * VARIANTS
+export const spriteIndex = (type?: StarType, seed = 0, color?: string): number => {
+  if (color && type === 'main-sequence') return STELLAR_OFFSET + Math.max(0, STELLAR_PALETTE.indexOf(color))
+  if (color && (type === 'pulsar' || type === 'black-hole')) return STELLAR_OFFSET + STELLAR_PALETTE.length + (type === 'pulsar' ? 0 : 1)
+  return type ? 1 + STAR_TYPES.indexOf(type) * VARIANTS + (seed >>> 0) % VARIANTS : 0
+}
 
 export function celestialSheet(): HTMLCanvasElement {
   if (sheet) return sheet
@@ -17,6 +23,13 @@ export function celestialSheet(): HTMLCanvasElement {
     ctx.save(); ctx.translate((i % SPRITE_COLUMNS) * SPRITE_CELL + 64, Math.floor(i / SPRITE_COLUMNS) * SPRITE_CELL + 64)
     ctx.beginPath(); ctx.rect(-63, -63, 126, 126); ctx.clip()
     drawObject(ctx, i === 0 ? undefined : STAR_TYPES[Math.floor((i - 1) / VARIANTS)], (i - 1) % VARIANTS)
+    ctx.restore()
+  }
+  for (let i = 0; i < STELLAR_PALETTE.length + 2; i++) {
+    const index = STELLAR_OFFSET + i
+    ctx.save(); ctx.translate(index % SPRITE_COLUMNS * SPRITE_CELL + 64, Math.floor(index / SPRITE_COLUMNS) * SPRITE_CELL + 64)
+    ctx.beginPath(); ctx.rect(-63, -63, 126, 126); ctx.clip()
+    drawStellarObject(ctx, i < STELLAR_PALETTE.length ? 'main-sequence' : i === STELLAR_PALETTE.length ? 'pulsar' : 'black-hole', 42, STELLAR_PALETTE[i] ?? FAVORITE_COLOR)
     ctx.restore()
   }
   sheet = canvas
@@ -89,4 +102,45 @@ export function drawObject(ctx: Ctx, type: StarType | undefined, seed: number, d
     for (let i = 0; i < 4; i++) { ctx.strokeStyle = i % 2 ? '#9bd0d047' : '#c6b0db3a'; ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(-34, 16 - i * 9); ctx.bezierCurveTo(-17, 34 - i * 14, 5, -35 + i * 9, 34, -18 + i * 7); ctx.stroke() }
     star(ctx, -13, 4, 2.4, '#e4d5f0'); star(ctx, 15, -6, 1.8, '#bfebec'); star(ctx, 4, 12, 1.4, '#f3dfc7')
   }
+}
+
+/** Canonical pale cluster artwork, matching the approved visual study. */
+export function drawStellarObject(ctx: Ctx, type: StarType, seed: number, color: string, detailed = false): void {
+  let state = seed >>> 0
+  const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296 }
+  const rgba = (hex: string, alpha: number) => hex + Math.round(Math.max(0, Math.min(1, alpha)) * 255).toString(16).padStart(2, '0')
+  const halo = (x: number, y: number, radius: number, tint: string, alpha: number) => {
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius)
+    for (const [stop, opacity] of [[0, .62], [.18, .42], [.42, .16], [.72, .04], [1, 0]]) gradient.addColorStop(stop, rgba(tint, opacity * alpha))
+    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill()
+  }
+  const core = (radius: number) => {
+    halo(0, 0, radius * 4.3, color, .65)
+    const gradient = ctx.createRadialGradient(-radius * .17, -radius * .17, 0, 0, 0, radius)
+    gradient.addColorStop(0, '#fffefa'); gradient.addColorStop(.32, '#fffef2'); gradient.addColorStop(.62, color); gradient.addColorStop(1, rgba(color, .3))
+    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.save(); ctx.scale(1.225, 1.225)
+  if (type === 'pulsar') {
+    // Keep the silhouette identical across overview/detail; seed changes surface only.
+    ctx.rotate(-.3); halo(0, 0, 30, color, .75); ring(ctx, 19, 7, rgba(color, .55), .8)
+    beam(ctx, 41, 6, color); beam(ctx, 38, 1.3, '#d6f4ff'); core(5.4)
+  } else if (type === 'black-hole') {
+    halo(0, 0, 38, color, .8)
+    for (let i = 0; i < 5; i++) ring(ctx, 23 - i, 8 - i * .6, rgba(color, .14 + i * .12), 1)
+    ctx.fillStyle = '#020304'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = rgba(color, .95); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 10.5, Math.PI, Math.PI * 2); ctx.stroke()
+    ring(ctx, 23, 8, '#fff2cd', .65, 0, Math.PI)
+  } else {
+    halo(0, 0, 42, color, .26); core(9)
+    if (detailed) {
+      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.clip()
+      for (let i = 0; i < 90; i++) {
+        const angle = random() * Math.PI * 2, radius = Math.sqrt(random()) * 9
+        ctx.fillStyle = i % 3 ? rgba(color, .23) : '#fffbd03c'; ctx.beginPath(); ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius, .2 + random() * .6, 0, Math.PI * 2); ctx.fill()
+      }
+      ctx.restore()
+    }
+  }
+  ctx.restore()
 }

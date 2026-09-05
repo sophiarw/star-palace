@@ -63,7 +63,7 @@ export const VIM_HELP: readonly [string, string][] = [
   ['gt / gT', 'Next / previous map, list, or grid view.'],
   ['Enter · o / O · gf', 'Expand reader; open file / reveal folder; open file in its default app.'],
   ['+ / − · zz / zt / zb · zf', 'Map zoom; center selected file (reader: center / top / bottom of current match); fit map.'],
-  [':help · F1 · :commands', 'Command reference. :map, :list, :grid, :next, :previous, :pin, :unpin, :collection, :marks, :q also work.'],
+  [':help · F1 · :commands', 'Command reference. :map, :list, :grid, :next, :previous, :favorite, :unfavorite, :pin, :unpin, :collection, :marks, :q also work.'],
 ]
 
 /** Move through a jump stack without replaying asynchronous intermediate restores. */

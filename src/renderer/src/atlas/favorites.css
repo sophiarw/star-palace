@@ -1,0 +1,7 @@
+.atlas-favorite-indicator { color: #f4cf6a; }
+.atlas-favorite-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.atlas-favorite-controls button, .atlas-favorite-controls select { border: 1px solid #556878; border-radius: 5px; padding: 7px 10px; background: #111d29; color: #d4e0ed; }
+.atlas-favorite-controls button.is-favorite { color: #ffe09a; border-color: #b99957; }
+.atlas-favorite-controls label { display: flex; flex-direction: column; gap: 4px; color: #99adbf; font-size: 11px; }
+.atlas-file-emblem.atlas-stellar-emblem { background: transparent; border: 0; display: flex; align-items: center; gap: 5px; width: auto; }
+.atlas-stellar-emblem span { font-size: 10px; color: #a6b7c8; }

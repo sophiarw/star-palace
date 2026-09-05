@@ -1,5 +1,4 @@
-import { CELESTIAL_LABELS, CELESTIAL_REASONS, celestialType } from '@shared/celestial'
-import { STAR_TYPES } from '@shared/types'
+import { fileStellarAppearance } from './stellarVisual'
 import { CelestialIcon } from './CelestialIcon'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { AtlasFile, AtlasHit, AtlasRegion, AtlasScope, AtlasSnapshot, AtlasSummary } from '@shared/atlas'
@@ -16,6 +15,7 @@ import { readStored, writeStored } from './storage'
 import { useAtlasSearch } from './useAtlasSearch'
 import './atlas.css'
 import './vim.css'
+import './favorites.css'
 import { useVimBrowsing } from './useVimBrowsing'
 import { VIM_HELP } from './vimCommands'
 
@@ -47,6 +47,7 @@ export default function AtlasApp() {
   // Search honors all current filters. Clicking a result navigates the map
   // without replacing the scope under an in-progress search.
   const search = useAtlasSearch(query, scope, searchMode)
+  const updateSearchFile = search.updateFile
   const [searchDestination, setSearchDestination] = useState<AtlasRegion | null>(null)
   const baseScope = useMemo(() => { const { regionId: _r, neighborhoodId: _n, ...base } = JSON.parse(scopeKey) as AtlasScope; return base }, [scopeKey])
   const baseScopeKey = JSON.stringify(baseScope)
@@ -65,7 +66,7 @@ export default function AtlasApp() {
         const next = await atlasApi.summary(JSON.parse(baseScopeKey) as AtlasScope, abort.signal)
         if (abort.signal.aborted) return
         setSummaryScopeKey(baseScopeKey)
-        setSummary(previous => next.revision === previous.revision && JSON.stringify(previous.regions) === JSON.stringify(next.regions) ? previous : next)
+        setSummary(previous => next.revision === previous.revision && next.nebulaEpoch === previous.nebulaEpoch && JSON.stringify(previous.regions) === JSON.stringify(next.regions) ? previous : next)
         setError(current => current?.startsWith('The local library is unavailable.') ? null : current)
       } catch { if (!abort.signal.aborted) setError('The local library is unavailable. Start the daemon, then retry.') }
       finally { inFlight = false; if (!abort.signal.aborted) setLoading(false) }
@@ -126,8 +127,8 @@ export default function AtlasApp() {
     if (group) setSearchDestination(group)
   }, [selectFile, summary.regions])
   const changeFile = useCallback((file: AtlasFile) => {
-    setSelected(file); setFiles(current => current.map(f => f.id === file.id ? file : f)); setRefresh(n => n + 1)
-  }, [])
+    setSelected(file); setFiles(current => current.map(f => f.id === file.id ? file : f)); setVisibleFiles(current => current.map(f => f.id === file.id ? { ...file, folderLinks: f.folderLinks } : f)); updateSearchFile(file); setRefresh(n => n + 1)
+  }, [updateSearchFile])
   const sequence = query.trim() ? search.results.map(h => h.file) : view === 'map' ? visibleFiles : files
   const cycle = useCallback((step: number) => {
     if (!sequence.length) return
@@ -167,6 +168,7 @@ export default function AtlasApp() {
     action: (action, file) => { void act(async () => {
       if (action === 'open') await openFile(file.id)
       else if (action === 'reveal') await revealFile(file.id)
+      else if (action === 'favorite' || action === 'unfavorite') { const result = await atlasApi.favorite(file.id, action === 'favorite'); changeFile(result.file); setNotice(action === 'favorite' ? 'File favorited' : 'Favorite removed') }
       else { const result = await atlasApi.pin(file.id, action === 'unpin' ? null : file.x, action === 'unpin' ? null : file.y); changeFile(result.file); setNotice(action === 'pin' ? 'File pinned' : 'File unpinned') }
     }) },
     capture: () => ({ name: title, scope: fileScope, selectedId, camera: map.current?.camera(), cameraKey }),
@@ -200,15 +202,15 @@ export default function AtlasApp() {
           {scope.collectionId && <button onClick={() => setDialog('collection')}>Manage collection</button>}
         </div>
         <div className="atlas-stage">
-          {view === 'map' ? <AtlasMap ref={map} scopeKey={cameraKey} regions={summary.regions} markers={summary.markers ?? []} filter={baseScope} destination={sceneGroup ?? region} revision={summary.revision} files={mapFiles} selectedId={selectedId} highlights={vim.visual ? new Set([...highlights, ...vim.range]) : highlights} theme={theme} constellations={constellations}
+          {view === 'map' ? <AtlasMap ref={map} scopeKey={cameraKey} regions={summary.regions} markers={summary.markers ?? []} nebulae={summary.nebulae ?? []} filter={baseScope} destination={sceneGroup ?? region} revision={summary.revision} files={mapFiles} selectedId={selectedId} highlights={vim.visual ? new Set([...highlights, ...vim.range]) : highlights} theme={theme} constellations={constellations}
             onRegion={showRegion} onFiles={setVisibleFiles} onSelectId={id => void selectId(id)} onSelect={selectFile} onRead={() => setExpanded(true)} onPin={(id, x, y) => void act(async () => { const result = await atlasApi.pin(id, x, y); changeFile(result.file) })} onMetrics={setMetrics} />
             : <div className={`atlas-file-browser atlas-file-browser-${view}`} aria-label="Files">{displayFiles.map(file => <button key={file.id} data-vim-file={file.id} aria-pressed={selectedId === file.id || vim.range.includes(file.id)} className={`atlas-file-tile ${selectedId === file.id ? 'is-selected' : ''} ${vim.range.includes(file.id) ? 'is-vim-selected' : ''}`} onClick={() => selectFile(file)} onDoubleClick={() => setExpanded(true)}>
-              <span className={`atlas-tile-icon atlas-type-${file.category}`}>{file.mimeType.startsWith('image/') && view === 'grid' ? <img src={`http://127.0.0.1:${((import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT) ?? 7373}/api/file/${file.id}/raw`} alt="" loading="lazy" /> : <CelestialIcon type={celestialType(file)} size={view === 'grid' ? 90 : 40} />}</span>
-              <span className="atlas-tile-title"><Highlighted text={file.name} query={query} /><small>{file.path}</small></span><span className="atlas-tile-meta">{file.isPinned ? '⌖ ' : ''}{new Date(file.modifiedAt).toLocaleDateString()}</span>
+              <span className={`atlas-tile-icon atlas-type-${file.category}`}>{file.mimeType.startsWith('image/') && view === 'grid' ? <img src={`http://127.0.0.1:${((import.meta as ImportMeta & { env: { VITE_DAEMON_PORT?: string } }).env.VITE_DAEMON_PORT) ?? 7373}/api/file/${file.id}/raw`} alt="" loading="lazy" /> : <CelestialIcon type={fileStellarAppearance(file).objectType} color={fileStellarAppearance(file).color} size={view === 'grid' ? 90 : 40} />}</span>
+              <span className="atlas-tile-title"><Highlighted text={file.name} query={query} /><small>{file.path}</small></span><span className="atlas-tile-meta">{file.isFavorite && <span className="atlas-favorite-indicator" aria-label="Favorite" title={`${file.favoriteAppearance === 'black-hole' ? 'Black hole' : 'Pulsar'} favorite`}>★ </span>}{file.isPinned ? '⌖ ' : ''}{new Date(file.modifiedAt).toLocaleDateString()}</span>
             </button>)}{!displayFiles.length && <div className="atlas-empty"><h2>{query ? 'No matching files' : 'No files in this scope'}</h2><p>Choose another region or adjust your filters.</p></div>}</div>}
           {view === 'map' && query.trim() && <section className="atlas-results" aria-label="Search results"><header><span>{search.results.length} matches</span><button onClick={() => setDialog('collection')}>Save results</button></header>
             {search.status === 'searching' && <p className="atlas-results-state">Searching your library…</p>}
-            {search.results.map((hit, i) => <button key={hit.file.id} data-vim-file={hit.file.id} className={`atlas-result ${vim.range.includes(hit.file.id) ? 'is-vim-selected' : ''} ${i === activeResult ? 'is-active' : ''} ${hit.file.id === selectedId ? 'is-selected' : ''}`} onClick={() => { setActiveResult(i); selectHit(hit) }}><strong><Highlighted text={hit.file.name} query={query} /></strong><small>{hit.reason === 'related' ? 'Related by meaning' : `Matches ${hit.reason}`}</small><p><Highlighted text={hit.snippet} query={query} /></p></button>)}
+            {search.results.map((hit, i) => <button key={hit.file.id} data-vim-file={hit.file.id} className={`atlas-result ${vim.range.includes(hit.file.id) ? 'is-vim-selected' : ''} ${i === activeResult ? 'is-active' : ''} ${hit.file.id === selectedId ? 'is-selected' : ''}`} onClick={() => { setActiveResult(i); selectHit(hit) }}><strong>{hit.file.isFavorite && <span className="atlas-favorite-indicator" aria-label="Favorite">★ </span>}<Highlighted text={hit.file.name} query={query} /></strong><small>{hit.reason === 'related' ? 'Related by meaning' : `Matches ${hit.reason}`}</small><p><Highlighted text={hit.snippet} query={query} /></p></button>)}
             {search.status === 'enriching' && <p className="atlas-results-state">Looking for related files…</p>}{search.error && <p className="atlas-results-state">{search.error}</p>}{search.status === 'ready' && !search.results.length && <p className="atlas-results-state">No matches. Try a filename, a phrase, or a broader scope.</p>}
           </section>}
           {!loading && !summary.positioned && !query && <div className="atlas-empty"><span>✧</span><h2>{summary.total ? 'No visible regions' : 'A universe waiting to be discovered.'}</h2><p>{summary.total ? 'Show a source or clear your filters to return to your files.' : 'Add a folder. Your files will find a place in the atlas.'}</p><button className="atlas-primary-button" onClick={() => summary.total ? navigate({}) : setDialog('sources')}>{summary.total ? 'Show all files' : 'Add your first folder'}</button></div>}
@@ -225,13 +227,18 @@ export default function AtlasApp() {
     {error && <div className="atlas-toast atlas-toast-error" role="alert">{error}<button onClick={() => { setError(null); setRefresh(n => n + 1) }}>Retry</button><button aria-label="Dismiss error" onClick={() => setError(null)}>×</button></div>}
     {notice && <div className="atlas-toast" role="status">{notice}</div>}
     {progress.status === 'running' && <div className="atlas-index-status" role="status"><span className="atlas-status-dot" />Indexing · {progress.scanned} files{progress.stalled ? ' · Waiting for model' : ''}<button onClick={() => jobId && void cancelIndex(jobId)}>Stop</button></div>}
-    {dialog === 'objects' && <Modal title="A sky full of different things" onClose={() => setDialog(null)}><p className="atlas-muted">File types have their own celestial identities. They share the same neighborhoods. You can also choose any object in a file’s details.</p><div className="atlas-object-guide">{STAR_TYPES.map(type => <div key={type}><CelestialIcon type={type} /><span><strong>{CELESTIAL_LABELS[type]}</strong><small>{CELESTIAL_REASONS[type]}</small></span></div>)}</div></Modal>}
+    {dialog === 'objects' && <Modal title="Object guide" onClose={() => setDialog(null)}><p className="atlas-muted">Files are stars. Their size and brightness follow file size on a bounded scale, so small notes stay visible and large files leave room for their neighbors. Most stars are pale, with occasional larger stars showing richer warm or cool color. Each file keeps its own deterministic character.</p><div className="atlas-object-guide">
+      {[{ id: 'guide-small', size: 1024, label: 'Small files', detail: 'Smaller, dimmer stars' }, { id: 'guide-middle', size: 1048576, label: 'Medium files', detail: 'More size and luminosity' }, { id: 'guide-large', size: 1073741824, label: 'Large files', detail: 'Bright stars with a bounded footprint' }].map(item => { const appearance = fileStellarAppearance(item); return <div key={item.id}><CelestialIcon type={appearance.objectType} color={appearance.color} size={64 * appearance.radiusScale} /><span><strong>{item.label}</strong><small>{item.detail}</small></span></div> })}
+      <div><CelestialIcon type="pulsar" color="#d5dfe9" /><span><strong>Favorites</strong><small>Mark a file as a favorite to give it a pulsar or black-hole appearance. Favoriting does not pin its position.</small></span></div>
+      <div><CelestialIcon type="black-hole" color="#d5dfe9" /><span><strong>Black-hole favorites</strong><small>An alternative landmark for a favorite file, chosen in its reader.</small></span></div>
+      <div><CelestialIcon type="nebula" color="#b7a2ed" /><span><strong>Similarity nebulae</strong><small>Clouds surround groups with matching content or strong similarity evidence. A nebula represents a group, not an individual file.</small></span></div>
+    </div><p className="atlas-muted">Folder lines connect files in the same folder. File extensions and filters still identify formats. Earlier manual object choices remain available in the advanced workspace.</p></Modal>}
     {dialog === 'sources' && <Modal title="Your sources" onClose={() => setDialog(null)}><p className="atlas-muted">Index a folder to add its files. Names and previews work even when the embedding model is offline.</p><form className="atlas-form" onSubmit={e => { e.preventDefault(); const form = new FormData(e.currentTarget); void act(async () => { const job = await startIndex(String(form.get('path')), String(form.get('name')) || undefined); setJobId(job.jobId); setDialog(null); setNotice('Indexing started'); setRefresh(n => n + 1) }) }}><label>Folder path<input name="path" placeholder="/Users/you/Documents" required /></label><label>Name <span className="atlas-muted">optional</span><input name="name" placeholder="My library" /></label><button className="atlas-primary-button" disabled={busy}>{busy ? 'Starting…' : 'Index folder'}</button></form><div className="atlas-source-list">{galaxies.filter(g => !g.rootPath.startsWith('__default__')).map(g => <div key={g.id}><strong>{g.name}</strong><small>{g.rootPath}</small><button disabled={busy} onClick={() => void act(async () => { const job = await startIndex(g.rootPath, g.name); setJobId(job.jobId); setDialog(null) })}>Reindex</button></div>)}</div></Modal>}
     {dialog === 'collection' && <CollectionDialog selection={collectionSelection} activeId={collectionSelection ? undefined : scope.collectionId} selectedId={selectedId} hits={search.results} query={query} busy={busy} onClose={() => { setDialog(null); setCollectionSelection(null) }} onAction={act} onDone={() => { setRefresh(n => n + 1); setDialog(null); setNotice('Collection updated'); setCollectionSelection(null); vim.clearVisual() }} />}
     {dialog === 'settings' && <SettingsDialog theme={theme} onTheme={setTheme} onClose={() => setDialog(null)} onNotice={setNotice} onRefresh={() => setRefresh(n => n + 1)} />}
     {dialog === 'rename' && <Modal title="Name this region" onClose={() => setDialog(null)}><form className="atlas-form" onSubmit={e => { e.preventDefault(); const group = neighborhood ?? region; const label = String(new FormData(e.currentTarget).get('label')); if (group) void act(async () => { await atlasApi.rename(group.id, label); setRefresh(n => n + 1); setDialog(null) }) }}><label>Region name<input name="label" defaultValue={(neighborhood ?? region)?.label} maxLength={120} required /></label><button className="atlas-primary-button" disabled={busy}>Save name</button></form></Modal>}
     {dialog === 'commands' && <Modal title="Your atlas, at your fingertips" onClose={() => setDialog(null)}><div className="atlas-command-list"><button onClick={() => { setDialog(null); searchInput.current?.focus() }}>Search library <kbd>⌘ / Ctrl K</kbd></button><button onClick={() => { setDialog(null); map.current?.fit() }}>Fit the current map <kbd>z f</kbd></button><button onClick={() => setDialog('sources')}>Add or reindex a source <span>↗</span></button><button onClick={() => setDialog('collection')}>Create a collection <span>↗</span></button><button onClick={() => { setExpanded(true); setDialog(null) }} disabled={!selected}>Expand the reader <kbd>Enter</kbd></button><button onClick={() => { setShowMetrics(v => !v); setDialog(null) }}>Toggle render metrics <kbd>Shift P</kbd></button><a href="?view=classic">Embedding lab, PCA & classic themes <span>↗</span></a></div><details open><summary>Vim browsing</summary><p className="atlas-muted">Commands act on the focused pane. Text fields accept ordinary typing. File boundaries apply to the loaded page; use Previous / Next for more files. Browser shortcuts remain available.</p><dl className="atlas-vim-reference">{VIM_HELP.map(([keys, meaning]) => <div key={keys}><dt><kbd>{keys}</kbd></dt><dd>{meaning}</dd></div>)}</dl><p className="atlas-muted">Editing operators, registers, macros, undo, and shell commands have no file-editing equivalents. Files on disk are never changed by browsing keys.</p></details></Modal>}
-    {vim.command !== null && <Modal title="Command" onClose={() => vim.setCommand(null)}><form className="atlas-form" onSubmit={e => { e.preventDefault(); vim.execute() }}><label>Vim command<input autoFocus aria-label="Vim command" placeholder="help" value={vim.command} onChange={e => vim.setCommand(e.target.value)} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); vim.historyCommand(e.key === 'ArrowUp' ? -1 : 1) } }} /></label><p className="atlas-muted">help · map · list · grid · collection · pin · unpin · marks · q</p><button type="submit">Run</button></form></Modal>}
+    {vim.command !== null && <Modal title="Command" onClose={() => vim.setCommand(null)}><form className="atlas-form" onSubmit={e => { e.preventDefault(); vim.execute() }}><label>Vim command<input autoFocus aria-label="Vim command" placeholder="help" value={vim.command} onChange={e => vim.setCommand(e.target.value)} onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); vim.historyCommand(e.key === 'ArrowUp' ? -1 : 1) } }} /></label><p className="atlas-muted">help · map · list · grid · collection · favorite · unfavorite · pin · unpin · marks · q</p><button type="submit">Run</button></form></Modal>}
     <div className="atlas-sr-only" aria-live="polite">{query && search.status !== 'searching' ? `${search.results.length} results` : ''}</div>
   </div>
 }

@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import type {
-  FileNode, FileCategory, Star, StarType, Edge, Cluster, Galaxy, GalaxySummary,
+  FileNode, FileCategory, FavoriteAppearance, Star, StarType, Edge, Cluster, Galaxy, GalaxySummary,
   Collection, CollectionKind, CollectionSummary,
 } from '../../shared/types'
 import { DEFAULT_GALAXY_NAME, COLLECTION_DEFAULT_SIMILARITY_FLOOR, CONSTELLATION_PALETTE } from '../../shared/types'
@@ -19,6 +19,8 @@ export interface IndexedFile extends FileNode {
   firstSeen: number
   viewCount: number
   isPinned: boolean
+  isFavorite?: boolean
+  favoriteAppearance?: FavoriteAppearance
   starType: StarType | null
   // F4: pin coefficients in embedding-delta space (all NULL until pinned).
   pinAlpha: number | null
@@ -118,6 +120,14 @@ export class FileIndex {
       this.db.exec(`ALTER TABLE files ADD COLUMN star_type TEXT;`)
     }
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_files_star_type ON files(star_type);`)
+    // Explicit favorites are authored metadata. They do not reuse positional
+    // pins or legacy manual star types, and indexing cannot overwrite them.
+    if (!this.hasColumn('files', 'is_favorite')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1));`)
+    }
+    if (!this.hasColumn('files', 'favorite_appearance')) {
+      this.db.exec(`ALTER TABLE files ADD COLUMN favorite_appearance TEXT NOT NULL DEFAULT 'pulsar' CHECK(favorite_appearance IN ('pulsar','black-hole'));`)
+    }
 
     // F9 — galaxies. One row per indexed root path; each gets a deterministic
     // origin offset on the spiral so they live as separate spatial clusters.
@@ -294,14 +304,14 @@ export class FileIndex {
         id, path, platform, name, mime_type, category, size,
         created_at, modified_at, stale,
         embedding, content_hash, x, y, z,
-        cluster_id, galaxy_id, layout_version, first_seen, view_count, is_pinned, star_type,
+        cluster_id, galaxy_id, layout_version, first_seen, view_count, is_pinned, star_type, is_favorite, favorite_appearance,
         os_use_count, os_last_used, importance_score,
         tags, embedding_strategy
       ) VALUES (
         @id, @path, @platform, @name, @mime_type, @category, @size,
         @created_at, @modified_at, 0,
         @embedding, @content_hash, @x, @y, @z,
-        @cluster_id, @galaxy_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type,
+        @cluster_id, @galaxy_id, @layout_version, @first_seen, @view_count, @is_pinned, @star_type, @is_favorite, @favorite_appearance,
         @os_use_count, @os_last_used, @importance_score,
         @tags, @embedding_strategy
       )
@@ -332,7 +342,7 @@ export class FileIndex {
         -- this would wipe user tags on every walker pass.
         embedding_strategy = COALESCE(excluded.embedding_strategy, files.embedding_strategy),
         tags               = COALESCE(excluded.tags, files.tags)
-        -- star_type intentionally not updated; manual tagging persists across re-index
+        -- star_type, is_favorite, and favorite_appearance intentionally not updated; authored metadata persists across re-index
     `).run({
       id: file.id,
       path: file.path,
@@ -355,12 +365,22 @@ export class FileIndex {
       view_count: file.viewCount,
       is_pinned: file.isPinned ? 1 : 0,
       star_type: file.starType,
+      is_favorite: file.isFavorite ? 1 : 0,
+      favorite_appearance: file.favoriteAppearance ?? 'pulsar',
       os_use_count: file.osUseCount,
       os_last_used: file.osLastUsed,
       importance_score: file.importanceScore,
       tags: file.tags === null ? null : JSON.stringify(file.tags),
       embedding_strategy: file.embeddingStrategy,
     })
+  }
+
+  setFavorite(id: string, isFavorite: boolean, appearance?: FavoriteAppearance): boolean {
+    if (typeof isFavorite !== 'boolean' || (appearance !== undefined && appearance !== 'pulsar' && appearance !== 'black-hole')) throw new Error('Invalid favorite state')
+    const result = this.db.prepare(`UPDATE files SET is_favorite=?, favorite_appearance=COALESCE(?,favorite_appearance)
+      WHERE id=? AND (is_favorite != ? OR favorite_appearance != COALESCE(?,favorite_appearance))`)
+      .run(isFavorite ? 1 : 0, appearance ?? null, id, isFavorite ? 1 : 0, appearance ?? null)
+    return result.changes > 0
   }
 
   updatePosition(id: string, x: number, y: number, layoutVersion: number): void {
@@ -887,6 +907,8 @@ interface DbRow {
   first_seen: number
   view_count: number
   is_pinned: number
+  is_favorite: number
+  favorite_appearance: FavoriteAppearance
   star_type: string | null
   pin_alpha: number | null
   pin_beta: number | null
@@ -989,6 +1011,8 @@ function rowToFile(row: DbRow): IndexedFile {
     firstSeen: row.first_seen,
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
+    isFavorite: row.is_favorite === 1,
+    favoriteAppearance: row.favorite_appearance,
     starType: row.star_type as StarType | null,
     pinAlpha: row.pin_alpha,
     pinBeta: row.pin_beta,
@@ -1023,6 +1047,8 @@ function rowToStar(row: DbRow): Star {
     firstSeen: row.first_seen,
     viewCount: row.view_count,
     isPinned: row.is_pinned === 1,
+    isFavorite: row.is_favorite === 1,
+    favoriteAppearance: row.favorite_appearance,
     starType: row.star_type as StarType | null,
     pinAlpha: row.pin_alpha,
     pinBeta: row.pin_beta,

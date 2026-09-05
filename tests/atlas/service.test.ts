@@ -31,6 +31,23 @@ function add(id: string, embedding: Float32Array | null = null): void {
 const app = () => express().use(express.json()).use('/atlas', atlasRoutes(service))
 
 describe('Atlas HTTP and asynchronous retrieval', () => {
+  it('validates favorite mutations and returns consistent typed marker metadata', async () => {
+    add('paper')
+    const original = store.file('paper')!, before = store.revision
+    for (const body of [{}, { isFavorite: 'true' }, { isFavorite: 1 }, { isFavorite: true, favoriteAppearance: 'nebula' }, { isFavorite: true, favoriteAppearance: null }, { isFavorite: true, favoriteAppearance: {} }]) {
+      expect((await request(app()).post('/atlas/file/paper/favorite').send(body)).status).toBe(400)
+    }
+    expect(store.revision).toBe(before)
+    expect((await request(app()).post('/atlas/file/missing/favorite').send({ isFavorite: true })).status).toBe(404)
+    const result = await request(app()).post('/atlas/file/paper/favorite').send({ isFavorite: true, favoriteAppearance: 'black-hole' })
+    expect(result.status).toBe(200)
+    expect(result.body.file).toMatchObject({ isFavorite: true, favoriteAppearance: 'black-hole', x: original.x, y: original.y, isPinned: false, starType: null })
+    const summary = await request(app()).get('/atlas/summary')
+    expect(summary.body.markers[0]).toMatchObject({ isFavorite: true, favoriteAppearance: 'black-hole', size: original.size })
+    const removed = await request(app()).post('/atlas/file/paper/favorite').send({ isFavorite: false })
+    expect(removed.body.file).toMatchObject({ isFavorite: false, favoriteAppearance: 'black-hole' })
+  })
+
   it('serves names and on-demand extracted text without a model', async () => {
     add('paper')
     const found = await request(app()).post('/atlas/search').send({ query: 'paper', mode: 'exact' })

@@ -25,7 +25,7 @@ A standalone Mac app is being investigated; there is no signed installer yet. Se
 
 ## Try the new atlas
 
-The default workspace has a persistent galaxy shaped by file relationships, local name/text search, map/list/grid browsing, and an expandable reader. Files remain available without an embedding model. Each file type has a celestial identity; manual classifications take precedence. Zooming closer reveals deterministic artwork based on the file ID.
+The default workspace has a persistent galaxy shaped by file relationships, local name/text search, map/list/grid browsing, and an expandable reader. Files remain available without an embedding model. Most files appear as pale stars, with bounded size variation based on file bytes and deterministic details based on file ID. Mark a file as a favorite to give it a pulsar or black-hole appearance. Pins still control position; legacy manual classifications remain available in the classic workspace.
 
 The revamp lives on `feat/atlas-revamp` in `worktrees/atlas-revamp`. From that directory, run an isolated demo:
 
@@ -39,7 +39,7 @@ npm run dev:atlas:web
 # Open http://127.0.0.1:5174
 ```
 
-This creates 124 fictional files and a separate database in `.atlas-dev/`. Some demo notes have manual classifications to demonstrate the full object family. Re-running the seeder resets the generated file contents. It does not seed your primary library.
+This creates 124 fictional files and a separate database in `.atlas-dev/`. Two demo files are explicit favorites; the remaining files are ordinary stars. Legacy manual classifications also remain for the classic workspace. Re-running the seeder resets the generated file contents. It does not seed your primary library.
 
 ## Use your library
 
@@ -79,7 +79,7 @@ ollama pull nomic-embed-text
 
 The reader supports Markdown with a contents list, highlighted text/code with line numbers, virtualized CSV/TSV tables, image zoom, and PDF pages or extracted text. Search opens matching passages. Text extraction is capped at 2 MiB; PDF/DOCX containers over 32 MiB remain accessible as metadata. Scanned PDFs need external OCR. Filename identity is path-derived: moving a file is currently an indexing change, not a guaranteed identity-preserving rename.
 
-Folder constellations connect direct siblings at their existing coordinates; [geometry and rendering notes](docs/folder-constellations.md) explain the limits. A [three-proposal visual study](docs/design/stellar-atlas-study.html) explores the next stellar artwork and file-size language; those new appearances are awaiting review.
+Folder constellations connect direct siblings at their existing coordinates; [geometry and rendering notes](docs/folder-constellations.md) explain the limits. The approved [Clouds & landmarks language](docs/design/stellar-atlas-study.html) is shared by the atlas and website. Subtle colored nebulae group duplicates or strong indexed semantic matches; directory membership alone is not similarity evidence. [Favorites](docs/favorites.md) are separate from pins and persist through reindexing.
 
 See [implementation and rollback notes](docs/revamp-progress.md), [measured performance](docs/atlas-validation.md), and the [approved vision](docs/revamp-vision.md).
 

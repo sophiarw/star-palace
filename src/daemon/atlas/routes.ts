@@ -78,6 +78,12 @@ export function atlasRoutes(service: AtlasService): Router {
       } else res.json({ results: store.lexical(query, scope, limit), semanticAvailable: true, elapsedMs: performance.now() - start })
     } catch (e) { res.status(400).json({ error: String(e) }) }
   })
+  router.post('/file/:id/favorite', (req, res) => {
+    const { isFavorite, favoriteAppearance } = req.body ?? {}
+    if (typeof isFavorite !== 'boolean' || (favoriteAppearance !== undefined && !['pulsar', 'black-hole'].includes(favoriteAppearance))) return res.status(400).json({ error: 'Expected a favorite state and optional pulsar or black-hole appearance' })
+    if (!store.favorite(req.params.id, isFavorite, favoriteAppearance)) return res.status(404).json({ error: 'File not found' })
+    return res.json({ revision: store.revision, file: store.file(req.params.id) })
+  })
   router.post('/file/:id/pin', (req, res) => {
     const { x, y } = req.body ?? {}
     const unpin = x === null && y === null

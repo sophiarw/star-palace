@@ -47,7 +47,7 @@ export const db = new FileIndex({ dbPath: DB_PATH })
 export const hnsw = new HnswIndex({ persistPath: HNSW_PATH })
 hnsw.load()
 
-const ollamaClient = new OllamaClient()
+const ollamaClient = new OllamaClient({ baseUrl: process.env.STARPALACE_OLLAMA_URL })
 export const embedEngine = new EmbeddingEngine(ollamaClient)
 export const relayouter = new Relayouter(db)
 relayouter.loadExisting()

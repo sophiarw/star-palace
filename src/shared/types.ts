@@ -1,5 +1,7 @@
 export type Platform = 'local' | 'google-drive' | 'confluence' | 'dropbox' | 'onedrive'
 
+export type FavoriteAppearance = 'pulsar' | 'black-hole'
+
 export type FileCategory = 'document' | 'data' | 'code' | 'media' | 'unknown'
 
 export interface FileNode {
@@ -38,6 +40,9 @@ export interface Star extends FileNode {
   firstSeen: number
   viewCount: number
   isPinned: boolean
+  /** User favorites are independent of positional pins and legacy star overrides. */
+  isFavorite?: boolean
+  favoriteAppearance?: FavoriteAppearance
   starType: StarType | null  // manual override; null = default cluster-hue rendering
   // F4 — pin coefficients (embedding-delta). All NULL when not pinned.
   pinAlpha: number | null

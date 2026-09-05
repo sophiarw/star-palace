@@ -1,4 +1,5 @@
 import { DetailSprites, DETAIL_CELL, DETAIL_COLUMNS, DETAIL_BYTES, DETAIL_FADE_START, DETAIL_FADE_END } from './detailSprites'
+import { pointStellarAppearance } from './stellarVisual'
 import type { Camera, ScenePoint } from './scene'
 import { project, seedFor, objectRadius } from './scene'
 import { celestialSheet, spriteIndex, SPRITE_CELL, SPRITE_COLUMNS, SPRITE_ROWS } from './celestialSprites'
@@ -7,7 +8,7 @@ export interface PointRenderer { kind: 'WebGL2' | 'Canvas2D'; setPoints(points: 
 function rgb(hex: string): [number, number, number] { return [parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255] }
 
 export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = () => {}): PointRenderer | null {
-  const gl = canvas.getContext('webgl2', { alpha: true, antialias: false, premultipliedAlpha: false, powerPreference: 'low-power' })
+  const gl = canvas.getContext('webgl2', { alpha: true, antialias: false, premultipliedAlpha: true, powerPreference: 'low-power' })
   if (!gl) return null
   const shaders: WebGLShader[] = []
   const compile = (type: number, source: string): WebGLShader => {
@@ -32,11 +33,11 @@ export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = 
         float scale=artwork.z>.5?mix(distant,readable,smoothstep(.06,.4,camera.z)):1.;
         vec2 screen=(position-camera.xy)*camera.z+viewport*.5+rotated*radius*scale;
         gl_Position=vec4(screen.x/viewport.x*2.-1.,1.-screen.y/viewport.y*2.,0.,1.);
-        uv=corner*.5+.5; detailMix=smoothstep(${DETAIL_FADE_START.toFixed(1)},${DETAIL_FADE_END.toFixed(1)},radius*scale); tint=color; closeup=artwork.w; cell=vec2(mod(artwork.x,8.),floor(artwork.x/8.)); }`))
+        uv=corner*.5+.5; detailMix=smoothstep(${DETAIL_FADE_START.toFixed(1)},${DETAIL_FADE_END.toFixed(1)},radius*scale); tint=color; closeup=artwork.w; cell=vec2(mod(artwork.x,${SPRITE_COLUMNS.toFixed(1)}),floor(artwork.x/${SPRITE_COLUMNS.toFixed(1)})); }`))
     gl.attachShader(program, compile(gl.FRAGMENT_SHADER, `#version 300 es
       precision mediump float; in vec2 uv; in vec4 tint; flat in vec2 cell; flat in float closeup; in float detailMix;
       uniform sampler2D sprites; uniform sampler2D details; out vec4 pixel;
-      void main(){ vec4 art=texture(sprites,(cell+uv)/vec2(8.,4.)); if(closeup>=0.) art=mix(art,texture(details,(vec2(mod(closeup,4.),floor(closeup/4.))+uv)/4.),detailMix); pixel=art*tint; }`))
+      void main(){ vec4 art=texture(sprites,(cell+uv)/vec2(${SPRITE_COLUMNS.toFixed(1)},${SPRITE_ROWS.toFixed(1)})); if(closeup>=0.)  { vec4 detail=texture(details,(vec2(mod(closeup,4.),floor(closeup/4.))+uv)/4.); vec4 mixed=mix(vec4(art.rgb*art.a,art.a),vec4(detail.rgb*detail.a,detail.a),detailMix); art=vec4(mixed.rgb/max(mixed.a,.00001),mixed.a); } pixel=art*tint; }`))
     gl.linkProgram(program)
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('Shader linking failed')
   } catch {
@@ -69,7 +70,10 @@ export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = 
   return { kind: 'WebGL2', setPoints(next) {
     points = next; closePoints = points.filter(p => p.zoomable); count = points.length
     data = new Float32Array(count * 11)
-    points.forEach((p, i) => data.set([p.x, p.y, p.radius, ...(p.objectType ? [1, 1, 1] : rgb(p.color)), p.alpha, spriteIndex(p.objectType, seedFor(p.id)), p.rotation ?? 0, p.zoomable ? 1 : 0, -1], i * 11))
+    points.forEach((p, i) => {
+      const appearance = p.stellar ? pointStellarAppearance(p) : undefined
+      data.set([p.x, p.y, p.radius * (appearance?.radiusScale ?? 1), ...(p.objectType ? [1, 1, 1] : rgb(p.color)), p.alpha * (appearance?.alpha ?? 1), spriteIndex(p.objectType, seedFor(p.id), appearance?.color), p.rotation ?? 0, p.zoomable ? 1 : 0, -1], i * 11)
+    })
     gl.bindBuffer(gl.ARRAY_BUFFER, instances); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW)
   }, draw(camera, width, height, dpr) {
     const next = details.prepare(closePoints, camera, width, height)
@@ -81,7 +85,7 @@ export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = 
     canvas.dataset.detailSprites = String(details.count)
     if (next.pending) invalidate()
     gl.viewport(0, 0, Math.round(width * dpr), Math.round(height * dpr)); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
-    gl.useProgram(program); gl.bindVertexArray(vao); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.useProgram(program); gl.bindVertexArray(vao); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texture)
     gl.uniform3f(cameraLocation, camera.x, camera.y, camera.zoom); gl.uniform2f(viewportLocation, width, height)
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count)
@@ -90,8 +94,10 @@ export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = 
 
 export function canvasRenderer(canvas: HTMLCanvasElement, invalidate: () => void = () => {}): PointRenderer {
   const ctx = canvas.getContext('2d')!, sheet = celestialSheet(), details = new DetailSprites()
+  const blendCanvas = document.createElement('canvas'); blendCanvas.width = blendCanvas.height = DETAIL_CELL
+  const blendContext = blendCanvas.getContext('2d')!
   let points: (ScenePoint & { sprite: number })[] = []
-  return { kind: 'Canvas2D', setPoints(next) { points = next.map(p => ({ ...p, sprite: spriteIndex(p.objectType, seedFor(p.id)) })) }, draw(camera, width, height, dpr) {
+  return { kind: 'Canvas2D', setPoints(next) { points = next.map(p => ({ ...p, alpha: p.alpha * (p.stellar ? pointStellarAppearance(p).alpha : 1), sprite: spriteIndex(p.objectType, seedFor(p.id), p.stellar ? pointStellarAppearance(p).color : undefined) })) }, draw(camera, width, height, dpr) {
     const next = details.prepare(points, camera, width, height)
     canvas.dataset.detailSprites = String(details.count)
     if (next.pending) invalidate()
@@ -104,9 +110,18 @@ export function canvasRenderer(canvas: HTMLCanvasElement, invalidate: () => void
         ctx.save(); ctx.translate(x, y); ctx.rotate(point.rotation ?? 0)
         const slot = details.slot(point)
         const t = slot < 0 ? 0 : Math.max(0, Math.min(1, (r - DETAIL_FADE_START) / (DETAIL_FADE_END - DETAIL_FADE_START))), mix = t * t * (3 - 2 * t)
-        ctx.globalAlpha = point.alpha * (1 - mix)
-        ctx.drawImage(sheet, point.sprite % SPRITE_COLUMNS * SPRITE_CELL, Math.floor(point.sprite / SPRITE_COLUMNS) * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, -r, -r, r * 2, r * 2)
-        if (slot >= 0) { ctx.globalAlpha = point.alpha * mix; ctx.drawImage(details.sheet, slot % DETAIL_COLUMNS * DETAIL_CELL, Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL, DETAIL_CELL, DETAIL_CELL, -r, -r, r * 2, r * 2) }
+        if (mix > 0 && mix < 1) {
+          // Match WebGL's premultiplied artwork interpolation, avoiding the dim
+          // midpoint produced by two source-over draws of translucent halos.
+          blendContext.clearRect(0, 0, DETAIL_CELL, DETAIL_CELL)
+          blendContext.globalCompositeOperation = 'source-over'; blendContext.globalAlpha = 1 - mix
+          blendContext.drawImage(sheet, point.sprite % SPRITE_COLUMNS * SPRITE_CELL, Math.floor(point.sprite / SPRITE_COLUMNS) * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, 0, 0, DETAIL_CELL, DETAIL_CELL)
+          blendContext.globalCompositeOperation = 'lighter'; blendContext.globalAlpha = mix
+          blendContext.drawImage(details.sheet, slot % DETAIL_COLUMNS * DETAIL_CELL, Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL, DETAIL_CELL, DETAIL_CELL, 0, 0, DETAIL_CELL, DETAIL_CELL)
+          blendContext.globalCompositeOperation = 'source-over'; blendContext.globalAlpha = 1
+          ctx.drawImage(blendCanvas, -r, -r, r * 2, r * 2)
+        } else if (mix === 1) ctx.drawImage(details.sheet, slot % DETAIL_COLUMNS * DETAIL_CELL, Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL, DETAIL_CELL, DETAIL_CELL, -r, -r, r * 2, r * 2)
+        else ctx.drawImage(sheet, point.sprite % SPRITE_COLUMNS * SPRITE_CELL, Math.floor(point.sprite / SPRITE_COLUMNS) * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, -r, -r, r * 2, r * 2)
         ctx.restore()
       } else {
         ctx.fillStyle = point.color; ctx.beginPath(); ctx.arc(x, y, r * .35, 0, Math.PI * 2); ctx.fill()
@@ -116,4 +131,5 @@ export function canvasRenderer(canvas: HTMLCanvasElement, invalidate: () => void
   }, destroy() { points = [] } }
 }
 
-export const SPRITE_BYTES = DETAIL_BYTES * 2 + SPRITE_CELL ** 2 * SPRITE_COLUMNS * SPRITE_ROWS * 4 * (1 + 4 / 3)
+// Includes the single Canvas interpolation surface; excludes driver/browser overhead.
+export const SPRITE_BYTES = DETAIL_CELL ** 2 * 4 + DETAIL_BYTES * 2 + SPRITE_CELL ** 2 * SPRITE_COLUMNS * SPRITE_ROWS * 4 * (1 + 4 / 3)

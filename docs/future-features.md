@@ -4,7 +4,7 @@ These are recorded product ideas, not implemented features or commitments for th
 
 ## September 5 implementation and design pass
 
-The user subsequently authorized parallel work on these requests. Vim browsing and folder connections are now in development. Stellar appearance and file-size semantics are being explored in reviewable proposals before changing the production atlas artwork.
+The user authorized parallel work and selected Clouds & landmarks. Native Vim browsing, folder connections, canonical stellar artwork, persistent favorites, and evidence-led nebulae are now integrated into the atlas branch. Zodiac illustrations and image-specific similarity detection remain deferred. The original requests below are retained as design history.
 
 The user explicitly reopened the old file-type/object mapping: ordinary files might be main-sequence stars, exceptionally large files might become pulsars, and unusually similar groups (such as image series) might read as nebulae. Compare alternative systems instead of treating the old mapping as a requirement for the new design. Folder membership and content similarity are separate relationships. Preserve stable positions and access to every individual file in all proposals.
 
@@ -16,7 +16,7 @@ The user selected **Clouds & landmarks**. Use the [new star-cluster reference](d
 
 Further refinement: retain a wider, Lorentzian-like distribution of saturation, with a few moderately richer red/blue larger stars amid the pale majority. Nebulae connecting similar groups can carry a little more color. These are restrained exceptions; the user approved the general visual language and requested only a small adjustment.
 
-Reserve pulsars, black holes, and similar special silhouettes for **user-marked favorite files** rather than automatically assigning many of them by file type or size. Provide a favorite/unfavorite toggle. Keep favorite state separate from positional pins, byte-size magnitude, and similarity grouping; persist it through re-indexing and preserve manual metadata. The review starts with only three favorites among 650 files. More files must not create more favorites automatically. The [visual study](design/stellar-atlas-study.html) demonstrates the toggle and pulsar/black-hole appearance choice; production persistence is not yet implemented.
+Reserve pulsars, black holes, and similar special silhouettes for **user-marked favorite files** rather than automatically assigning many of them by file type or size. Provide a favorite/unfavorite toggle. Keep favorite state separate from positional pins, byte-size magnitude, and similarity grouping; persist it through re-indexing and preserve manual metadata. The review starts with only three favorites among 650 files. More files must not create more favorites automatically. The [visual study](design/stellar-atlas-study.html) demonstrates the toggle and pulsar/black-hole appearance choice; [production favorite persistence](favorites.md) is now implemented.
 
 ## Bright, glowing celestial icons
 
