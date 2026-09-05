@@ -1,5 +1,5 @@
 import { FileHistory } from './TextHistory'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createElement, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import hljs from 'highlight.js/lib/common'
@@ -14,6 +14,20 @@ import { CelestialIcon } from './CelestialIcon'
 import { fileStellarAppearance } from './stellarVisual'
 import { Highlighted } from './Highlighted'
 import { patternFor, markedParts } from './searchText'
+import { markdownSystem, sectionAnchor, type MarkdownSection, type SectionIdentity } from './markdownSections'
+import type { SolarSession } from './SolarSystem'
+const SolarSystem = lazy(() => import('./SolarSystem').then(module => ({ default: module.SolarSystem })))
+
+async function openSectionInEditor(fileId: string, text: string, section: MarkdownSection): Promise<void> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  const contentHash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+  await atlasApi.edit(fileId, { line: section.line, sourceLine: section.sourceLine, contentHash })
+}
+
+function MarkdownHeading({ level, node, children }: { level: number; node?: HtmlElement; children?: ReactNode }) {
+  const line = node?.position?.start.line ?? 1
+  return createElement('h' + level, { id: sectionAnchor(line), 'data-section-line': line, tabIndex: -1 }, children)
+}
 
 type TextContent = FileContent & { status: string; error: string | null }
 const cache = new Map<string, { modifiedAt: number; value: TextContent }>()
@@ -42,12 +56,6 @@ function highlightPlugin(query: string) {
   }
 }
 
-function plainText(node: ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(plainText).join('')
-  if (node && typeof node === 'object' && 'props' in node) return plainText((node.props as { children?: ReactNode }).children)
-  return ''
-}
 const slug = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')
 
 export function parseDelimited(text: string, delimiter = ','): string[][] {
@@ -111,6 +119,8 @@ interface Props {
 }
 
 export function Reader({ file, expanded, query, collections, onExpand, onClose, onSelect, onChange, onPrevious, onNext, hasSequence, focusOnOpen = false }: Props) {
+  const [showSolar, setShowSolar] = useState(false), [sectionJump, setSectionJump] = useState<{ id: string | null; tick: number } | null>(null)
+  const solarSession = useRef<SolarSession>({ time: 0, selected: null, paused: false, page: 0 })
   const [showHistory, setShowHistory] = useState(false)
   const [content, setContent] = useState<TextContent | null>(null), [loading, setLoading] = useState(false), [error, setError] = useState<string | null>(null)
   const [neighbors, setNeighbors] = useState<{ id: string; name: string }[]>([]), [tag, setTag] = useState(''), [busy, setBusy] = useState(false)
@@ -146,7 +156,38 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
     if (query && marks.length) marks[0].scrollIntoView({ block: 'center' })
   }, [content, query, pdfText])
   const rehype = useMemo(() => [highlightPlugin(query)], [query])
-  const headings = useMemo(() => (content?.content?.match(/^#{1,3}\s+.+$/gm) ?? []).slice(0, 30).map(line => line.replace(/^#+\s+/, '')), [content])
+  const solarEligible = !!file && /\.(md|markdown)$/i.test(file.name)
+  const system = useMemo(() => {
+    const stored = readStored<SectionIdentity[]>('solar.sections.' + fileId, [])
+    const previous = Array.isArray(stored) ? stored.filter(row => row && ['id', 'key', 'fingerprint', 'title'].every(key => typeof row[key as keyof SectionIdentity] === 'string')).slice(0, 512) : []
+    return markdownSystem(solarEligible ? content?.content ?? '' : '', fileId ?? '', previous)
+  }, [content?.content, fileId, solarEligible])
+  useEffect(() => {
+    if (!fileId || !system.identities.length) return
+    writeStored('solar.sections.' + fileId, system.identities.map(row => ({ ...row, key: row.key.slice(0, 512), title: row.title.slice(0, 256) })))
+    const stored = readStored<string[]>('solar.section-files', [])
+    const ids = [fileId, ...(Array.isArray(stored) ? stored.filter(id => typeof id === 'string' && id !== fileId) : [])]
+    try { for (const id of ids.slice(16)) localStorage.removeItem('starpalace.atlas.solar.sections.' + id) } catch { /* Derived identities can be reconstructed. */ }
+    writeStored('solar.section-files', ids.slice(0, 16))
+  }, [fileId, system])
+  const activeSection = system.headings.find(section => section.id === sectionJump?.id)
+  useEffect(() => {
+    const edit = (event: Event) => {
+      if (!fileId || !activeSection || (event as CustomEvent<string>).detail !== fileId) return
+      event.preventDefault(); setBusy(true); setError(null)
+      void openSectionInEditor(fileId, content?.content ?? '', activeSection).catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false))
+    }
+    window.addEventListener('starpalace-edit-section', edit)
+    return () => window.removeEventListener('starpalace-edit-section', edit)
+  }, [fileId, activeSection, content?.content])
+  useEffect(() => {
+    if (!sectionJump || showSolar) return
+    const frame = requestAnimationFrame(() => {
+      const target = (activeSection ? articleRef.current?.querySelector<HTMLElement>('#' + sectionAnchor(activeSection.line)) : null) ?? articleRef.current
+      if (target) { target.scrollIntoView({ block: 'start' }); target.focus({ preventScroll: true }) }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [sectionJump, activeSection, expanded, showSolar, content])
   const moveMatch = (step: number) => {
     const marks = articleRef.current?.querySelectorAll<HTMLElement>('[data-match]')
     if (!marks?.length) return
@@ -172,6 +213,16 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
   const csv = /\.(csv|tsv)$/i.test(file.name), text = content?.content ?? ''
   const editable = /\.(md|markdown|txt|text)$/i.test(file.name) || ['text/plain', 'text/markdown'].includes(file.mimeType)
   const tags = file.tags ?? []
+  const readSection = (section: MarkdownSection | null) => {
+    setShowSolar(false); setSectionJump(previous => ({ id: section?.id ?? null, tick: (previous?.tick ?? 0) + 1 }))
+    if (!expanded) onExpand()
+  }
+  const editSection = (section: MarkdownSection) => openSectionInEditor(file.id, text, section)
+  const refreshDocument = async () => {
+    const { file: updated } = await atlasApi.refreshText(file.id)
+    const value = await atlasApi.text(file.id)
+    cache.set(file.id, { modifiedAt: updated.modifiedAt, value }); setContent(value); onChange(updated)
+  }
   return <aside id="atlas-file-reader" className={`atlas-reader ${expanded ? 'is-expanded' : ''}`} aria-label="File reader">
     <div className="atlas-reader-toolbar"><span className="atlas-eyebrow">{expanded ? 'Reader' : 'File preview'}</span><div>
       <button className="atlas-text-button" onClick={onExpand}>{expanded ? '↙ Back to atlas' : 'Expand ↗'}</button><button className="atlas-icon-button" onClick={onClose} aria-label="Close preview panel">×</button>
@@ -183,21 +234,25 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
         {!!tags.length && <div className="atlas-tags">{tags.map(t => <span key={t}>{t}</span>)}</div>}
         <div className="atlas-favorite-controls"><button className={file.isFavorite ? 'is-favorite' : ''} aria-pressed={file.isFavorite} disabled={busy} onClick={() => void action(async () => { const result = await atlasApi.favorite(file.id, !file.isFavorite); onChange(result.file) })}>{file.isFavorite ? '★ Unfavorite' : '☆ Favorite'}</button>{file.isFavorite && <label>Favorite appearance<select aria-label="Favorite appearance" value={file.favoriteAppearance} disabled={busy} onChange={e => { const appearance = e.target.value as FavoriteAppearance; void action(async () => { const result = await atlasApi.favorite(file.id, true, appearance); onChange(result.file) }) }}><option value="pulsar">Pulsar</option><option value="black-hole">Black hole</option></select></label>}</div>
         <div className="atlas-reader-actions"><button onClick={() => setShowHistory(true)}>History</button><button disabled={busy} onClick={() => void action(() => openFile(file.id))}>Open in app ↗</button><button disabled={busy} onClick={() => void action(() => revealFile(file.id))}>Reveal in folder</button>{editable && <button disabled={busy} title="Open in Neovim when available, otherwise Vim" onClick={() => void action(async () => { await atlasApi.edit(file.id) })}>Edit in Vim ↗</button>}</div>
+        {solarEligible && <div className="atlas-section-tools"><button disabled={loading || !system.planets.length} onClick={() => setShowSolar(true)}>{sectionJump ? '← Back to solar system' : 'Explore solar system'}</button><button disabled={busy} onClick={() => void action(refreshDocument)}>Refresh document</button>{activeSection && <button disabled={busy} onClick={() => void action(() => editSection(activeSection))}>Edit section in Vim ↗</button>}</div>}
         {hasSequence && <div className="atlas-sequence"><button onClick={onPrevious}>← Previous file</button><button onClick={onNext}>Next file →</button></div>}
         {query && <div className="atlas-match-nav"><span>{matches ? `${matchIndex + 1} of ${matches} matches` : 'No text matches in this view'}</span><button disabled={!matches} onClick={() => moveMatch(-1)} aria-label="Previous match">↑</button><button disabled={!matches} onClick={() => moveMatch(1)} aria-label="Next match">↓</button></div>}
         {pdf && <div className="atlas-preview-tools"><button aria-pressed={!pdfText} onClick={() => setPdfText(false)}>PDF pages</button><button aria-pressed={pdfText} onClick={() => setPdfText(true)}>Searchable text</button></div>}
         {error && <div className="atlas-notice" role="alert">{error}</div>}
-        {markdown && headings.length > 2 && <details className="atlas-toc"><summary>On this page</summary>{headings.map((h, i) => <a key={i} href={'#' + slug(h)}>{h}</a>)}</details>}
-        <div className="atlas-reading-content" ref={articleRef}>
+        {markdown && system.headings.length > 2 && <details className="atlas-toc"><summary>On this page</summary>{system.headings.slice(0, 60).map(h => <a key={h.id} href={'#' + sectionAnchor(h.line)}>{h.title}</a>)}</details>}
+        <div className="atlas-reading-content" ref={articleRef} tabIndex={-1}>
           {image ? <ImageView key={file.id} file={file} /> : pdf && !pdfText ? <iframe className="atlas-pdf" src={rawUrl(file.id)} title={file.name} /> : loading ? <div className="atlas-loading">Preparing document…</div>
             : content?.status === 'unavailable' ? <div className="atlas-notice">This file is unavailable at its indexed path. Reveal its folder or reindex its source.</div>
             : !text ? <div className="atlas-no-preview">{content?.status === 'no-text' ? 'This document has no extractable text. Use the page view or open it in its default app.' : content?.status === 'too-large' ? 'This document is too large for an inline preview. Its name and metadata remain searchable.' : 'A preview is not available for this file format. Open it in its default app.'}</div>
             : csv ? <DataTable key={file.id} text={text} delimiter={/\.tsv$/i.test(file.name) ? '\t' : ','} query={query} />
             : markdown ? <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehype} components={{
-              h1: ({ children }) => <h1 id={slug(plainText(children))}>{children}</h1>,
-              h2: ({ children }) => <h2 id={slug(plainText(children))}>{children}</h2>,
-              h3: ({ children }) => <h3 id={slug(plainText(children))}>{children}</h3>,
-              a: ({ href, children }) => <a href={href} target={href?.startsWith('#') ? undefined : '_blank'} rel="noreferrer">{children}</a>,
+              h1: props => <MarkdownHeading {...props} level={1} />, h2: props => <MarkdownHeading {...props} level={2} />, h3: props => <MarkdownHeading {...props} level={3} />,
+              h4: props => <MarkdownHeading {...props} level={4} />, h5: props => <MarkdownHeading {...props} level={5} />, h6: props => <MarkdownHeading {...props} level={6} />,
+              a: ({ href, children }) => <a href={href} onClick={event => {
+                if (!href?.startsWith('#')) return
+                const target = [...(articleRef.current?.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6') ?? [])].find(h => '#' + h.id === href || '#' + slug(h.textContent ?? '') === href)
+                if (target) { event.preventDefault(); target.scrollIntoView({ block: 'start' }); target.focus({ preventScroll: true }) }
+              }} target={href?.startsWith('#') ? undefined : '_blank'} rel="noreferrer">{children}</a>,
             }}>{text}</ReactMarkdown>
             : <CodeView text={text} name={file.name} query={query} />}
         </div>
@@ -214,5 +269,6 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
       </div>
     </div>
     {showHistory && <FileHistory file={file} onClose={() => setShowHistory(false)} />}
+    {showSolar && <Suspense fallback={<div className="atlas-notice" role="status">Preparing solar system…</div>}><SolarSystem name={file.name} system={system} session={solarSession.current} truncated={!!content?.truncated} onClose={() => setShowSolar(false)} onRead={readSection} onEdit={editSection} onRefresh={refreshDocument} /></Suspense>}
   </aside>
 }

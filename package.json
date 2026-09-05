@@ -35,6 +35,8 @@
     "hnswlib-node": "^3.0.0",
     "ignore": "^7.0.5",
     "mammoth": "^1.12.0",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-to-string": "^4.0.0",
     "ml-pca": "^4.1.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",

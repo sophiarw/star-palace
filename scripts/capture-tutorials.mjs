@@ -49,6 +49,9 @@ try {
   await expect(page.locator('.atlas-reader-scroll')).toBeVisible()
   if (await page.getByRole('button', { name: '☆ Favorite', exact: true }).count()) await page.getByRole('button', { name: '☆ Favorite', exact: true }).click()
   await shot('favorites', page.locator('.atlas-reader'))
+  await page.getByRole('button', { name: 'Explore solar system', exact: true }).click()
+  await expect(page.locator('.atlas-solar-stage')).toHaveAttribute('data-generated', /[1-9]/)
+  await shot('solar-system', page.locator('dialog[open]')); await close()
   await page.getByRole('button', { name: 'Expand ↗', exact: true }).click(); await shot('reader'); await page.getByRole('button', { name: '↙ Back to atlas', exact: true }).click()
   // Real capture in the isolated demo, then photograph its real history UI.
   await page.getByRole('button', { name: 'Settings', exact: true }).click()

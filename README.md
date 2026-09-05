@@ -55,8 +55,9 @@ ollama pull nomic-embed-text
 
 ## New observing and recovery tools
 
-- **Tutorials** in the app header has screenshot walkthroughs for 16 features. History, updates, and active lenses also link directly to their guide.
+- **Tutorials** in the app header has screenshot walkthroughs for 17 features. History, updates, and active lenses also link directly to their guide.
 - **Wavelength lens** on the map reveals recent modifications, file sizes, or connections without moving the sky.
+- **Explore solar system** in a Markdown preview opens its section planets. Click a planet to read its passage; **Edit section in Vim** opens that line in Neovim/Vim. **Refresh document** loads saved edits. [Controls and limits](docs/document-systems.md).
 - **Fullscreen** beside Map/List/Grid, or `:fullscreen`, hides the surrounding panels. Search remains available; Escape returns to the previous workspace.
 - **Settings → Text history** enables local Git versions for indexed text/source files up to 1 MiB. A file’s **History** offers earlier contents, diffs, and **Restore a copy**. [Scope and storage limits](docs/text-history.md).
 - **Settings → Application update** updates clean `main` source installations launched with `npm start`. Existing installations need one manual pull/restart to acquire the button. [Update and recovery details](docs/app-updates.md).

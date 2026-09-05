@@ -1949,3 +1949,34 @@
 .atlas-modal:has(.atlas-tutorial) { width:min(1000px,94vw); }
 .atlas-modal:has(.atlas-history-content) { width:min(900px,94vw); }
 .atlas-history-content { white-space:pre-wrap; overflow-wrap:anywhere; }
+/* Document interiors use a bounded local stage, leaving the atlas mounted. */
+.atlas-modal:has(.atlas-solar-system){width:min(1180px,calc(100vw - 32px));max-width:1180px;max-height:92vh;background:#030405}
+.atlas-solar-tools,.atlas-section-tools,.atlas-solar-actions,.atlas-solar-pages{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.atlas-solar-tools{padding:8px 0 18px;color:#aebaca;font-size:12px;border-bottom:1px solid #26313e}
+.atlas-solar-tools>span{margin-right:auto}
+.atlas-section-tools{margin:14px 0 24px;padding:12px 0;border-top:1px solid #26313e;border-bottom:1px solid #26313e}
+.atlas-solar-layout{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:28px}
+.atlas-solar-stage{height:420px;position:relative;isolation:isolate}
+.atlas-solar-orbits{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.atlas-solar-stage .atlas-section-planet{position:absolute;transform:translate(-50%,-50%);left:50%;top:50%;border:0;background:transparent;padding:0;width:98px;display:flex;flex-direction:column;align-items:center;gap:0;z-index:2}
+.atlas-section-planet canvas{width:var(--planet-size);height:var(--planet-size);pointer-events:none}
+.atlas-section-planet span{font:12px Georgia,serif;color:#b6c3d2;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 6px #000}
+.atlas-section-planet.is-selected span{color:#eee0c6}
+.atlas-solar-stage .atlas-section-moon{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:0;padding:7px;background:transparent;z-index:4;line-height:0}
+.atlas-section-moon span{display:block;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#e0d9c9,#7d858e 50%,#131922 90%);box-shadow:0 0 6px #bccfe522}
+.atlas-section-planet:focus-visible{outline:1px solid #d3bd93;outline-offset:4px;border-radius:8px}
+.atlas-solar-stage .atlas-solar-sun{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border:0;border-radius:50%;background:radial-gradient(circle,#f9e5ac66,transparent 70%);color:#fff3cd;font-size:29px;text-shadow:0 0 12px #e5bd6c;z-index:3}
+.atlas-solar-inspector{padding:12px 0 20px;min-width:0}
+.atlas-solar-inspector>canvas{display:block;width:100%;aspect-ratio:1}
+.atlas-solar-inspector h3{font:24px Georgia,serif;color:#e6dfd0;margin:12px 0;overflow-wrap:anywhere}
+.atlas-solar-inspector nav{margin-top:22px}
+.atlas-solar-inspector nav button{display:block;text-align:left;margin:8px 0;max-width:100%;overflow-wrap:anywhere}
+.atlas-solar-contents{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:14px 0}
+.atlas-solar-contents button{display:flex;justify-content:space-between;gap:12px;text-align:left;font-size:12px;overflow-wrap:anywhere}
+.atlas-solar-contents button small{color:#8493a6;white-space:nowrap}
+.atlas-solar-contents button[aria-current=true]{border-color:#9f9279}
+.atlas-solar-hint{font-size:12px;line-height:1.6;margin:0 0 14px}
+.atlas-solar-pages{justify-content:center;font-size:12px}
+.atlas-reading-content [data-section-line]{scroll-margin-top:20px}
+.atlas-reading-content [data-section-line]:focus{outline:none;text-decoration:underline;text-decoration-color:#9e8862;text-underline-offset:7px}
+@media(max-width:760px){.atlas-solar-layout{grid-template-columns:1fr;gap:4px}.atlas-solar-stage{height:300px}.atlas-solar-inspector>canvas{width:220px;margin:auto}.atlas-solar-tools{gap:7px}.atlas-solar-contents{grid-template-columns:1fr}.atlas-solar-stage .atlas-section-planet{width:76px}.atlas-section-planet span{max-width:85px;font-size:11px}.atlas-modal:has(.atlas-solar-system){padding:18px}}

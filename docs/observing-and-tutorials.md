@@ -14,7 +14,7 @@ The expand control beside Map/List/Grid and `:fullscreen` enter the immersive at
 
 ## Tutorials
 
-**Tutorials** in the app header opens 16 feature guides with three short steps each and a clickable screenshot. History, updates, and active lenses also link to their guide. Images load only when the tutorial is open; all text and screenshots ship with the app and work offline.
+**Tutorials** in the app header opens 17 feature guides with three short steps each and a clickable screenshot. History, updates, and active lenses also link to their guide. Images load only when the tutorial is open; all text and screenshots ship with the app and work offline.
 
 - `src/renderer/src/atlas/tutorialCatalog.ts`: guide text and feature IDs.
 - `src/renderer/src/atlas/Tutorials.tsx`: guide selection, contextual links, and full-size image access.

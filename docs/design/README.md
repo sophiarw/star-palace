@@ -3,7 +3,7 @@
 ## Planet surfaces and document interiors
 
 - [Interactive planet study](planet-study.html): six seeded procedural worlds, atmosphere/scale controls, slow motion, and an illustrative section-orbit view. Standalone HTML; open directly in a browser.
-- [Solar-system direction](planet-semantics.md): the user approved **Contents**—document sections as planets, starting with Markdown. Sources, milestones, and reading routes remain later alternatives. The approved surface study is still a standalone prototype, not part of the current app.
+- [Solar-system direction](planet-semantics.md): the user approved **Contents**—document sections as planets. The first [Markdown integration](../document-systems.md) is now implemented; sources, milestones, and reading routes remain later alternatives. The original surface study remains available separately.
 
 These are review artifacts, not approved website assets.
 

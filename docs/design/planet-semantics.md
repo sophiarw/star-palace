@@ -1,6 +1,6 @@
 # Solar-system proposals
 
-September 5, 2026 · Contents approved; production integration remains pending.
+September 5, 2026 · Contents approved; the first Markdown integration is implemented. See [document systems](../document-systems.md) for supported flows and limits.
 
 ## Approved direction
 

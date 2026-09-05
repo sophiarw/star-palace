@@ -38,6 +38,7 @@ Every user-facing feature needs an in-app tutorial with concise steps and screen
 - [docs/text-history.md](docs/text-history.md): opt-in Git archive, capture limits, recovery, and source identity.
 - [docs/app-updates.md](docs/app-updates.md): managed source update checks, restart/recovery, and interruption limits.
 - [docs/observing-and-tutorials.md](docs/observing-and-tutorials.md): wavelength lenses, immersive fullscreen, and screenshot tutorial workflow.
+- [docs/document-systems.md](docs/document-systems.md): Markdown section planets, reader anchors, checked line editing, identity limits, and graphics budgets.
 - `src/daemon/atlas/`: additive persistent atlas, FTS retrieval, region summaries, snapshots, and background service.
 - `src/daemon/index/extractors/`: bounded worker extraction shared by search, readers, and embedding paths.
 - `src/daemon/index.ts`: HTTP composition and legacy routes.

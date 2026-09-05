@@ -204,7 +204,11 @@ export default function AtlasApp() {
     collection: ids => { setCollectionSelection(ids); setDialog('collection') },
     action: (action, file) => { void act(async () => {
       if (action === 'open') await openFile(file.id)
-      else if (action === 'edit') { const result = await atlasApi.edit(file.id); setNotice(`Opened in ${result.editor}`) }
+      else if (action === 'edit') {
+        const section = new CustomEvent('starpalace-edit-section', { detail: file.id, cancelable: true })
+        if (!window.dispatchEvent(section)) return
+        const result = await atlasApi.edit(file.id); setNotice(`Opened in ${result.editor}`)
+      }
       else if (action === 'reveal') await revealFile(file.id)
       else if (action === 'favorite' || action === 'unfavorite') { const result = await atlasApi.favorite(file.id, action === 'favorite'); changeFile(result.file); setNotice(action === 'favorite' ? 'File favorited' : 'Favorite removed') }
       else { const result = await atlasApi.pin(file.id, action === 'unpin' ? null : file.x, action === 'unpin' ? null : file.y); changeFile(result.file); setNotice(action === 'pin' ? 'File pinned' : 'File unpinned') }
