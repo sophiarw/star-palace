@@ -2,7 +2,7 @@ name: Publish website
 
 on:
   push:
-    branches: [feat/atlas-revamp, main]
+    branches: [main]
     paths:
       - 'website/**'
       - 'src/renderer/src/atlas/celestialSprites.ts'

@@ -20,7 +20,7 @@
 
 The map is a persistent memory palace. Search navigates and highlights it; ordinary indexing must not rearrange existing files. Every indexed file must remain accessible without an embedding model. Preserve user metadata, collections, pins, source roots, and existing advanced capabilities.
 
-Develop the revamp in `worktrees/atlas-revamp` on `feat/atlas-revamp`. Keep the original checkout and its pre-existing uncommitted changes intact. Commit a baseline in the worktree before implementation, then use focused conventional commits. Never run experimental migrations against the user's primary database: validate against an isolated copy or fixtures.
+The public release branch is `main`; the pre-atlas version is preserved on `legacy/pre-atlas-main-2026-09-05`. Continue local development in `worktrees/atlas-revamp` on `feat/atlas-revamp` and promote validated changes to `main`. Keep the original checkout and its pre-existing uncommitted changes intact. Commit a baseline in the worktree before implementation, then use focused conventional commits. Never run experimental migrations against the user's primary database: validate against an isolated copy or fixtures.
 
 Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Build the renderer for integration milestones. Add meaningful regression tests for data integrity, search correctness, layout stability, and user interactions. Record measured performance separately from targets; do not infer foreground frame rate from background or headless timing.
 

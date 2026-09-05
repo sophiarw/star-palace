@@ -20,12 +20,12 @@ The feedback form opens an encoded draft at `sophiarw/star-palace/issues/new`. T
 
 ## Publishing
 
-`.github/workflows/website.yml` builds, checks, and publishes the site from `feat/atlas-revamp` (and from `main` after the revamp is merged). It uploads only `dist-site`, not the daemon or the user's library. GitHub Pages must be enabled once by a repository administrator.
+`.github/workflows/website.yml` builds, checks, and publishes the site from `main`. It uploads only `dist-site`, not the daemon or the user's library. GitHub Pages must be enabled once by a repository administrator.
 
 1. Open [repository Pages settings](https://github.com/sophiarw/star-palace/settings/pages).
 2. Under **Build and deployment → Source**, choose **GitHub Actions**.
 3. In **Custom domain**, enter **starpalace.ai** and save, before changing DNS.
-4. If the `github-pages` environment restricts deployment branches, allow `feat/atlas-revamp`. The workflow runs from that branch until it is merged.
+4. If the `github-pages` environment restricts deployment branches, allow `main`. The workflow publishes only from that branch.
 5. Let the Publish website workflow finish. If a deployment attempted before Pages was enabled, rerun its failed job in [Actions](https://github.com/sophiarw/star-palace/actions).
 
 In Squarespace, open **Domains → starpalace.ai → DNS → DNS Settings**. Replace conflicting website/parking records for `@` and `www` with:
@@ -80,4 +80,4 @@ See [LICENSE](../LICENSE): PolyForm Noncommercial 1.0.0 with an additional permi
 
 ## First installation
 
-The public instructions explicitly clone `feat/atlas-revamp`, the current application branch, over HTTPS. They place the checkout at `~/star-palace`, install locked dependencies with `npm ci`, and launch both local processes with `npm start`. Prerequisites are Node.js 22 and Apple command line tools (including Git); the visitor finishes those installations before copying the app commands. The tutorial explains copying a folder path from Finder and using Manage sources → Index folder. A separate Next launch section makes returning to the app explicit. This remains a source installation; no downloadable Mac app is advertised as available.
+The public instructions use a normal HTTPS clone of the repository. Its default branch, `main`, contains the current application. They place the checkout at `~/star-palace`, install locked dependencies with `npm ci`, and launch both local processes with `npm start`. Prerequisites are Node.js 22 and Apple command line tools (including Git); the visitor finishes those installations before copying the app commands. The tutorial explains copying a folder path from Finder and using Manage sources → Index folder. A separate Next launch section makes returning to the app explicit. This remains a source installation; no downloadable Mac app is advertised as available.

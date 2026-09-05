@@ -13,13 +13,13 @@ Star Palace is source available under [PolyForm Noncommercial 1.0.0 with an addi
 Install Node.js 22, Git, and the macOS command line tools (`xcode-select --install`), then:
 
 ```sh
-git clone --branch feat/atlas-revamp https://github.com/sophiarw/star-palace.git
+git clone https://github.com/sophiarw/star-palace.git
 cd star-palace
 npm ci
 npm start
 ```
 
-Open [127.0.0.1:5173](http://127.0.0.1:5173). One terminal runs both processes; Control C stops them. Existing users should back up `~/.starpalace` before adopting the development branch. After `npm run seed:atlas`, `npm run start:demo` runs a separate fictional library at port 5174.
+Open [127.0.0.1:5173](http://127.0.0.1:5173). One terminal runs both processes; Control C stops them. Existing users should back up `~/.starpalace` before upgrading an existing library. After `npm run seed:atlas`, `npm run start:demo` runs a separate fictional library at port 5174.
 
 A standalone Mac app is being investigated; there is no signed installer yet. See [Mac distribution findings](docs/mac-distribution.md) for the tested runtime foundation and remaining release work.
 
@@ -27,7 +27,7 @@ A standalone Mac app is being investigated; there is no signed installer yet. Se
 
 The default workspace has a persistent galaxy shaped by file relationships, local name/text search, map/list/grid browsing, and an expandable reader. Files remain available without an embedding model. Most files appear as pale stars, with bounded size variation based on file bytes and deterministic details based on file ID. Mark a file as a favorite to give it a pulsar or black-hole appearance. Pins still control position; legacy manual classifications remain available in the classic workspace.
 
-The revamp lives on `feat/atlas-revamp` in `worktrees/atlas-revamp`. From that directory, run an isolated demo:
+The current atlas ships on the default `main` branch. From your checkout directory, run an isolated demo:
 
 ```sh
 npm install
@@ -45,7 +45,7 @@ This creates 124 fictional files and a separate database in `.atlas-dev/`. Two d
 
 The current real-library review runs at `http://127.0.0.1:5176` against an isolated backup. See [restart instructions](docs/revamp-progress.md#real-library-review) to resume that preview.
 
-Tested with Node 22.17. Start `npm run dev:daemon` and `npm run dev:web`, then open `http://localhost:5173`. The daemon uses `~/.starpalace` unless `STARPALACE_DIR` or `STARPALACE_DB` is set. Atlas tables are additive; the classic positions, embeddings, collections, and user metadata remain available. Back up a primary database before adopting any development branch.
+Tested with Node 22.17. Start `npm run dev:daemon` and `npm run dev:web`, then open `http://localhost:5173`. The daemon uses `~/.starpalace` unless `STARPALACE_DIR` or `STARPALACE_DB` is set. Atlas tables are additive; the classic positions, embeddings, collections, and user metadata remain available. Back up an existing library before upgrading.
 
 Choose **Manage sources → Index folder** to add or refresh a folder. Ollama with `nomic-embed-text` is optional for names, tags, text search, and browsing; it is required for semantic indexing and related-meaning search:
 

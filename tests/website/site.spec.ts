@@ -79,7 +79,7 @@ test('commands copy exactly, including newlines', async ({ page, context }) => {
   await page.locator('[data-copy="install-code"]').click()
   await expect(page.locator('[data-copy="install-code"]')).toHaveText('Copied')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    'cd ~\ngit clone --branch feat/atlas-revamp https://github.com/sophiarw/star-palace.git\ncd star-palace\nnpm ci\nnpm start')
+    'cd ~\ngit clone https://github.com/sophiarw/star-palace.git\ncd star-palace\nnpm ci\nnpm start')
   await page.getByText(/^Next launch/).click()
   await page.locator('[data-copy="launch-code"]').click()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('cd ~/star-palace\nnpm start')
