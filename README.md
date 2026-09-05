@@ -69,8 +69,9 @@ ollama pull nomic-embed-text
 | Library panel | **Library** shows or hides sources, regions, collections, and saved places; starts closed and remembers your choice |
 | File preview | Selecting a file opens it; **Preview** hides or restores it without clearing the selection |
 | Search results | **Results** hides or restores the results while keeping the query and highlights |
-| Explore | Scroll continuously into the galaxy; click a heading to visit a region; use Your atlas to return to the full view |
+| Explore | Scroll continuously into the galaxy; click a sky label to frame its nearby stars; Library regions isolate their files; use Your atlas to return to the full view |
 | Pan / zoom | Drag / wheel, `h j k l`, `+` / `−` |
+| File extension | Choose an actual suffix such as **.md** or **.pdf**; **No extension** includes bare dotfiles |
 | Inspect an object | Select it and zoom in; close-up detail is seeded by its file ID |
 | Search | `/` forward, `?` backward, `⌘/Ctrl K` or `⌘/Ctrl F`; arrow keys select a result, Enter opens it; Escape leaves typing with the query intact |
 | Read | Select a file to preview; **Expand** or Enter opens the full reader |

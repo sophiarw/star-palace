@@ -1,15 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { LabelPainter, type MapLabel } from '../../src/renderer/src/atlas/labelPainter'
-import { clusterLabelRegions, regionLabelSize } from '../../src/renderer/src/atlas/regionLabels'
-import type { AtlasRegion } from '../../src/shared/atlas'
+import { skyLabels, skyLabelOpacity } from '../../src/renderer/src/atlas/regionLabels'
+import type { AtlasRegion, AtlasMarker } from '../../src/shared/atlas'
 
-describe('Persistent cluster headings', () => {
-  it('keeps leaf names and childless regions instead of swapping hierarchy at zoom thresholds', () => {
-    const regions = [{ id: 'root' }, { id: 'child', parentId: 'root' }, { id: 'only-root' }] as AtlasRegion[]
-    expect(clusterLabelRegions(regions).map(r => r.id)).toEqual(['child', 'only-root'])
-    expect(regionLabelSize(.003)).toBeLessThan(10.1)
-    expect(regionLabelSize(120)).toBeLessThanOrEqual(14)
-    for (const zoom of [.07, .09, .18, .22, .65, 1.3]) expect(Math.abs(regionLabelSize(zoom + .001) - regionLabelSize(zoom - .001))).toBeLessThan(.03)
+describe('Hybrid sky headings', () => {
+  it('forms deterministic nested spatial groups and names them from folder labels', () => {
+    const regions = [{ id: 'r', label: 'Auris' }, { id: 'n', parentId: 'r', label: 'Notes' }] as AtlasRegion[]
+    const markers = Array.from({ length: 30 }, (_, i) => ({ id: `file-${i}`, x: (i % 10) * 900, y: Math.floor(i / 10) * 1200, regionId: 'r', neighborhoodId: 'n' })) as AtlasMarker[]
+    const original = structuredClone(markers), labels = skyLabels(markers, regions)
+    expect(skyLabels([...markers].reverse(), regions)).toEqual(labels)
+    expect(markers).toEqual(original)
+    const broad = labels.filter(l => l.level === 'broad'), clusters = labels.filter(l => l.level === 'cluster')
+    expect(broad.length).toBeGreaterThan(1)
+    expect(clusters.length).toBeGreaterThan(broad.length)
+    expect(broad.every(l => l.title === 'Auris')).toBe(true)
+    expect(clusters.every(l => l.title === 'Notes' && broad.some(parent => l.members.every(m => parent.members.includes(m))))).toBe(true)
+    for (const label of labels) {
+      expect(skyLabelOpacity(label, .9)).toBe(0)
+      for (const zoom of [.035, .045, .1, .12, .4, .85]) expect(Math.abs(skyLabelOpacity(label, zoom + .00001) - skyLabelOpacity(label, zoom - .00001))).toBeLessThan(.002)
+    }
+    expect(skyLabelOpacity({ level: 'broad', minZoom: 0 }, .02)).toBe(.85)
+    expect(skyLabelOpacity({ level: 'cluster', minZoom: 0 }, .2)).toBe(.85)
   })
 
   it('keeps overlapping headings visible through zoom, selection, and a zero caption budget', () => {

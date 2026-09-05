@@ -33,6 +33,6 @@ test('folder constellations remain stable through visibility controls and respec
   await control.selectOption('all')
   await expect.poll(async () => Number(await scene.getAttribute('data-constellation-edges'))).toBeGreaterThan(0)
   await expect(scene).toHaveAttribute('data-camera', camera!)
-  await page.getByRole('combobox', { name: 'Filter by file type' }).selectOption('media')
+  await page.getByRole('combobox', { name: 'Filter by file extension' }).selectOption('.svg')
   await expect(scene).toHaveAttribute('data-constellation-edges', '0')
 })

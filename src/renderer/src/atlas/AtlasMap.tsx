@@ -1,7 +1,7 @@
 import { lensAppearance } from './lenses'
 import type { AtlasLens } from '@shared/atlas'
 import { LabelPainter, type MapLabel } from './labelPainter'
-import { clusterLabelRegions, regionLabelSize } from './regionLabels'
+import { skyLabels, skyLabelOpacity, type SkyLabel } from './regionLabels'
 import { galaxyHaze } from './galaxyHaze'
 import { fileStellarAppearance } from './stellarVisual'
 import { useAtlasTiles } from './useAtlasTiles'
@@ -9,6 +9,9 @@ import { CELESTIAL_LABELS } from '@shared/celestial'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import type { AtlasFile, AtlasRegion, AtlasMarker, AtlasScope, AtlasNebula } from '@shared/atlas'
 import { canvasRenderer, gpuRenderer, SPRITE_BYTES, type PointRenderer } from './pointRenderer'
+import { fileExtension } from '@shared/fileExtension'
+import { geographicMatch } from './mapScope'
+import { pickTarget, starHitRadius } from './hitTargets'
 import { fitCamera, zoomAt, objectRadius, project, seedFor, unproject, type Camera, type ScenePoint } from './scene'
 import { readStored, writeStored } from './storage'
 import { FolderConstellationPainter, folderFor, visibleFolderEdges, type ConstellationVisibility } from './folderConstellations'
@@ -21,6 +24,7 @@ interface Props {
   filter: AtlasScope
   revision: number
   destination: AtlasRegion | null
+  visitRequest?: number
   files: AtlasFile[]
   scopeKey: string
   selectedId: string | null
@@ -37,7 +41,7 @@ interface Props {
 }
 export interface MapMetrics { renderer: string; points: number; labels: number; drawMs: number; draws: number; bytes: number }
 export interface MapHandle { overview(): void; fit(): void; zoom(factor: number): void; pan(dx: number, dy: number): void; focus(file: AtlasFile): void; camera(): Camera; restore(camera: Camera): void }
-interface HitTarget { id: string; x: number; y: number; radius: number; file?: AtlasFile; marker?: AtlasMarker; region?: AtlasRegion }
+interface HitTarget { id: string; x: number; y: number; radius: number; file?: AtlasFile; marker?: AtlasMarker; region?: AtlasRegion; cluster?: SkyLabel }
 const THEMES: Record<string, { point?: string; label: string }> = {
   jwst: { label: '#e7dfcf' }, vapor: { point: '#e6a1cd', label: '#efc9f1' },
   atari: { point: '#9be0af', label: '#d6eeb2' }, lost: { point: '#dcbf95', label: '#e8dcc8' }, bio: { point: '#8ecdbd', label: '#bfdfb0' },
@@ -51,8 +55,8 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const files = useMemo(() => {
     const merged = new Map(tiles.files.map(file => [file.id, file]))
     for (const file of props.files) merged.set(file.id, { ...file, folderLinks: file.folderLinks ?? merged.get(file.id)?.folderLinks })
-    return [...merged.values()]
-  }, [tiles.files, props.files])
+    return [...merged.values()].filter(file => geographicMatch(file, props.filter) && (props.filter.extension === undefined || fileExtension(file.name) === props.filter.extension))
+  }, [tiles.files, props.files, props.filter])
   const folderEdges = useMemo(() => visibleFolderEdges(files, props.markers, props.selectedId), [files, props.markers, props.selectedId])
   const edgesRef = useRef(folderEdges); edgesRef.current = folderEdges
   const constellationPainter = useRef(new FolderConstellationPainter())
@@ -60,7 +64,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   useEffect(() => { onFiles(files) }, [files, onFiles])
   const latest = useRef({ ...props, files }); latest.current = { ...props, files }
   const requestVisible = useRef(tiles.requestVisible); requestVisible.current = tiles.requestVisible
-  const initialized = useRef(false)
+  const initialized = useRef(false), lastVisit = useRef(props.visitRequest)
   const zoomMotion = useRef<{ from: number; to: number; world: [number, number]; screen: [number, number]; at: number; direction: number } | null>(null)
   const travel = useRef<{ from: Camera; to: Camera; at: number } | null>(null)
   const hazeCanvas = useRef<HTMLCanvasElement>(null)
@@ -85,6 +89,8 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       alpha: (props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9) * (file.id === props.selectedId || props.highlights.has(file.id) ? 1 : lensAppearance(props.lens ?? 'visible', file, now).alpha),
     }))
   }, [props.markers, files, props.selectedId, props.highlights, props.lens])
+  const headings = useMemo(() => skyLabels(props.markers, props.regions), [props.markers, props.regions])
+  const headingsRef = useRef(headings); headingsRef.current = headings
   const sceneById = useMemo(() => new Map(scene.map(point => [point.id, point])), [scene])
   const pointById = useRef(sceneById); pointById.current = sceneById
 
@@ -190,30 +196,28 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
     const ctx = labelCanvas.current?.getContext('2d')
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height)
-    const { regions, files, selectedId, highlights, theme } = latest.current
+    const { files, selectedId, highlights, theme } = latest.current
     const labelCandidates: MapLabel[] = [], hitTargets: HitTarget[] = []
     const themeColors = THEMES[theme] ?? THEMES.jwst
     // File captions have a viewport budget; cluster headings stay present.
     const labelBudget = Math.min(70, Math.max(10, Math.floor(width * height / 16000)))
-    for (const region of clusterLabelRegions(regions)) {
-      const [x, y] = project(region.x, region.y, camera.current, width, height)
+    for (const heading of headingsRef.current) {
+      const opacity = skyLabelOpacity(heading, camera.current.zoom)
+      if (opacity < .01) continue
+      const [x, y] = project(heading.x, heading.y, camera.current, width, height)
       if (x < -250 || y < -60 || x > width + 100 || y > height + 60) continue
-      hitTargets.push({ id: region.id, x, y, radius: Math.max(50, Math.min(140, region.radius * camera.current.zoom * .7)), region })
-      const fontSize = regionLabelSize(camera.current.zoom)
-      ctx.font = `${fontSize}px Georgia, serif`
-      const maxWidth = Math.min(220, width * .38)
-      let title = region.label
-      while (title.length > 4 && ctx.measureText(title).width > maxWidth) title = title.slice(0, -2).replace(/…$/, '') + '…'
-      labelCandidates.push({ id: region.id, x: region.x, y: region.y, offset: 10, title,
+      const fontSize = heading.level === 'broad' ? 14 : 12
+      if (opacity > .3) hitTargets.push({ id: heading.id, x: x + 10 + heading.title.length * fontSize * .25, y, radius: 24, cluster: heading })
+      labelCandidates.push({ id: heading.id, x: heading.x, y: heading.y, offset: 10, title: heading.title,
         color: themeColors.label, persistent: true,
-        font: `${fontSize}px Georgia, serif`, opacity: .85, priority: region.count })
+        font: `${fontSize}px Georgia, serif`, opacity, priority: heading.members.length })
     }
-    if (camera.current.zoom > .25) {
+    {
       const hydrated = new Set(files.map(f => f.id))
       for (const marker of latest.current.markers) {
         if (hydrated.has(marker.id)) continue
         const [x, y] = project(marker.x, marker.y, camera.current, width, height)
-        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: Math.max(8, objectRadius(pointById.current.get(marker.id)!, camera.current.zoom) * .45), marker })
+        if (x >= 0 && x <= width && y >= 0 && y <= height) hitTargets.push({ id: marker.id, x, y, radius: starHitRadius(objectRadius(pointById.current.get(marker.id)!, camera.current.zoom)), marker })
       }
     }
     const ordered = [...files].sort((a, b) => {
@@ -227,7 +231,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       if (x < -25 || y < -25 || x > width + 25 || y > height + 25) continue
       const radius = objectRadius(pointById.current.get(file.id)!, camera.current.zoom)
       const markerRadius = Math.max(20, radius * .55)
-      hitTargets.push({ id: file.id, x, y, radius: Math.max(16, radius * .45), file })
+      hitTargets.push({ id: file.id, x, y, radius: starHitRadius(radius), file })
       const focused = file.id === selectedId || highlights.has(file.id)
       if (file.id === selectedId) {
         ctx.globalAlpha = .85; ctx.strokeStyle = '#e7c68d'; ctx.lineWidth = 1
@@ -286,11 +290,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       invalidate()
     }
     const observer = new ResizeObserver(resize); observer.observe(container); resize()
-    const pick = (x: number, y: number): HitTarget | null => {
-      let closest: HitTarget | null = null, distance = Infinity
-      for (const target of targets.current) { const d = Math.hypot(target.x - x, target.y - y); if (d < target.radius && d < distance) { closest = target; distance = d } }
-      return closest
-    }
+    const pick = (x: number, y: number): HitTarget | null => pickTarget(targets.current, x, y)
     const at = (e: PointerEvent | WheelEvent): [number, number] => { const rect = container.getBoundingClientRect(); return [e.clientX - rect.left, e.clientY - rect.top] }
     const down = (e: PointerEvent) => {
       if (e.button !== 0) return
@@ -308,7 +308,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
         invalidate(); return
       }
       const hit = pick(x, y)
-      overlay.title = hit?.file ? `${hit.file.name} · ${CELESTIAL_LABELS[fileStellarAppearance(hit.file).objectType]}` : hit?.region?.label ?? ''
+      overlay.title = hit?.file ? `${hit.file.name} · ${CELESTIAL_LABELS[fileStellarAppearance(hit.file).objectType]}` : hit?.cluster?.title ?? hit?.region?.label ?? ''
       container.style.cursor = hit ? 'pointer' : 'grab'
       if (hovered.current !== (hit?.id ?? null)) { hovered.current = hit?.id ?? null; invalidate() }
     }
@@ -319,7 +319,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       renderer.current?.setPoints(pointsRef.current)
       if (overlay.hasPointerCapture(e.pointerId)) overlay.releasePointerCapture(e.pointerId)
       if (current.file && current.moved && current.wx !== undefined && current.wy !== undefined) latest.current.onPin(current.file.id, current.wx, current.wy)
-      else if (!current.moved) { const [x, y] = at(e), hit = pick(x, y); if (hit?.file) latest.current.onSelect(hit.file); else if (hit?.marker) latest.current.onSelectId(hit.id); else if (hit?.region) latest.current.onRegion(hit.region) }
+      else if (!current.moved) { const [x, y] = at(e), hit = pick(x, y); if (hit?.file) latest.current.onSelect(hit.file); else if (hit?.marker) latest.current.onSelectId(hit.id); else if (hit?.cluster) animateTo(fitCamera(hit.cluster.members, size.current.width, size.current.height)); else if (hit?.region) latest.current.onRegion(hit.region) }
       container.style.cursor = 'grab'; saveCamera(); invalidate()
     }
     const cancel = () => { drag.current = null; renderer.current?.setPoints(pointsRef.current); container.style.cursor = 'grab'; invalidate() }
@@ -352,20 +352,22 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       overlay.removeEventListener('dblclick', double); overlay.removeEventListener('wheel', wheel)
       canvas.removeEventListener('webglcontextlost', lost); engine.destroy(); canvas.remove(); renderer.current = null
     }
-  }, [saveCamera, invalidate, smoothZoom])
+  }, [saveCamera, invalidate, smoothZoom, animateTo])
 
   useEffect(() => {
     pointsRef.current = scene; renderer.current?.setPoints(scene)
-    if (props.regions.length && (!initialized.current || scope.current !== props.scopeKey)) {
+    const visiting = lastVisit.current !== props.visitRequest
+    lastVisit.current = props.visitRequest
+    if (props.regions.length && (!initialized.current || scope.current !== props.scopeKey || visiting)) {
       const first = !initialized.current
       initialized.current = true; scope.current = props.scopeKey
       const saved = readStored<Camera | null>('camera.continuous.' + props.scopeKey, null)
-      const next = saved && [saved.x, saved.y, saved.zoom].every(Number.isFinite) && saved.zoom > 0 ? saved : fitted()
+      const next = !visiting && saved && [saved.x, saved.y, saved.zoom].every(Number.isFinite) && saved.zoom > 0 ? saved : fitted()
       if (first) camera.current = next
       else animateTo(next)
     }
     invalidate()
-  }, [scene, props.scopeKey, props.regions, files, props.selectedId, props.constellations, invalidate, fitted, animateTo])
+  }, [scene, props.scopeKey, props.visitRequest, props.regions, files, props.selectedId, props.constellations, invalidate, fitted, animateTo])
 
   const destinations = props.destination ? props.regions.filter(r => r.parentId === props.destination!.id) : props.regions.filter(r => r.kind === 'region')
 

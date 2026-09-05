@@ -10,3 +10,9 @@ Exact filenames rank first, then filename fragments, physical path matches, visi
 No schema migration or index rebuild was introduced: the existing trigram and text indexes already contain paths. A fixture test reopens an existing index and verifies nested folder matching, custom source/region labels, ranking, and source/category exclusion. Stored files, positions, favorites, pins, and extracted text remain unchanged.
 
 The browser regression begins with an empty `Incoming` query, advances the summary revision, and checks that results appear without typing again. A later delayed refresh keeps those results visible, and semantic search is called only once. This demonstrates the indexing-refresh failure mode; it does not assert that every empty folder search had the same cause. Geographic scope can also exclude a folder elsewhere in the atlas.
+
+## Blind-review corrections
+
+Search now spans regions by default, independently of geographic browsing. The visible **Search area** selector offers **All regions** or the currently visited region; source, extension, collection and tag filters still apply. This addresses the reproduced Auris report: the existing preview returned nine global name/path/label matches, while a previously visited region could exclude them. A result opens its file without changing the search scope.
+
+**Filter by file extension** lists actual case-insensitive filename suffixes with counts. `.MD` and `.md` share an option; `.tar.gz` is `.gz`; a bare dotfile, trailing dot or unsuffixed filename is **No extension**. The same scope applies to summary markers, hydration, lists, lexical and semantic retrieval. Extension counts retain other filters but ignore the selected extension so switching remains possible. Legacy category scopes in saved places remain supported and have an explicit clear control. No schema change or source-file mutation is needed.

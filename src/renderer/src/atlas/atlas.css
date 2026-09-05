@@ -1785,14 +1785,15 @@
 }
 .atlas-object-guide {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 24px;
   margin-top: 20px;
 }
 .atlas-object-guide > div {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
+  padding: 16px 4px;
   min-height: 94px;
   border-top: 1px solid #33435180;
 }
@@ -1804,13 +1805,13 @@
   font-size: 12px;
   font-weight: 500;
   color: #e6dece;
-  line-height: 1.5;
+  line-height: 1.65;
 }
 .atlas-object-guide small {
   display: block;
   margin-top: 5px;
-  font-size: 10px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.65;
   color: #97aabd;
 }
 .atlas-tile-icon canvas {
@@ -1828,7 +1829,7 @@
       #283d4b30,
       transparent 70%);
 }
-@media (max-width: 450px) {
+@media (max-width: 650px) {
   .atlas-object-guide {
     grid-template-columns: 1fr;
   }

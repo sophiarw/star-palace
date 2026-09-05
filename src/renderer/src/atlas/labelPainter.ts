@@ -41,7 +41,8 @@ export class LabelPainter {
       ctx.shadowColor = '#030405'; ctx.shadowBlur = 5
       ctx.fillText(label.title, box.x, y + 4)
       ctx.shadowBlur = 0
-      used.push(box); count++; this.visibleIds.push(label.id)
+      if (label.opacity > .15) used.push(box)
+      count++; this.visibleIds.push(label.id)
     }
     const persistentCount = count
     const current = new Map(candidates.filter(label => !label.persistent).map(label => [label.id, label]))
