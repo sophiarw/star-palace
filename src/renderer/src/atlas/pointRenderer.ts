@@ -1,4 +1,4 @@
-import { DetailSprites, DETAIL_CELL, DETAIL_COLUMNS, DETAIL_BYTES } from './detailSprites'
+import { DetailSprites, DETAIL_CELL, DETAIL_COLUMNS, DETAIL_BYTES, DETAIL_FADE_START, DETAIL_FADE_END } from './detailSprites'
 import type { Camera, ScenePoint } from './scene'
 import { project, seedFor, objectRadius } from './scene'
 import { celestialSheet, spriteIndex, SPRITE_CELL, SPRITE_COLUMNS, SPRITE_ROWS } from './celestialSprites'
@@ -27,10 +27,12 @@ export function gpuRenderer(canvas: HTMLCanvasElement, invalidate: () => void = 
       out vec2 uv; out vec4 tint; flat out vec2 cell; flat out float closeup; out float detailMix;
       void main(){ float c=cos(artwork.y),s=sin(artwork.y);
         vec2 rotated=vec2(corner.x*c-corner.y*s,corner.x*s+corner.y*c);
-        float scale=artwork.z>.5?clamp(sqrt(camera.z/1.5),.12,8.):1.;
+        float distant=clamp(sqrt(camera.z/1.5),.12,8.);
+        float readable=min(8.,1.6*pow(camera.z/.5,.25));
+        float scale=artwork.z>.5?mix(distant,readable,smoothstep(.06,.4,camera.z)):1.;
         vec2 screen=(position-camera.xy)*camera.z+viewport*.5+rotated*radius*scale;
         gl_Position=vec4(screen.x/viewport.x*2.-1.,1.-screen.y/viewport.y*2.,0.,1.);
-        uv=corner*.5+.5; detailMix=smoothstep(35.,60.,radius*scale); tint=color; closeup=artwork.w; cell=vec2(mod(artwork.x,8.),floor(artwork.x/8.)); }`))
+        uv=corner*.5+.5; detailMix=smoothstep(${DETAIL_FADE_START.toFixed(1)},${DETAIL_FADE_END.toFixed(1)},radius*scale); tint=color; closeup=artwork.w; cell=vec2(mod(artwork.x,8.),floor(artwork.x/8.)); }`))
     gl.attachShader(program, compile(gl.FRAGMENT_SHADER, `#version 300 es
       precision mediump float; in vec2 uv; in vec4 tint; flat in vec2 cell; flat in float closeup; in float detailMix;
       uniform sampler2D sprites; uniform sampler2D details; out vec4 pixel;
@@ -101,7 +103,7 @@ export function canvasRenderer(canvas: HTMLCanvasElement, invalidate: () => void
       if (point.objectType) {
         ctx.save(); ctx.translate(x, y); ctx.rotate(point.rotation ?? 0)
         const slot = details.slot(point)
-        const t = slot < 0 ? 0 : Math.max(0, Math.min(1, (r - 35) / 25)), mix = t * t * (3 - 2 * t)
+        const t = slot < 0 ? 0 : Math.max(0, Math.min(1, (r - DETAIL_FADE_START) / (DETAIL_FADE_END - DETAIL_FADE_START))), mix = t * t * (3 - 2 * t)
         ctx.globalAlpha = point.alpha * (1 - mix)
         ctx.drawImage(sheet, point.sprite % SPRITE_COLUMNS * SPRITE_CELL, Math.floor(point.sprite / SPRITE_COLUMNS) * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, -r, -r, r * 2, r * 2)
         if (slot >= 0) { ctx.globalAlpha = point.alpha * mix; ctx.drawImage(details.sheet, slot % DETAIL_COLUMNS * DETAIL_CELL, Math.floor(slot / DETAIL_COLUMNS) * DETAIL_CELL, DETAIL_CELL, DETAIL_CELL, -r, -r, r * 2, r * 2) }

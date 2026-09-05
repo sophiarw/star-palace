@@ -1,6 +1,8 @@
 import { drawObject } from './celestialSprites'
 import { objectRadius, project, seedFor, type Camera, type ScenePoint } from './scene'
 
+export const DETAIL_FADE_START = 25
+export const DETAIL_FADE_END = 42
 export const DETAIL_CELL = 256
 export const DETAIL_COLUMNS = 4
 export const DETAIL_LIMIT = 16
@@ -15,7 +17,7 @@ export class DetailSprites {
   constructor() { this.sheet.width = this.sheet.height = DETAIL_CELL * DETAIL_COLUMNS }
   prepare(points: ScenePoint[], camera: Camera, width: number, height: number): { uploads: { slot: number; image: HTMLCanvasElement }[]; pending: boolean } {
     const candidates = points.filter(point => {
-      if (!point.objectType || !point.zoomable || objectRadius(point, camera.zoom) < 35) return false
+      if (!point.objectType || !point.zoomable || objectRadius(point, camera.zoom) < DETAIL_FADE_START) return false
       const [x, y] = project(point.x, point.y, camera, width, height), r = objectRadius(point, camera.zoom)
       return x > -r && x < width + r && y > -r && y < height + r
     }).sort((a, b) => Math.hypot(a.x - camera.x, a.y - camera.y) - Math.hypot(b.x - camera.x, b.y - camera.y)).slice(0, DETAIL_LIMIT)

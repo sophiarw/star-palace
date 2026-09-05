@@ -25,7 +25,13 @@ export function seedFor(id: string): number {
 }
 
 export function objectRadius(point: Pick<ScenePoint, 'radius' | 'zoomable'>, zoom: number): number {
-  return point.radius * (point.zoomable ? Math.max(.12, Math.min(8, Math.sqrt(zoom / 1.5))) : 1)
+  if (!point.zoomable) return point.radius
+  // Retain the distant galaxy's density, then settle into a readable icon size.
+  // At browsing distance, quadrupling zoom grows the icon by only about 40%.
+  const distant = Math.max(.12, Math.min(8, Math.sqrt(zoom / 1.5)))
+  const readable = Math.min(8, 1.6 * Math.pow(zoom / .5, .25))
+  const t = Math.max(0, Math.min(1, (zoom - .06) / .34)), blend = t * t * (3 - 2 * t)
+  return point.radius * (distant + (readable - distant) * blend)
 }
 
 /** Zoom around a fixed screen point; content loading never changes this camera. */

@@ -43,6 +43,10 @@ The initial real-library review exposed scope-switching zoom jumps, unstable hea
 
 The real preview remains on port 5176, with its daemon on 7376. Both preview databases have the organic layout; ordinary indexing preserves existing positions. The map includes all 1,748 real file markers. Refresh and use **Your atlas** to see the full arrangement. Validation is recorded in [atlas-validation.md](atlas-validation.md).
 
+## September 5: readable icon sizing
+
+Celestial sprites now settle into a larger screen size at browsing distances, with slower growth as the camera continues inward. The distant overview keeps its existing density. Procedural details fade in between sprite radii of 25–42 CSS pixels, with the same 16-slot cache and two-generation-per-frame limit. GPU, Canvas, labels, and hit targets use the matching size curve. The real-library preview was inspected at zoom 0.5 in both renderers, and the six zoom/hover/fallback browser checks passed.
+
 ## Rollback
 
 The primary checkout on `main` still contains the original app and the user's pre-existing changes. It can be run independently. Do not reset or clean that checkout.

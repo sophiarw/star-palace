@@ -20,7 +20,10 @@ it('keeps even clamped zoom anchored and grows artwork continuously across old t
   const before = unproject(100, 200, camera, 800, 600), after = unproject(100, 200, next, 800, 600)
   expect(after[0]).toBeCloseTo(before[0]); expect(after[1]).toBeCloseTo(before[1])
   const star = { radius: 25, zoomable: true }
-  for (const zoom of [.07, .18, .22, .65, 1.3, 1.5, 6]) {
+  expect(objectRadius(star, .5)).toBeGreaterThan(35)
+  expect(objectRadius(star, 2) / objectRadius(star, .5)).toBeLessThan(1.5)
+  expect(objectRadius(star, .03)).toBeLessThan(4)
+  for (const zoom of [.06, .4, .07, .18, .22, .65, 1.3, 1.5, 6]) {
     expect(objectRadius(star, zoom + .0001) - objectRadius(star, zoom)).toBeLessThan(.02)
   }
 })
