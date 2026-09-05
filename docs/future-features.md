@@ -14,6 +14,8 @@ The deferral notes below describe the original request context; this later autho
 
 The user selected **Clouds & landmarks**. Use the [new star-cluster reference](design/stellar-cluster-palette-reference.png) for quieter ivory/warm-white/gold/pale-blue colors, mostly smaller stars, and a few larger outliers. This supersedes the original saturated atlas palette request below; the calligraphy still informs the brand.
 
+Further refinement: retain a wider, Lorentzian-like distribution of saturation, with a few moderately richer red/blue larger stars amid the pale majority. Nebulae connecting similar groups can carry a little more color. These are restrained exceptions; the user approved the general visual language and requested only a small adjustment.
+
 Reserve pulsars, black holes, and similar special silhouettes for **user-marked favorite files** rather than automatically assigning many of them by file type or size. Provide a favorite/unfavorite toggle. Keep favorite state separate from positional pins, byte-size magnitude, and similarity grouping; persist it through re-indexing and preserve manual metadata. The review starts with only three favorites among 650 files. More files must not create more favorites automatically. The [visual study](design/stellar-atlas-study.html) demonstrates the toggle and pulsar/black-hole appearance choice; production persistence is not yet implemented.
 
 ## Bright, glowing celestial icons
