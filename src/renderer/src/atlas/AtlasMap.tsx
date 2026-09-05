@@ -1,3 +1,5 @@
+import { lensAppearance } from './lenses'
+import type { AtlasLens } from '@shared/atlas'
 import { LabelPainter, type MapLabel } from './labelPainter'
 import { galaxyHaze } from './galaxyHaze'
 import { fileStellarAppearance } from './stellarVisual'
@@ -11,6 +13,7 @@ import { readStored, writeStored } from './storage'
 import { FolderConstellationPainter, folderFor, visibleFolderEdges, type ConstellationVisibility } from './folderConstellations'
 
 interface Props {
+  lens?: AtlasLens
   regions: AtlasRegion[]
   markers: AtlasMarker[]
   nebulae?: AtlasNebula[]
@@ -72,13 +75,15 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const scene = useMemo(() => {
     const realFiles = new Map(files.map(f => [f.id, f]))
     const samples = [...props.markers.filter(marker => !realFiles.has(marker.id)), ...files]
+    const now = Date.now()
     return samples.map((file): ScenePoint => ({
       id: file.id, x: file.x, y: file.y, radius: 25, stellar: true, sizeBytes: file.size,
       objectType: fileStellarAppearance(file).objectType, zoomable: true,
+      lensColor: lensAppearance(props.lens ?? 'visible', file, now).color,
       rotation: (seedFor(file.id) % 100 / 100 - .5) * .5, color: '#f1f1e9',
-      alpha: props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9,
+      alpha: (props.highlights.size && !props.highlights.has(file.id) && file.id !== props.selectedId ? .2 : .9) * (file.id === props.selectedId || props.highlights.has(file.id) ? 1 : lensAppearance(props.lens ?? 'visible', file, now).alpha),
     }))
-  }, [props.markers, files, props.selectedId, props.highlights])
+  }, [props.markers, files, props.selectedId, props.highlights, props.lens])
   const sceneById = useMemo(() => new Map(scene.map(point => [point.id, point])), [scene])
   const pointById = useRef(sceneById); pointById.current = sceneById
 
@@ -168,12 +173,12 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       sky.setTransform(dpr, 0, 0, dpr, 0, 0); sky.clearRect(0, 0, width, height)
       if (glow) {
         const [x, y] = project(glow.x, glow.y, camera.current, width, height)
-        sky.globalAlpha = .65 / (1 + camera.current.zoom * .7)
+        sky.globalAlpha = (latest.current.lens === 'connections' ? .95 : .65) / (1 + camera.current.zoom * .7)
         sky.drawImage(glow.canvas, x, y, glow.width * camera.current.zoom, glow.height * camera.current.zoom)
       }
       const selection = latest.current.files.find(file => file.id === latest.current.selectedId)
       const constellation = constellationPainter.current.draw(sky, edgesRef.current, camera.current, width, height, {
-        visibility: latest.current.constellations ?? 'all', selectedFolder: selection ? folderFor(selection) : null,
+        visibility: latest.current.lens === 'connections' ? 'all' : latest.current.constellations ?? 'all', selectedFolder: selection ? folderFor(selection) : null,
         highlights: latest.current.highlights, reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         moving: moving?.file && moving.wx !== undefined && moving.wy !== undefined ? { id: moving.file.id, x: moving.wx, y: moving.wy } : undefined,
       })

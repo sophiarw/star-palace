@@ -1,7 +1,7 @@
 import type { StarType } from '@shared/types'
 import { pointStellarAppearance } from './stellarVisual'
 export interface Camera { x: number; y: number; zoom: number }
-export interface ScenePoint { id: string; x: number; y: number; radius: number; color: string; alpha: number; objectType?: StarType; rotation?: number; zoomable?: boolean; stellar?: boolean; sizeBytes?: number }
+export interface ScenePoint { id: string; x: number; y: number; radius: number; color: string; alpha: number; objectType?: StarType; rotation?: number; zoomable?: boolean; stellar?: boolean; sizeBytes?: number; lensColor?: string }
 export interface LabelBox { x: number; y: number; width: number; height: number }
 
 export function project(x: number, y: number, camera: Camera, width: number, height: number): [number, number] {

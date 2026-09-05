@@ -21,6 +21,9 @@ interface Options<Place> {
   expand: () => void
   close: () => void
   back: () => void
+  tutorials?: () => void
+  fullscreen?: () => void
+  escapeFullscreen?: () => boolean
   showReader?: () => void
   help: () => void
   metrics: () => void
@@ -76,7 +79,7 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
     const run = (c: VimCommand, target: HTMLElement) => {
       const o = latest.current, { key, count } = c
       const inReader = o.expanded || !!target.closest('.atlas-reader')
-      const inResults = !!o.query.trim()
+      const inResults = !!o.query.trim() && !target.closest('.atlas-map,.atlas-map-footer') && !target.classList.contains('atlas-stage')
       const browser = document.querySelector<HTMLElement>('.atlas-file-browser,.atlas-results')
       const reader = scrollableReader()
       const sequence = visualRef.current ? visualRef.current.files : o.sequence
@@ -90,6 +93,7 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
       }
       if (key === 'Escape') {
         if (visualRef.current) { previousVisual.current = visualRef.current; setVisual(null) }
+        else if (o.escapeFullscreen?.()) { /* Immersive layers handle their own Escape. */ }
         else if (o.expanded) o.close()
         else if (o.query) o.setQuery('')
         else o.back()
@@ -182,7 +186,9 @@ export function useVimBrowsing<Place>(options: Options<Place>) {
     setCommand(null)
     if (!text) return
     commandHistory.current = [...commandHistory.current.filter(item => item !== text), text].slice(-30); commandCursor.current = commandHistory.current.length
-    if (['help', 'h', 'commands'].includes(text)) o.help()
+    if (text === 'tutorials' || text === 'tutorial') o.tutorials?.()
+    else if (text === 'fullscreen') o.fullscreen?.()
+    else if (['help', 'h', 'commands'].includes(text)) o.help()
     else if (['map', 'list', 'grid'].includes(text)) o.setView(text as View)
     else if (['q', 'quit', 'close'].includes(text)) o.close()
     else if (text === 'noh' || text === 'nohlsearch') o.setQuery('')

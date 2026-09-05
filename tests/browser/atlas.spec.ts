@@ -187,7 +187,7 @@ test('wheel zoom crosses detail levels without scope changes, anchor drift, or l
   const box = (await scene.boundingBox())!
   const read = async () => JSON.parse((await scene.getAttribute('data-camera'))!) as { x: number; y: number; zoom: number }
   const original = await read()
-  const summary = await page.request.get('http://127.0.0.1:7374/api/atlas/summary').then(r => r.json())
+  const summary = await page.request.get((process.env.STARPALACE_TEST_API ?? 'http://127.0.0.1:7374/api/atlas') + '/summary').then(r => r.json())
   const marker = summary.markers[0] as { id: string; x: number; y: number }
   const anchor = { x: (marker.x - original.x) * original.zoom + box.width / 2, y: (marker.y - original.y) * original.zoom + box.height / 2 }
   const mouseX = Math.round(box.x + anchor.x), mouseY = Math.round(box.y + anchor.y)

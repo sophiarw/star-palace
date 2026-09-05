@@ -26,6 +26,8 @@ The public release branch is `main`; the pre-atlas version is preserved on `lega
 
 Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Build the renderer for integration milestones. Add meaningful regression tests for data integrity, search correctness, layout stability, and user interactions. Record measured performance separately from targets; do not infer foreground frame rate from background or headless timing.
 
+Every user-facing feature needs an in-app tutorial with concise steps and screenshots from the fictional demo. Update `src/renderer/src/atlas/tutorialCatalog.ts` and `src/renderer/public/tutorials/` when its controls change; `scripts/capture-tutorials.mjs` regenerates the images. Never use the real library for tutorial artwork.
+
 ## Code map
 
 - `website/`: static marketing/tutorial site; `vite.site.config.ts` builds `dist-site/`. Uses the app's existing Canvas artwork and fictional files only. Never publish real-library screenshots or data.
@@ -33,6 +35,9 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 - `tsconfig.daemon.build.json`: distributable daemon/worker compilation; `scripts/check-mac-runtime.mjs` checks it using temporary fixtures.
 - `LICENSE`: PolyForm Noncommercial with the user's explicit personal/internal workplace-use permission. Describe the project as source available, not open source.
 
+- [docs/text-history.md](docs/text-history.md): opt-in Git archive, capture limits, recovery, and source identity.
+- [docs/app-updates.md](docs/app-updates.md): managed source update checks, restart/recovery, and interruption limits.
+- [docs/observing-and-tutorials.md](docs/observing-and-tutorials.md): wavelength lenses, immersive fullscreen, and screenshot tutorial workflow.
 - `src/daemon/atlas/`: additive persistent atlas, FTS retrieval, region summaries, snapshots, and background service.
 - `src/daemon/index/extractors/`: bounded worker extraction shared by search, readers, and embedding paths.
 - `src/daemon/index.ts`: HTTP composition and legacy routes.

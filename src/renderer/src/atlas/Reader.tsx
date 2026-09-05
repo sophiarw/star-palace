@@ -1,3 +1,4 @@
+import { FileHistory } from './TextHistory'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -110,6 +111,7 @@ interface Props {
 }
 
 export function Reader({ file, expanded, query, collections, onExpand, onClose, onSelect, onChange, onPrevious, onNext, hasSequence, focusOnOpen = false }: Props) {
+  const [showHistory, setShowHistory] = useState(false)
   const [content, setContent] = useState<TextContent | null>(null), [loading, setLoading] = useState(false), [error, setError] = useState<string | null>(null)
   const [neighbors, setNeighbors] = useState<{ id: string; name: string }[]>([]), [tag, setTag] = useState(''), [busy, setBusy] = useState(false)
   const [matchIndex, setMatchIndex] = useState(0), [matches, setMatches] = useState(0), [pdfText, setPdfText] = useState(false)
@@ -180,7 +182,7 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
         <div className="atlas-document-meta">{readableBytes(file.size)}<span>·</span>{new Date(file.modifiedAt).toLocaleDateString()}<span>·</span>{file.hasEmbedding ? 'Semantic + text index' : 'Name + text index'}</div>
         {!!tags.length && <div className="atlas-tags">{tags.map(t => <span key={t}>{t}</span>)}</div>}
         <div className="atlas-favorite-controls"><button className={file.isFavorite ? 'is-favorite' : ''} aria-pressed={file.isFavorite} disabled={busy} onClick={() => void action(async () => { const result = await atlasApi.favorite(file.id, !file.isFavorite); onChange(result.file) })}>{file.isFavorite ? '★ Unfavorite' : '☆ Favorite'}</button>{file.isFavorite && <label>Favorite appearance<select aria-label="Favorite appearance" value={file.favoriteAppearance} disabled={busy} onChange={e => { const appearance = e.target.value as FavoriteAppearance; void action(async () => { const result = await atlasApi.favorite(file.id, true, appearance); onChange(result.file) }) }}><option value="pulsar">Pulsar</option><option value="black-hole">Black hole</option></select></label>}</div>
-        <div className="atlas-reader-actions"><button disabled={busy} onClick={() => void action(() => openFile(file.id))}>Open in app ↗</button><button disabled={busy} onClick={() => void action(() => revealFile(file.id))}>Reveal in folder</button>{editable && <button disabled={busy} title="Open in Neovim when available, otherwise Vim" onClick={() => void action(async () => { await atlasApi.edit(file.id) })}>Edit in Vim ↗</button>}</div>
+        <div className="atlas-reader-actions"><button onClick={() => setShowHistory(true)}>History</button><button disabled={busy} onClick={() => void action(() => openFile(file.id))}>Open in app ↗</button><button disabled={busy} onClick={() => void action(() => revealFile(file.id))}>Reveal in folder</button>{editable && <button disabled={busy} title="Open in Neovim when available, otherwise Vim" onClick={() => void action(async () => { await atlasApi.edit(file.id) })}>Edit in Vim ↗</button>}</div>
         {hasSequence && <div className="atlas-sequence"><button onClick={onPrevious}>← Previous file</button><button onClick={onNext}>Next file →</button></div>}
         {query && <div className="atlas-match-nav"><span>{matches ? `${matchIndex + 1} of ${matches} matches` : 'No text matches in this view'}</span><button disabled={!matches} onClick={() => moveMatch(-1)} aria-label="Previous match">↑</button><button disabled={!matches} onClick={() => moveMatch(1)} aria-label="Next match">↓</button></div>}
         {pdf && <div className="atlas-preview-tools"><button aria-pressed={!pdfText} onClick={() => setPdfText(false)}>PDF pages</button><button aria-pressed={pdfText} onClick={() => setPdfText(true)}>Searchable text</button></div>}
@@ -211,5 +213,6 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
         {!!neighbors.length && <section className="atlas-related"><div className="atlas-eyebrow">Related files</div>{neighbors.map(n => <button key={n.id} onClick={() => onSelect(n.id)}>{n.name}<span>↗</span></button>)}</section>}
       </div>
     </div>
+    {showHistory && <FileHistory file={file} onClose={() => setShowHistory(false)} />}
   </aside>
 }

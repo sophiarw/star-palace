@@ -35,12 +35,13 @@ export function stellarSeed(id: string): number {
 export function fileStellarAppearance(file: { id: string; size?: number; isFavorite?: boolean; favoriteAppearance?: 'pulsar' | 'black-hole' }): StellarAppearance {
   return stellarAppearance(stellarSeed(file.id), file.size, file.isFavorite ? file.favoriteAppearance ?? 'pulsar' : undefined)
 }
-interface StellarPoint { id?: string; sizeBytes?: number; objectType?: StarType }
-const pointAppearances = new WeakMap<StellarPoint, { id?: string; bytes?: number; type?: StarType; value: StellarAppearance }>()
+interface StellarPoint { lensColor?: string; id?: string; sizeBytes?: number; objectType?: StarType }
+const pointAppearances = new WeakMap<StellarPoint, { id?: string; bytes?: number; type?: StarType; color?: string; value: StellarAppearance }>()
 export function pointStellarAppearance(point: StellarPoint): StellarAppearance {
   const previous = pointAppearances.get(point)
-  if (previous && previous.id === point.id && Object.is(previous.bytes, point.sizeBytes) && previous.type === point.objectType) return previous.value
+  if (previous && previous.id === point.id && Object.is(previous.bytes, point.sizeBytes) && previous.type === point.objectType && previous.color === point.lensColor) return previous.value
   const value = stellarAppearance(stellarSeed(point.id ?? ''), point.sizeBytes, point.objectType === 'pulsar' || point.objectType === 'black-hole' ? point.objectType : undefined)
-  pointAppearances.set(point, { id: point.id, bytes: point.sizeBytes, type: point.objectType, value })
+  if (point.lensColor) value.color = point.lensColor
+  pointAppearances.set(point, { color: point.lensColor, id: point.id, bytes: point.sizeBytes, type: point.objectType, value })
   return value
 }

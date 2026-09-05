@@ -2,6 +2,14 @@
 
 This backlog distinguishes approved feature requests from historical design exploration. Approval to record a request does not mean it is implemented or scheduled.
 
+## Current release scope
+
+The user selected a first text-only Git history slice (FR-08), wavelength lenses (FR-11), the Update button (FR-07), and fullscreen (FR-06), then required screenshot tutorials accessible inside the app. These are now implemented in this worktree; validation and release checkpoints are recorded in `revamp-progress.md`. Text history is opt-in, covers indexed UTF-8 text/source files up to 1 MiB, and offers content/diff viewing and copy recovery. Full-sky rewind, named milestones, retention UI, and identity-preserving moves remain future work. See [text history](text-history.md), [updates](app-updates.md), and [observing/tutorials](observing-and-tutorials.md) for exact limits.
+
+### FR-12: In-app screenshot tutorials
+
+Every feature needs a concise tutorial accessible within the app, with screenshots. The initial implementation includes 16 guides covering existing browsing operations and the new release, with contextual links for the new controls. Use fictional data for all screenshots and update the guide whenever its UI changes.
+
 ## September 5: daily use and distribution requests
 
 The user approved the first six requests below for the backlog, then added an Update button as a seventh. Implementation remains future work; the current task is documentation and discussion of larger product directions.

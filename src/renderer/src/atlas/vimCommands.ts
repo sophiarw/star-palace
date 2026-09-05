@@ -64,6 +64,8 @@ export const VIM_HELP: readonly [string, string][] = [
   ['Space e · :edit', 'Edit the selected plain-text or Markdown file in Terminal, preferring nvim over vim.'],
   ['Enter · o / O · gf', 'Expand reader; open file / reveal folder; open file in its default app.'],
   ['+ / − · zz / zt / zb · zf', 'Map zoom; center selected file (reader: center / top / bottom of current match); fit map.'],
+  [':tutorials', 'Screenshot walkthroughs for the app’s features.'],
+  [':fullscreen', 'Toggle the immersive atlas; Escape restores the previous workspace.'],
   [':help · F1 · :commands', 'Command reference. :map, :list, :grid, :next, :previous, :favorite, :unfavorite, :pin, :unpin, :collection, :marks, :q also work.'],
 ]
 

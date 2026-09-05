@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test'
 import type { AtlasFile, AtlasSummary } from '../../src/shared/atlas'
 
 test('folder constellations remain stable through visibility controls and respect file filters', async ({ page }) => {
-  const summary = await page.request.get('http://127.0.0.1:7374/api/atlas/summary').then(response => response.json()) as AtlasSummary
-  const response = await page.request.get('http://127.0.0.1:7374/api/atlas/viewport?minX=-1000000&minY=-1000000&maxX=1000000&maxY=1000000')
+  const summary = await page.request.get((process.env.STARPALACE_TEST_API ?? 'http://127.0.0.1:7374/api/atlas') + '/summary').then(response => response.json()) as AtlasSummary
+  const response = await page.request.get((process.env.STARPALACE_TEST_API ?? 'http://127.0.0.1:7374/api/atlas') + '/viewport?minX=-1000000&minY=-1000000&maxX=1000000&maxY=1000000')
   const { files } = await response.json() as { files: AtlasFile[] }
   const file = files.find(file => file.folderLinks?.some(link => {
     const distance = Math.hypot(file.x - link.x, file.y - link.y)

@@ -53,6 +53,14 @@ Choose **Library → Manage sources → Index folder** to add or refresh a folde
 ollama pull nomic-embed-text
 ```
 
+## New observing and recovery tools
+
+- **Tutorials** in the app header has screenshot walkthroughs for 16 features. History, updates, and active lenses also link directly to their guide.
+- **Wavelength lens** on the map reveals recent modifications, file sizes, or connections without moving the sky.
+- **Fullscreen** beside Map/List/Grid, or `:fullscreen`, hides the surrounding panels. Search remains available; Escape returns to the previous workspace.
+- **Settings → Text history** enables local Git versions for indexed text/source files up to 1 MiB. A file’s **History** offers earlier contents, diffs, and **Restore a copy**. [Scope and storage limits](docs/text-history.md).
+- **Settings → Application update** updates clean `main` source installations launched with `npm start`. Existing installations need one manual pull/restart to acquire the button. [Update and recovery details](docs/app-updates.md).
+
 ## Atlas controls
 
 | Action | How |

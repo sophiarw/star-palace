@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('index revisions refresh an unchanged folder query without rerunning semantic search or clearing existing hits', async ({ page }) => {
-  const file = (await page.request.get('http://127.0.0.1:7374/api/atlas/files?limit=1').then(response => response.json())).files[0]
+  const file = (await page.request.get((process.env.STARPALACE_TEST_API ?? 'http://127.0.0.1:7374/api/atlas') + '/files?limit=1').then(response => response.json())).files[0]
   let revisionDelta = 0, exactRequests = 0, relatedRequests = 0, holdRefresh = false
   await page.route('**/api/atlas/summary*', async route => {
     const response = await route.fetch(), summary = await response.json()

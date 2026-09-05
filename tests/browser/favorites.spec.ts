@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('favorites persist independently of pins and legacy artwork, update search results, and work through Vim', async ({ page }) => {
-  const api = 'http://127.0.0.1:7374/api/atlas'
+  const api = (process.env.STARPALACE_TEST_API ?? 'http://127.0.0.1:7374/api/atlas')
   await page.goto('/')
   const search = page.getByRole('textbox', { name: 'Search library' })
   await search.fill('how places become memories')

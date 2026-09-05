@@ -6,7 +6,7 @@ import { FileIndex, type IndexedFile } from '../src/daemon/db/FileIndex'
 import { AtlasStore } from '../src/daemon/atlas/AtlasStore'
 import { categoryFromPath, mimeFromPath } from '../src/daemon/index/extractors/category'
 
-const root = resolve('.atlas-dev'), library = join(root, 'library')
+const root = resolve(process.env.STARPALACE_DEMO_DIR ?? '.atlas-dev'), library = join(root, 'library')
 mkdirSync(library, { recursive: true })
 const db = new FileIndex({ dbPath: join(root, 'index.db') }), atlas = new AtlasStore(db)
 const galaxy = db.getOrCreateGalaxy(library, 'Personal library')
