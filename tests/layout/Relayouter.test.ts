@@ -69,6 +69,20 @@ describe('Relayouter.trainSubset', () => {
     db.close()
   })
 
+  it('trains off-thread and discards a result if embeddings change while fitting', async () => {
+    for (let i = 0; i < 205; i++) db.upsert(makeFile(`async-${i}`, deterministicEmbedding(i)))
+    const stale = relayouter.trainAsync()
+    db.updateEmbedding('async-0', deterministicEmbedding(999), 'changed', 'content-only')
+    expect(await stale).toBe(false)
+    expect(relayouter.isReady).toBe(false)
+    const pending = relayouter.trainAsync()
+    expect(relayouter.trainAsync()).toBe(pending)
+    expect(await pending).toBe(true)
+    expect(relayouter.isReady).toBe(true)
+    expect(Number.isFinite(db.get('async-0')?.x)).toBe(true)
+    expect(db.getLatestLayoutMeta()?.version).toBe(relayouter.currentVersion)
+  })
+
   it('returns null when subset is below SUBSET_PCA_MIN', () => {
     for (let i = 0; i < SUBSET_PCA_MIN - 1; i++) {
       db.upsert(makeFile(`f${i}`, deterministicEmbedding(i)))

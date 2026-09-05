@@ -258,7 +258,7 @@ describe('promoteExperiment', () => {
     expect(getSnapshot(h.db, exp.snapshotId)).toBeNull()
   })
 
-  it('returns not-found for an unknown snapshot id', () => {
+  it('returns not-found for an unknown snapshot id', async () => {
     const r = promoteExperiment(h.db, 'no-such-id')
     expect('code' in r).toBe(true)
     if ('code' in r) expect(r.code).toBe('not-found')
@@ -319,7 +319,7 @@ describe('revertExperiment', () => {
     expect(mid.embeddingStrategy).toBe('metadata-only')
     expect(mid.embedding![0]).not.toBeCloseTo(preEmbed0, 6)
 
-    const r = revertExperiment(
+    const r = await revertExperiment(
       { db: h.db, hnsw: h.hnsw, relayouter: h.relayouter },
       exp.snapshotId,
       { relayout: false }
@@ -351,7 +351,7 @@ describe('revertExperiment', () => {
     // between experiment + revert.
     h.db.delete(ids[0])
 
-    const r = revertExperiment(
+    const r = await revertExperiment(
       { db: h.db, hnsw: h.hnsw, relayouter: h.relayouter },
       exp.snapshotId,
       { relayout: false }
@@ -362,8 +362,8 @@ describe('revertExperiment', () => {
     expect(r.skippedCount).toBe(1)
   })
 
-  it('returns not-found for an unknown snapshot id', () => {
-    const r = revertExperiment(
+  it('returns not-found for an unknown snapshot id', async () => {
+    const r = await revertExperiment(
       { db: h.db, hnsw: h.hnsw, relayouter: h.relayouter },
       'no-such-id'
     )

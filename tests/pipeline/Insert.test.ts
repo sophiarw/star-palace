@@ -59,6 +59,20 @@ describe('Insert pipeline (mocked Ollama)', () => {
     vi.unstubAllGlobals()
   })
 
+  it('publishes metadata before a slow model and preserves edits made while waiting', async () => {
+    let finish!: (value: { embedding: Float32Array; contentHash: string }) => void
+    vi.spyOn(engine, 'embed').mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const node: FileNode = { id: 'slow', name: 'slow.md', path: '/tmp/slow.md', platform: 'local', mimeType: 'text/markdown', category: 'document', size: 4, createdAt: 1, modifiedAt: 2 }
+    const pending = insertOne(node, Buffer.from('body'), { db, hnsw, embedEngine: engine, relayouter })
+    expect(db.get('slow')?.name).toBe('slow.md')
+    expect(db.get('slow')?.embedding).toBeNull()
+    db.setTags('slow', ['edited-while-waiting'])
+    finish({ embedding: deterministicEmbedding('body'), contentHash: 'body-hash' })
+    await pending
+    expect(db.getTags('slow')).toEqual(['edited-while-waiting'])
+    expect(hnsw.searchKNN(deterministicEmbedding('body'), 1)[0].id).toBe('slow')
+  })
+
   it('indexes fixture files without errors', async () => {
     const stats = await indexPath(FIXTURES, { db, hnsw, embedEngine: engine, relayouter })
     expect(stats.errors).toBe(0)

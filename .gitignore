@@ -15,3 +15,5 @@ worktrees/
 .atlas-benchmark/
 test-results/
 playwright-report/
+
+.atlas-real/

@@ -100,7 +100,7 @@ export async function indexPath(
   }
 
   // Check if this batch crossed the layout threshold for the first time
-  relayouter.maybeTrainFirst()
+  if (!relayouter.isReady) await relayouter.trainAsync()
 
   stats.durationMs = Date.now() - start
   return stats
@@ -135,11 +135,81 @@ export async function insertOne(
   // therefore (promptHash matches AND strategy matches).
   const prompt = STRATEGIES[strategy].build({ node, content, tags })
   let embedResult: EmbeddingResult | null = null
+  // F10 — resolve the usage signals once outside the tx so the same values
+  // feed both the upsert columns and the importance-score computation.
+  // Carry-forward when the walker didn't provide any (direct insertOne()
+  // callers like single-file API endpoints) so a re-index doesn't wipe a
+  // previously-recorded signal. Use ?? not || so 0 is preserved.
+  const effectiveOsUseCount = usage?.osUseCount ?? existing?.osUseCount ?? null
+  const effectiveOsLastUsed = usage?.osLastUsed ?? existing?.osLastUsed ?? null
+
+  const writeMetadata = () => {
+    const current = db.get(node.id) ?? existing
+    db.upsert({
+      id: node.id,
+      name: node.name,
+      path: node.path,
+      platform: node.platform,
+      mimeType: node.mimeType,
+      category: node.category,
+      size: node.size,
+      createdAt: node.createdAt,
+      modifiedAt: node.modifiedAt,
+      embedding: embedResult?.embedding ?? null,
+      contentHash: embedResult?.contentHash ?? null,
+      x: null,
+      y: null,
+      z: null,
+      clusterId: null,
+      // F9: prefer the explicit per-insert galaxy. Fall back to whatever the
+      // row already had (re-index path) so we never silently shift a star to
+      // a different galaxy by passing through a null.
+      galaxyId: galaxyId ?? existing?.galaxyId ?? null,
+      layoutVersion: current?.layoutVersion ?? 0,
+      firstSeen: existing?.firstSeen ?? now,
+      viewCount: current?.viewCount ?? 0,
+      isPinned: current?.isPinned ?? false,
+      starType: current?.starType ?? null,
+      // F4 — pin coefficients are managed via dedicated set/clearPin paths;
+      // upsert never overwrites them (the SQL ON CONFLICT clause skips these
+      // columns entirely), but we have to satisfy the IndexedFile shape.
+      pinAlpha: existing?.pinAlpha ?? null,
+      pinBeta: existing?.pinBeta ?? null,
+      pinAxisA: existing?.pinAxisA ?? null,
+      pinAxisB: existing?.pinAxisB ?? null,
+      pinnedAt: existing?.pinnedAt ?? null,
+      // F10 — usage signals from the walker (Spotlight on macOS, atime
+      // elsewhere). When the caller didn't provide any (e.g. test paths
+      // that build a node by hand), carry forward whatever the existing
+      // row had so a re-index doesn't wipe a previously-recorded signal.
+      osUseCount: effectiveOsUseCount,
+      osLastUsed: effectiveOsLastUsed,
+      // F10 — denormalised composite. Recomputed every walker pass (cheap;
+      // no embed call) so percentile buckets in the renderer stay current.
+      // Cloud-platform stars with no Spotlight + no atime degenerate to
+      // viewCount alone.
+      importanceScore: computeImportanceScore({
+        viewCount: current?.viewCount ?? 0,
+        osUseCount: effectiveOsUseCount,
+        osLastUsed: effectiveOsLastUsed,
+        now,
+      }),
+      // B1 — record the strategy that produced `embedding`. When this insert
+      // doesn't re-embed (prompt was null e.g. media on content-only), keep
+      // whatever the existing row reported. Tags are pure preservation here:
+      // the user owns them via setTags, Insert never writes new ones.
+      tags: current?.tags ?? tags,
+      embeddingStrategy: embedResult?.strategy ?? existing?.embeddingStrategy ?? null,
+    })
+
+  }
+  // A slow/offline model must not prevent this file appearing in the atlas.
+  writeMetadata()
   if (prompt !== null && prompt.trim()) {
     const promptHash = createHash('sha1').update(prompt).digest('hex')
     if (existing?.contentHash === promptHash && existing?.embeddingStrategy === strategy) {
       // Skip: same prompt + same strategy => same vector. No embed, no
-      // KNN refresh, no upsert. Walker idempotency intact.
+      // KNN refresh. Metadata and usage still update.
       return
     }
     // Call embed() directly with the already-built prompt; no need to
@@ -169,71 +239,8 @@ export async function insertOne(
 
   const pos = embedResult ? relayouter.projectOne(embedResult.embedding, node.id) : null
 
-  // F10 — resolve the usage signals once outside the tx so the same values
-  // feed both the upsert columns and the importance-score computation.
-  // Carry-forward when the walker didn't provide any (direct insertOne()
-  // callers like single-file API endpoints) so a re-index doesn't wipe a
-  // previously-recorded signal. Use ?? not || so 0 is preserved.
-  const effectiveOsUseCount = usage?.osUseCount ?? existing?.osUseCount ?? null
-  const effectiveOsLastUsed = usage?.osLastUsed ?? existing?.osLastUsed ?? null
-
   const writeAll = db.db.transaction(() => {
-    db.upsert({
-      id: node.id,
-      name: node.name,
-      path: node.path,
-      platform: node.platform,
-      mimeType: node.mimeType,
-      category: node.category,
-      size: node.size,
-      createdAt: node.createdAt,
-      modifiedAt: node.modifiedAt,
-      embedding: embedResult?.embedding ?? null,
-      contentHash: embedResult?.contentHash ?? null,
-      x: null,
-      y: null,
-      z: null,
-      clusterId: null,
-      // F9: prefer the explicit per-insert galaxy. Fall back to whatever the
-      // row already had (re-index path) so we never silently shift a star to
-      // a different galaxy by passing through a null.
-      galaxyId: galaxyId ?? existing?.galaxyId ?? null,
-      layoutVersion: 0,
-      firstSeen: existing?.firstSeen ?? now,
-      viewCount: existing?.viewCount ?? 0,
-      isPinned: existing?.isPinned ?? false,
-      starType: existing?.starType ?? null,
-      // F4 — pin coefficients are managed via dedicated set/clearPin paths;
-      // upsert never overwrites them (the SQL ON CONFLICT clause skips these
-      // columns entirely), but we have to satisfy the IndexedFile shape.
-      pinAlpha: existing?.pinAlpha ?? null,
-      pinBeta: existing?.pinBeta ?? null,
-      pinAxisA: existing?.pinAxisA ?? null,
-      pinAxisB: existing?.pinAxisB ?? null,
-      pinnedAt: existing?.pinnedAt ?? null,
-      // F10 — usage signals from the walker (Spotlight on macOS, atime
-      // elsewhere). When the caller didn't provide any (e.g. test paths
-      // that build a node by hand), carry forward whatever the existing
-      // row had so a re-index doesn't wipe a previously-recorded signal.
-      osUseCount: effectiveOsUseCount,
-      osLastUsed: effectiveOsLastUsed,
-      // F10 — denormalised composite. Recomputed every walker pass (cheap;
-      // no embed call) so percentile buckets in the renderer stay current.
-      // Cloud-platform stars with no Spotlight + no atime degenerate to
-      // viewCount alone.
-      importanceScore: computeImportanceScore({
-        viewCount: existing?.viewCount ?? 0,
-        osUseCount: effectiveOsUseCount,
-        osLastUsed: effectiveOsLastUsed,
-        now,
-      }),
-      // B1 — record the strategy that produced `embedding`. When this insert
-      // doesn't re-embed (prompt was null e.g. media on content-only), keep
-      // whatever the existing row reported. Tags are pure preservation here:
-      // the user owns them via setTags, Insert never writes new ones.
-      tags,
-      embeddingStrategy: embedResult?.strategy ?? existing?.embeddingStrategy ?? null,
-    })
+    writeMetadata()
 
     if (!embedResult) return
 

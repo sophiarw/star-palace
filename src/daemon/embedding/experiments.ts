@@ -8,7 +8,7 @@
 // level state, no singletons. The daemon wires `db`, `hnsw`, `embedEngine`,
 // and `relayouter` through; tests can pass mocks or real in-memory builds.
 
-import { readFile } from 'fs/promises'
+import { extractContent } from '../index/extractors/text'
 import type { FileIndex, IndexedFile } from '../db/FileIndex'
 import type { HnswIndex } from '../ann/HnswIndex'
 import type { EmbeddingEngine } from './EmbeddingEngine'
@@ -24,7 +24,7 @@ import {
   pruneOldSnapshots,
   type Snapshot,
 } from './snapshots'
-import { K_NEAREST, ISOLATION_THRESHOLD, VIEW_BYTES } from '../../shared/types'
+import { K_NEAREST, ISOLATION_THRESHOLD } from '../../shared/types'
 import type { FileNode } from '../../shared/types'
 
 // Snapshot retention. Tuneable; we keep this conservative because each
@@ -84,8 +84,7 @@ async function embedFileForExperiment(
     content = Buffer.alloc(0)
   } else {
     try {
-      const raw = await readFile(file.path)
-      content = raw.length > VIEW_BYTES ? raw.subarray(0, VIEW_BYTES) : raw
+      content = await extractContent(file.path, file.category)
     } catch {
       // File deleted out from under us; nothing to re-embed.
       return false
@@ -310,11 +309,11 @@ export type RevertExperimentError = { code: 'not-found' }
 //
 // Files deleted out from under us are skipped (logged, counted) per the plan's
 // "Snapshot revert on deleted files" risk callout.
-export function revertExperiment(
+export async function revertExperiment(
   deps: RevertExperimentDeps,
   snapshotId: string,
   opts: { relayout?: boolean } = {}
-): RevertExperimentResult | RevertExperimentError {
+): Promise<RevertExperimentResult | RevertExperimentError> {
   const { db, hnsw, relayouter } = deps
   const snap = getSnapshot(db, snapshotId)
   if (!snap) return { code: 'not-found' }
@@ -358,7 +357,7 @@ export function revertExperiment(
   const shouldRelayout = opts.relayout !== false
   if (shouldRelayout && relayouter.isReady) {
     try {
-      relayouter.train()
+      await relayouter.trainAsync()
     } catch (err) {
       console.warn(`[experiment] post-revert relayout failed: ${String(err)}`)
     }
@@ -402,8 +401,7 @@ export async function reindexFile(
     content = Buffer.alloc(0)
   } else {
     try {
-      const raw = await readFile(file.path)
-      content = raw.length > VIEW_BYTES ? raw.subarray(0, VIEW_BYTES) : raw
+      content = await extractContent(file.path, file.category)
     } catch (err) {
       return { code: 'read-failed', message: String(err) }
     }

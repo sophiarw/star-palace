@@ -5,6 +5,7 @@ import type { AtlasService } from './service'
 
 function bounded(value: unknown, fallback: number, max: number): number {
   if (value === undefined) return fallback
+  if ((typeof value !== 'number' && typeof value !== 'string') || value === '') throw new Error('Expected an integer')
   const n = Number(value)
   if (!Number.isInteger(n) || n < 0 || n > max) throw new Error(`Expected an integer between 0 and ${max}`)
   return n
@@ -41,10 +42,11 @@ export function atlasRoutes(service: AtlasService): Router {
   router.get('/file/:id', (req, res) => {
     const file = store.file(req.params.id)
     if (!file) return res.status(404).json({ error: 'File not found' })
+    store.index.incrementViewCount(file.id)
     return res.json(file)
   })
   router.get('/file/:id/text', async (req, res) => {
-    await service.text(req.params.id)
+    try { await service.text(req.params.id) } catch { return res.status(500).json({ error: 'Preview unavailable' }) }
     const file = store.file(req.params.id), doc = store.document(req.params.id)
     if (!file || !doc) return res.status(404).json({ error: 'File not found' })
     return res.json({ content: doc.text, status: doc.status, error: doc.error, mimeType: file.mimeType, size: file.size, truncated: doc.status === 'truncated' })

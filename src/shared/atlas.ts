@@ -1,4 +1,4 @@
-import type { FileCategory, Star } from './types'
+import type { FileCategory, Star, StarType } from './types'
 
 export interface AtlasRegion {
   id: string
@@ -11,6 +11,7 @@ export interface AtlasRegion {
   radius: number
   count: number
   color: string
+  objectTypes?: Partial<Record<StarType, number>>
 }
 
 export interface AtlasFile extends Star {

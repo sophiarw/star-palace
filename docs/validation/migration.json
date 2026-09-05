@@ -1,0 +1,16 @@
+{
+  "total": 1748,
+  "positioned": 1748,
+  "regions": 45,
+  "neighborhoods": 207,
+  "largestNeighborhood": 96,
+  "migrationMs": 367.81391599999995,
+  "maxSliceMs": 10.558125000000018,
+  "coordinateDuplicates": {
+    "n": 0
+  },
+  "withoutEmbedding": {
+    "n": 613
+  },
+  "userDataUnchanged": true
+}

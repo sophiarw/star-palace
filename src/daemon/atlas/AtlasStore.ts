@@ -1,3 +1,5 @@
+import { celestialType } from '../../shared/celestial'
+import type { StarType } from '../../shared/types'
 import { createHash } from 'crypto'
 import { basename, dirname, relative, sep } from 'path'
 import type { FileIndex, IndexedFile } from '../db/FileIndex'
@@ -59,22 +61,35 @@ export class AtlasStore {
       CREATE INDEX IF NOT EXISTS atlas_positions_region ON atlas_positions(region_id);
       CREATE INDEX IF NOT EXISTS atlas_positions_neighborhood ON atlas_positions(neighborhood_id);
       CREATE INDEX IF NOT EXISTS atlas_positions_xy ON atlas_positions(x,y);
+      CREATE TABLE IF NOT EXISTS atlas_object_types(id TEXT PRIMARY KEY, type TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS atlas_region_types(region_id TEXT NOT NULL,type TEXT NOT NULL,count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(region_id,type));
       CREATE TABLE IF NOT EXISTS atlas_slots(id TEXT PRIMARY KEY, next_slot INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS atlas_dirty(id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS atlas_documents(id TEXT PRIMARY KEY, text TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', error TEXT, stamp TEXT NOT NULL DEFAULT '');
+      CREATE INDEX IF NOT EXISTS atlas_documents_status ON atlas_documents(status);
       CREATE TABLE IF NOT EXISTS atlas_extract_queue(id TEXT PRIMARY KEY);
       CREATE VIRTUAL TABLE IF NOT EXISTS atlas_fts USING fts5(file_id UNINDEXED, name, path, tags, body, offset UNINDEXED, tokenize='unicode61', prefix='2 3 4');
+      CREATE VIRTUAL TABLE IF NOT EXISTS atlas_names USING fts5(name,path,tokenize='trigram');
+      CREATE TABLE IF NOT EXISTS atlas_fts_rows(row_id INTEGER PRIMARY KEY, file_id TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS atlas_fts_rows_file ON atlas_fts_rows(file_id);
+      INSERT OR IGNORE INTO atlas_fts_rows SELECT rowid,file_id FROM atlas_fts;
       CREATE TABLE IF NOT EXISTS atlas_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, payload TEXT NOT NULL, file_count INTEGER NOT NULL);
-      CREATE TRIGGER IF NOT EXISTS atlas_file_insert AFTER INSERT ON files BEGIN
-        INSERT OR IGNORE INTO atlas_dirty VALUES(new.id);
+      CREATE TRIGGER IF NOT EXISTS atlas_name_delete BEFORE DELETE ON files BEGIN
+        DELETE FROM atlas_names WHERE rowid=old.rowid;
+      END;
+      DROP TRIGGER IF EXISTS atlas_file_insert;
+      DROP TRIGGER IF EXISTS atlas_file_update;
+      DROP TRIGGER IF EXISTS atlas_file_delete;
+      CREATE TRIGGER atlas_file_insert AFTER INSERT ON files BEGIN
+        INSERT INTO atlas_dirty(id) VALUES(new.id) ON CONFLICT(id) DO NOTHING;
       END;
       CREATE TRIGGER IF NOT EXISTS atlas_file_update AFTER UPDATE OF name,path,tags,modified_at,size,embedding,star_type ON files BEGIN
-        INSERT OR IGNORE INTO atlas_dirty VALUES(new.id);
+        INSERT INTO atlas_dirty(id) VALUES(new.id) ON CONFLICT(id) DO NOTHING;
       END;
       CREATE TRIGGER IF NOT EXISTS atlas_file_delete AFTER DELETE ON files BEGIN
-        INSERT OR IGNORE INTO atlas_dirty VALUES(old.id);
+        INSERT INTO atlas_dirty(id) VALUES(old.id) ON CONFLICT(id) DO NOTHING;
       END;
-      INSERT OR IGNORE INTO atlas_dirty SELECT id FROM files WHERE id NOT IN (SELECT id FROM atlas_positions);
+      INSERT OR IGNORE INTO atlas_dirty SELECT id FROM files WHERE id NOT IN (SELECT id FROM atlas_positions) OR rowid NOT IN (SELECT rowid FROM atlas_names) OR id NOT IN (SELECT id FROM atlas_object_types);
     `)
   }
 
@@ -89,6 +104,10 @@ export class AtlasStore {
         const file = this.index.get(id)
         if (file) {
           if (!this.position(id)) this.place(file)
+          this.updateObjectType(id, celestialType(file))
+          const row = this.index.db.prepare('SELECT rowid FROM files WHERE id=?').get(id) as { rowid: number }
+          this.index.db.prepare('DELETE FROM atlas_names WHERE rowid=?').run(row.rowid)
+          this.index.db.prepare('INSERT INTO atlas_names(rowid,name,path) VALUES(?,?,?)').run(row.rowid, file.name.toLowerCase(), file.path.toLowerCase())
           const doc = this.document(id)
           if (!doc) {
             this.index.db.prepare('INSERT OR IGNORE INTO atlas_documents(id) VALUES(?)').run(id)
@@ -97,10 +116,11 @@ export class AtlasStore {
           if (!doc || doc.stamp !== `${file.modifiedAt}:${file.size}`) this.index.db.prepare('INSERT OR IGNORE INTO atlas_extract_queue VALUES(?)').run(id)
         } else {
           const previous = this.position(id)
+          this.updateObjectType(id, null)
           if (previous) this.index.db.prepare('UPDATE atlas_regions SET member_count=max(0,member_count-1) WHERE id IN (?,?)').run(previous.region_id, previous.neighborhood_id)
           this.index.db.prepare('DELETE FROM atlas_positions WHERE id=?').run(id)
           this.index.db.prepare('DELETE FROM atlas_documents WHERE id=?').run(id)
-          this.index.db.prepare('DELETE FROM atlas_fts WHERE file_id=?').run(id)
+          this.deleteFts(id)
           this.index.db.prepare('DELETE FROM atlas_extract_queue WHERE id=?').run(id)
         }
         this.index.db.prepare('DELETE FROM atlas_dirty WHERE id=?').run(id)
@@ -110,11 +130,23 @@ export class AtlasStore {
     return rows.length
   }
 
+  private updateObjectType(id: string, type: StarType | null): void {
+    const previous = (this.index.db.prepare('SELECT type FROM atlas_object_types WHERE id=?').get(id) as { type: StarType } | undefined)?.type
+    if (previous === type) return
+    const position = this.position(id)
+    if (position) for (const region of [position.region_id, position.neighborhood_id]) {
+      if (previous) this.index.db.prepare('UPDATE atlas_region_types SET count=max(0,count-1) WHERE region_id=? AND type=?').run(region, previous)
+      if (type) this.index.db.prepare('INSERT INTO atlas_region_types(region_id,type,count) VALUES(?,?,1) ON CONFLICT(region_id,type) DO UPDATE SET count=count+1').run(region, type)
+    }
+    if (type) this.index.db.prepare('INSERT OR REPLACE INTO atlas_object_types VALUES(?,?)').run(id, type)
+    else this.index.db.prepare('DELETE FROM atlas_object_types WHERE id=?').run(id)
+  }
+
   private place(file: IndexedFile): void {
     const galaxy = file.galaxyId === null ? null : this.index.db.prepare('SELECT name,root_path FROM galaxies WHERE id=?').get(file.galaxyId) as { name: string; root_path: string } | undefined
     const rel = galaxy && !galaxy.root_path.startsWith('__default__') ? relative(galaxy.root_path, file.path) : file.name
     const parts = rel.split(sep)
-    const branch = parts.length > 1 ? parts[0] : file.category
+    const branch = parts.length > 1 ? parts[0] : 'Loose files'
     const key = `${file.galaxyId ?? 'local'}:${branch}`
     let region = this.index.db.prepare(`SELECT * FROM atlas_regions WHERE group_key=? AND kind='region'
       AND (SELECT count(*) FROM atlas_regions n WHERE n.parent_id=atlas_regions.id AND n.member_count < ?) > 0 ORDER BY rowid LIMIT 1`).get(key, GROUP_CAP) as RegionRow | undefined
@@ -135,8 +167,9 @@ export class AtlasStore {
       JOIN atlas_regions n ON n.id=p.neighborhood_id
       WHERE e.src_id=? AND e.weight >= 0.55 AND n.parent_id=? AND n.member_count < ?
       ORDER BY e.weight DESC LIMIT 1`).get(file.id, region.id, GROUP_CAP) as RegionRow | undefined
-    const folderKey = `${region.id}:${dirname(rel)}:${file.category}`
-    if (!group) group = this.index.db.prepare('SELECT * FROM atlas_regions WHERE group_key=? AND member_count < ? ORDER BY rowid LIMIT 1').get(folderKey, GROUP_CAP) as RegionRow | undefined
+    const folderKey = `${region.id}:${dirname(rel)}`
+    if (!group) group = this.index.db.prepare('SELECT * FROM atlas_regions WHERE group_key IN (?,?,?,?,?,?) AND member_count < ? ORDER BY rowid LIMIT 1')
+      .get(folderKey, ...['document', 'code', 'data', 'media', 'unknown'].map(type => folderKey + ':' + type), GROUP_CAP) as RegionRow | undefined
     if (!group) {
       const groups = (this.index.db.prepare('SELECT count(*) n FROM atlas_regions WHERE parent_id=?').get(region.id) as { n: number }).n
       if (groups >= REGION_CAP) group = this.index.db.prepare('SELECT * FROM atlas_regions WHERE parent_id=? AND member_count < ? ORDER BY member_count,rowid LIMIT 1').get(region.id, GROUP_CAP) as RegionRow | undefined
@@ -144,7 +177,7 @@ export class AtlasStore {
     if (!group) {
       const slot = (this.index.db.prepare('SELECT count(*) n FROM atlas_regions WHERE parent_id=?').get(region.id) as { n: number }).n
       const [dx, dy] = spiralSlot(slot, 450)
-      const label = dirname(rel) === '.' ? file.category : basename(dirname(rel))
+      const label = dirname(rel) === '.' ? 'Mixed files' : basename(dirname(rel))
       group = { id: identity(`neighborhood:${region.id}:${slot}`), parent_id: region.id, galaxy_id: file.galaxyId,
         label: label.replace(/[-_]/g, ' '), kind: 'neighborhood', x: region.x + dx, y: region.y + dy, radius: 190,
         color: region.color, member_count: 0, group_key: folderKey }
@@ -187,11 +220,19 @@ export class AtlasStore {
     return true
   }
 
+  private deleteFts(id: string): void {
+    // FTS UNINDEXED columns do not have a B-tree. Deleting by file_id would
+    // scan the entire corpus for every update, making initial builds quadratic.
+    this.index.db.prepare('DELETE FROM atlas_fts WHERE rowid IN (SELECT row_id FROM atlas_fts_rows WHERE file_id=?)').run(id)
+    this.index.db.prepare('DELETE FROM atlas_fts_rows WHERE file_id=?').run(id)
+  }
+
   private writeFts(file: IndexedFile, text: string): void {
-    this.index.db.prepare('DELETE FROM atlas_fts WHERE file_id=?').run(file.id)
+    this.deleteFts(file.id)
     const insert = this.index.db.prepare('INSERT INTO atlas_fts(file_id,name,path,tags,body,offset) VALUES(?,?,?,?,?,?)')
-    insert.run(file.id, file.name, file.path, (file.tags ?? []).join(' '), '', 0)
-    for (const c of chunkText(text)) insert.run(file.id, '', '', '', c.body, c.offset)
+    const track = this.index.db.prepare('INSERT INTO atlas_fts_rows(row_id,file_id) VALUES(?,?)')
+    track.run(insert.run(file.id, file.name, file.path, (file.tags ?? []).join(' '), '', 0).lastInsertRowid, file.id)
+    for (const c of chunkText(text)) track.run(insert.run(file.id, '', '', '', c.body, c.offset).lastInsertRowid, file.id)
   }
 
   private scope(scope: AtlasScope): { sql: string; args: SqlValue[] } {
@@ -204,18 +245,26 @@ export class AtlasStore {
       if (value !== undefined) { clauses.push(`${column}=?`); args.push(value) }
     }
     if (scope.collectionId !== undefined) { clauses.push('EXISTS(SELECT 1 FROM collection_members c WHERE c.file_id=f.id AND c.collection_id=?)'); args.push(scope.collectionId) }
-    if (scope.tag) { clauses.push("EXISTS(SELECT 1 FROM json_each(COALESCE(f.tags,'[]')) WHERE value=?)"); args.push(scope.tag) }
+    if (scope.tag) { clauses.push("EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(f.tags) THEN f.tags ELSE '[]' END) WHERE value=?)"); args.push(scope.tag) }
     return { sql: clauses.length ? ' AND ' + clauses.join(' AND ') : '', args }
   }
 
   summary(scope: AtlasScope = {}): AtlasSummary {
     const filter = this.scope(scope)
-    const counts = this.index.db.prepare(`SELECT p.region_id,p.neighborhood_id,count(*) n FROM files f JOIN atlas_positions p ON p.id=f.id WHERE 1${filter.sql} GROUP BY p.region_id,p.neighborhood_id`).all(...filter.args) as { region_id: string; neighborhood_id: string; n: number }[]
+    const counts = !filter.sql ? [] : this.index.db.prepare(`SELECT p.region_id,p.neighborhood_id,count(*) n FROM files f JOIN atlas_positions p ON p.id=f.id WHERE 1${filter.sql} GROUP BY p.region_id,p.neighborhood_id`).all(...filter.args) as { region_id: string; neighborhood_id: string; n: number }[]
     const memberCounts = new Map<string, number>()
     for (const c of counts) { memberCounts.set(c.neighborhood_id, c.n); memberCounts.set(c.region_id, (memberCounts.get(c.region_id) ?? 0) + c.n) }
     const regions = (this.index.db.prepare('SELECT * FROM atlas_regions WHERE member_count > 0 ORDER BY rowid').all() as RegionRow[])
-      .filter(r => memberCounts.has(r.id)).map(r => this.region(r, memberCounts.get(r.id)!))
-    return { revision: this.revision, total: this.index.count(), positioned: counts.reduce((n, c) => n + c.n, 0),
+      .filter(r => !filter.sql || memberCounts.has(r.id)).map(r => this.region(r, filter.sql ? memberCounts.get(r.id)! : r.member_count))
+    const types = !filter.sql
+      ? this.index.db.prepare('SELECT region_id,type,count FROM atlas_region_types WHERE count>0').all() as { region_id: string; type: StarType; count: number }[]
+      : this.index.db.prepare(`SELECT p.region_id,p.neighborhood_id,o.type,count(*) count FROM files f JOIN atlas_positions p ON p.id=f.id JOIN atlas_object_types o ON o.id=f.id WHERE 1${filter.sql} GROUP BY p.region_id,p.neighborhood_id,o.type`).all(...filter.args) as { region_id: string; neighborhood_id: string; type: StarType; count: number }[]
+    const byId = new Map(regions.map(r => [r.id, r]))
+    for (const row of types) for (const id of 'neighborhood_id' in row ? [row.region_id, row.neighborhood_id as string] : [row.region_id]) {
+      const region = byId.get(id)
+      if (region) { region.objectTypes ??= {}; region.objectTypes[row.type] = (region.objectTypes[row.type] ?? 0) + row.count }
+    }
+    return { revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
       searchable: (this.index.db.prepare("SELECT count(*) n FROM atlas_documents WHERE status != 'pending'").get() as { n: number }).n,
       pending: (this.index.db.prepare('SELECT count(*) n FROM atlas_dirty').get() as { n: number }).n, regions }
   }
@@ -227,7 +276,7 @@ export class AtlasStore {
     if (!f || !p) return null
     const { embedding, contentHash: _hash, z: _z, embeddingStrategy: _strategy, ...rest } = f
     return { ...rest, x: p.x, y: p.y, tags: f.tags ?? [], isPinned: p.pinned === 1, regionId: p.region_id,
-      neighborhoodId: p.neighborhood_id, hasEmbedding: embedding !== null, extractionStatus: this.document(id)?.status ?? 'pending' }
+      neighborhoodId: p.neighborhood_id, hasEmbedding: embedding !== null, extractionStatus: (this.index.db.prepare('SELECT status FROM atlas_documents WHERE id=?').get(id) as { status: string } | undefined)?.status ?? 'pending' }
   }
 
   list(scope: AtlasScope = {}, offset = 0, limit = 100): { files: AtlasFile[]; total: number; revision: number } {
@@ -240,10 +289,12 @@ export class AtlasStore {
 
   lexical(query: string, scope: AtlasScope, limit: number): AtlasHit[] {
     const filter = this.scope(scope), normalized = query.trim().replace(/^"|"$/g, '')
-    const needle = `%${normalized.replace(/[\\%_]/g, '\\$&')}%`
-    const direct = this.index.db.prepare(`SELECT f.id FROM files f JOIN atlas_positions p ON p.id=f.id WHERE
-      (f.name LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\')${filter.sql}
-      ORDER BY (lower(f.name)=lower(?)) DESC,(f.name LIKE ? ESCAPE '\\') DESC,length(f.name),f.id LIMIT ?`)
+    const needle = '*' + normalized.toLowerCase().replace(/[?*[]/g, char => '[' + char + ']') + '*'
+    const direct = this.index.db.prepare(`SELECT f.id FROM (
+      SELECT rowid FROM atlas_names WHERE name GLOB ?
+      UNION SELECT rowid FROM atlas_names WHERE path GLOB ?
+    ) candidates JOIN files f ON f.rowid=candidates.rowid JOIN atlas_positions p ON p.id=f.id WHERE 1${filter.sql}
+      ORDER BY (lower(f.name)=lower(?)) DESC,(lower(f.name) GLOB ?) DESC,length(f.name),f.id LIMIT ?`)
       .all(needle, needle, ...filter.args, normalized, needle, limit) as { id: string }[]
     const hits = new Map<string, AtlasHit>()
     for (const { id } of direct) {
@@ -255,15 +306,19 @@ export class AtlasStore {
     if (match) {
       // Scope is applied before candidates are ranked. Each file contributes
       // its best passage, so long documents cannot consume the result budget.
-      const rows = this.index.db.prepare(`SELECT file_id, snippet(atlas_fts,4,'','', ' … ',32) excerpt, offset, atlas_fts.tags, rank FROM atlas_fts
+      const rows = this.index.db.prepare(`SELECT file_id, snippet(atlas_fts,4,'','', ' … ',32) excerpt, offset,
+        highlight(atlas_fts,1,char(1),char(2)) name_match, highlight(atlas_fts,2,char(1),char(2)) path_match,
+        highlight(atlas_fts,3,char(1),char(2)) tags_match, rank FROM atlas_fts
         JOIN files f ON f.id=atlas_fts.file_id JOIN atlas_positions p ON p.id=f.id
         WHERE atlas_fts MATCH ?${filter.sql} AND rank MATCH 'bm25(0,10,3,6,1,0)'
         ORDER BY rank`).iterate(match, ...filter.args)
       for (const item of rows) {
         if (hits.size >= limit) break
-        const row = item as { file_id: string; excerpt: string; offset: number; tags: string; rank: number }
+        const row = item as { file_id: string; excerpt: string; offset: number; name_match: string; path_match: string; tags_match: string; rank: number }
         if (hits.has(row.file_id)) continue
-        hits.set(row.file_id, { file: this.file(row.file_id)!, score: 50 - row.rank, reason: row.tags ? 'tags' : 'content', snippet: row.excerpt || this.file(row.file_id)!.path, offset: Number(row.offset) })
+        const reason = row.name_match.includes('\x01') ? 'name' : row.tags_match.includes('\x01') ? 'tags' : row.path_match.includes('\x01') ? 'path' : 'content'
+        const file = this.file(row.file_id)!
+        hits.set(row.file_id, { file, score: (reason === 'name' ? 85 : 50) - row.rank, reason, snippet: row.excerpt || this.document(row.file_id)?.text.slice(0, 220) || file.path, offset: Number(row.offset) })
       }
     }
     return [...hits.values()].sort((a, b) => b.score - a.score || a.file.name.localeCompare(b.file.name)).slice(0, limit)

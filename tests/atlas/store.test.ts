@@ -66,6 +66,31 @@ describe('Atlas persistence and retrieval', () => {
     db.setTags('one', ['special-topic']); sync()
     expect(atlas.lexical('special', {}, 10)[0].file.id).toBe('one')
   })
+  it('coalesces repeated upserts before the background queue drains', () => {
+    db.upsert(fixture('pending'))
+    db.upsert(fixture('pending', { name: 'renamed.md' }))
+    db.upsert(fixture('pending', { name: 'final.md' }))
+    sync()
+    expect(atlas.file('pending')?.name).toBe('final.md')
+    expect(atlas.summary().positioned).toBe(1)
+  })
+
+  it('intermixes file types and updates object summaries without moving files', () => {
+    const galaxy = db.getOrCreateGalaxy('/library', 'Library')
+    db.upsert(fixture('note', { galaxyId: galaxy.id }))
+    db.upsert(fixture('image', { galaxyId: galaxy.id, name: 'image.png', path: '/library/research/image.png', category: 'media', mimeType: 'image/png' }))
+    sync()
+    const note = atlas.file('note')!, image = atlas.file('image')!
+    expect(note.neighborhoodId).toBe(image.neighborhoodId)
+    expect(atlas.summary().regions.find(r => r.id === note.regionId)?.objectTypes).toEqual({ 'main-sequence': 1, nebula: 1 })
+    db.setStarType('note', 'pulsar'); sync()
+    expect(atlas.file('note')?.x).toBe(note.x)
+    expect(atlas.summary().regions.find(r => r.id === note.regionId)?.objectTypes).toEqual({ pulsar: 1, nebula: 1 })
+    expect(atlas.summary({ category: 'media' }).regions[0].objectTypes).toEqual({ nebula: 1 })
+    db.delete('note'); sync()
+    expect(atlas.summary().regions.find(r => r.id === image.regionId)?.objectTypes).toEqual({ nebula: 1 })
+  })
+
   it('rejects stale extraction and removes deleted files from search', () => {
     db.upsert(fixture('note')); sync()
     expect(atlas.setText('note', 'obsolete result', 'ready', '1:100')).toBe(false)

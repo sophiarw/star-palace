@@ -16,8 +16,9 @@ export class AtlasService {
     const file = this.store.index.get(id)
     if (!file) return
     const stamp = `${file.modifiedAt}:${file.size}`
-    if (this.store.document(id)?.stamp === stamp) return
-    const result = await this.extractor.extract(file.path)
+    const previous = this.store.document(id)
+    if (previous?.stamp === stamp && previous.status !== 'unavailable') return
+    const result = await this.extractor.extract(file.path, stamp)
     this.store.setText(id, result.text, result.status, stamp, result.error)
   }
   private schedule(ms: number): void {
@@ -33,7 +34,7 @@ export class AtlasService {
     if (changed) { this.schedule(0); return }
     const next = this.store.needsExtraction(1)[0]
     if (next) {
-      const result = await this.extractor.extract(next.path)
+      const result = await this.extractor.extract(next.path, `${next.modified_at}:${next.size}`)
       if (this.stopped) return
       this.store.setText(next.id, result.text, result.status, `${next.modified_at}:${next.size}`, result.error)
       this.schedule(0)
@@ -41,6 +42,7 @@ export class AtlasService {
   }
 
   async related(query: string, scope: AtlasScope, limit: number, isCancelled = (): boolean => false): Promise<AtlasHit[]> {
+    if (limit <= 0) return []
     const key = query.trim().toLowerCase()
     let pending = this.embeddings.get(key)
     if (!pending) {

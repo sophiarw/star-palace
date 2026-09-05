@@ -11,7 +11,7 @@
 // file (e.g. content-only on a media file) just contribute no vector for that
 // file and the mix is dominated by the other channels.
 
-import { readFile } from 'fs/promises'
+import { extractContent } from '../index/extractors/text'
 import { randomUUID } from 'crypto'
 import type { FileIndex } from '../db/FileIndex'
 import type { EmbeddingEngine } from './EmbeddingEngine'
@@ -19,7 +19,6 @@ import { STRATEGIES, isStrategyId } from './strategies'
 import type { StrategyId } from './strategies'
 import { projectVectors } from '../layout/Relayouter'
 import { SUBSET_PCA_MIN } from '../layout/Relayouter'
-import { VIEW_BYTES } from '../../shared/types'
 import type { FileNode } from '../../shared/types'
 
 // Per-file vectors keyed by channel. Missing entries mean the strategy
@@ -92,8 +91,7 @@ export async function prepareLabMix(
       content = Buffer.alloc(0)
     } else {
       try {
-        const raw = await readFile(file.path)
-        content = raw.length > VIEW_BYTES ? raw.subarray(0, VIEW_BYTES) : raw
+        content = await extractContent(file.path, file.category)
       } catch {
         // File deleted out from under us; skip it for this workbench.
         continue

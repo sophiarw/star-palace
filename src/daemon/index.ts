@@ -3,10 +3,7 @@ import cors from 'cors'
 import { homedir } from 'os'
 import { join, basename } from 'path'
 import { mkdirSync } from 'fs'
-import { readFile, stat } from 'fs/promises'
-import { extname } from 'path'
-import mammoth from 'mammoth'
-import { extractText, getDocumentProxy } from 'unpdf'
+import { stat } from 'fs/promises'
 import { openInDefaultApp, revealInFileExplorer } from './util/openInDefaultApp'
 import { FileIndex } from './db/FileIndex'
 import { HnswIndex } from './ann/HnswIndex'
@@ -21,7 +18,7 @@ import { buildIgnoreMatcher } from './index/ignoreMatcher'
 import { progressStore } from './index/progressStore'
 import type { ProgressState } from './index/progressStore'
 import type { MapStats, ViewportResult, SearchResult, FileContent, StarType, CollectionKind } from '../shared/types'
-import { DAEMON_PORT, CONSTELLATION_PALETTE, VIEW_BYTES, isStarType } from '../shared/types'
+import { DAEMON_PORT, CONSTELLATION_PALETTE, isStarType } from '../shared/types'
 import { STRATEGIES, isStrategyId, STRATEGY_IDS } from './embedding/strategies'
 import {
   runExperiment,
@@ -38,7 +35,7 @@ import { AtlasStore } from './atlas/AtlasStore'
 import { AtlasService } from './atlas/service'
 import { atlasRoutes } from './atlas/routes'
 
-const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|svg\+xml)|application\/pdf)$/
+const RAW_MIME_ALLOW = /^(image\/(png|jpeg|gif|webp|avif|bmp|svg\+xml)|application\/pdf)$/
 
 const DATA_DIR = process.env.STARPALACE_DIR ?? join(homedir(), '.starpalace')
 const DB_PATH = process.env.STARPALACE_DB ?? join(DATA_DIR, 'index.db')
@@ -72,12 +69,9 @@ if (needsRetrain) {
     ? `components ${relayouter.componentCount} → ${PC_COUNT}`
     : 'missing scale params'
   console.log(`[layout] Retraining PCA (${reason})…`)
-  try {
-    relayouter.train()
-    console.log(`[layout] Retrain complete.`)
-  } catch (err) {
-    console.warn(`[layout] Retrain failed: ${String(err)}`)
-  }
+  void relayouter.trainAsync().then(changed => {
+    console.log(changed ? '[layout] Retrain complete.' : '[layout] Inputs changed; discarded stale training result.')
+  }).catch(err => console.warn(`[layout] Retrain failed: ${String(err)}`))
 }
 
 export const app = express()
@@ -155,9 +149,12 @@ app.get('/api/health', async (_req, res) => {
 // breaks the previous behaviour of returning `{ scanned, indexed, ... }` from
 // the POST itself — callers (CLI script in particular) now read final stats
 // via SSE or poll `progressStore.get(jobId)`.
-app.post('/api/index', (req, res) => {
+app.post('/api/index', async (req, res) => {
   const { path: rootPath, galaxyName } = req.body as { path?: string; galaxyName?: string }
-  if (!rootPath) return res.status(400).json({ error: 'path required' })
+  if (typeof rootPath !== 'string' || !rootPath.trim()) return res.status(400).json({ error: 'path required' })
+  if (galaxyName !== undefined && typeof galaxyName !== 'string') return res.status(400).json({ error: 'Invalid source name' })
+  try { if (!(await stat(rootPath)).isDirectory()) return res.status(400).json({ error: 'Choose a folder to index' }) }
+  catch { return res.status(400).json({ error: 'Folder not found or unavailable' }) }
 
   const fallbackName = basename(rootPath) || rootPath
   const name = ((galaxyName ?? '').trim() || fallbackName).slice(0, 80)
@@ -629,12 +626,10 @@ app.post('/api/file/:id/reveal', async (req, res) => {
 })
 
 // --- Force relayout ---
-// Relayouter.train() is intentionally synchronous (PCA + DB tx run in-process)
-// so the handler doesn't need `await`; we keep the handler async only because
-// Express types tolerate it.
-app.post('/api/relayout', (_req, res) => {
+// PCA fitting runs off-thread; publishing coordinates remains transactional.
+app.post('/api/relayout', async (_req, res) => {
   try {
-    relayouter.train()
+    await relayouter.trainAsync()
     hnsw.save()
     res.json({ ok: true, layoutVersion: relayouter.currentVersion, nodeCount: db.countWithEmbeddings() })
   } catch (err) {
@@ -821,80 +816,17 @@ app.get('/api/file/:id', (req, res) => {
   res.json(safeFile)
 })
 
-// --- File content for in-app viewer (text only; capped at VIEW_BYTES) ---
+// Shared worker extraction also serves the retained advanced reader.
 app.get('/api/file/:id/content', async (req, res) => {
   const file = db.get(req.params.id)
   if (!file) return res.status(404).json({ error: 'not found' })
-
-  if (file.category === 'media') {
-    const payload: FileContent = { content: null, mimeType: file.mimeType, truncated: false, size: file.size }
-    return res.json(payload)
-  }
-
   try {
-    const onDisk = await stat(file.path)
-    if (onDisk.size === 0) {
-      const payload: FileContent = { content: '', mimeType: file.mimeType, truncated: false, size: 0 }
-      return res.json(payload)
-    }
-
-    // .docx is a ZIP of XML; reading as utf8 produces gibberish. Pull plain
-    // text via mammoth so the in-app viewer shows readable prose. Errors fall
-    // through to the raw-byte path so a corrupt .docx still renders something.
-    const ext = extname(file.path).toLowerCase()
-    if (ext === '.docx') {
-      try {
-        const result = await mammoth.extractRawText({ path: file.path })
-        const text = result.value ?? ''
-        const truncated = text.length > VIEW_BYTES
-        const sliced = truncated ? text.slice(0, VIEW_BYTES) : text
-        const payload: FileContent = {
-          content: sliced,
-          mimeType: file.mimeType,
-          truncated,
-          size: onDisk.size,
-        }
-        return res.json(payload)
-      } catch {
-        // fall through to raw read below
-      }
-    }
-
-    // .pdf is a binary container; reading as utf8 produces gibberish. Pull
-    // plain text via unpdf (Mozilla pdfjs wrapper). Errors fall through to
-    // the raw-byte path so a corrupt .pdf still renders something.
-    if (ext === '.pdf') {
-      try {
-        const buf = await readFile(file.path)
-        const pdf = await getDocumentProxy(new Uint8Array(buf))
-        const { text } = await extractText(pdf, { mergePages: true })
-        const truncated = text.length > VIEW_BYTES
-        const sliced = truncated ? text.slice(0, VIEW_BYTES) : text
-        const payload: FileContent = {
-          content: sliced,
-          mimeType: file.mimeType,
-          truncated,
-          size: onDisk.size,
-        }
-        return res.json(payload)
-      } catch {
-        // fall through to raw read below
-      }
-    }
-
-    const buf = await readFile(file.path)
-    const truncated = buf.length > VIEW_BYTES
-    const slice = truncated ? buf.subarray(0, VIEW_BYTES) : buf
-    const payload: FileContent = {
-      content: slice.toString('utf8'),
-      mimeType: file.mimeType,
-      truncated,
-      size: onDisk.size,
-    }
-    res.json(payload)
-  } catch (err) {
-    res.status(500).json({ error: String(err) })
-  }
+    await atlasService.text(file.id)
+    const doc = atlasStore.document(file.id)
+    const payload: FileContent = { content: file.category === 'media' ? null : doc?.text ?? '', mimeType: file.mimeType,
+      size: file.size, truncated: doc?.status === 'truncated' }
+    return res.json(payload)
+  } catch (error) { return res.status(500).json({ error: String(error) }) }
 })
 
 // --- Raw file bytes (image-only allowlist) — bypasses Vite CSP for <img src> ---
@@ -1080,11 +1012,11 @@ app.post('/api/embedding/experiment/:id/promote', (req, res) => {
   res.json({ ok: true, jobId })
 })
 
-app.post('/api/embedding/experiment/:id/revert', (req, res) => {
+app.post('/api/embedding/experiment/:id/revert', async (req, res) => {
   // ?relayout=false skips the post-revert global PCA retrain — used by
   // batched reverts that intend to retrain once at the end.
   const relayout = req.query.relayout !== 'false'
-  const result = revertExperiment({ db, hnsw, relayouter }, req.params.id, { relayout })
+  const result = await revertExperiment({ db, hnsw, relayouter }, req.params.id, { relayout })
   if ('code' in result) return res.status(404).json({ error: 'snapshot not found' })
   hnsw.save()
   res.json({

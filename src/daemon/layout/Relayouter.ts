@@ -1,4 +1,6 @@
-import type { FileIndex } from '../db/FileIndex'
+import type { FileIndex, IndexedFile } from '../db/FileIndex'
+import { Worker } from 'worker_threads'
+import { join } from 'path'
 import { StarPca, scalePositions, applyScale, type PcaModel } from './Pca'
 import { jitterFor } from './jitter'
 import { recomputeClusters, updateClusterCentroids } from './clustering'
@@ -15,9 +17,23 @@ export class Relayouter {
   private db: FileIndex
   private pca: StarPca | null = null
   private layoutVersion: number = 0
+  private training: Promise<boolean> | null = null
 
   constructor(db: FileIndex) {
     this.db = db
+    db.db.exec(`
+      CREATE TABLE IF NOT EXISTS layout_input_revision(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL DEFAULT 0);
+      INSERT OR IGNORE INTO layout_input_revision(id) VALUES(1);
+      CREATE TRIGGER IF NOT EXISTS layout_vector_insert AFTER INSERT ON files WHEN new.embedding IS NOT NULL BEGIN
+        UPDATE layout_input_revision SET revision=revision+1 WHERE id=1;
+      END;
+      CREATE TRIGGER IF NOT EXISTS layout_vector_update AFTER UPDATE OF embedding ON files WHEN old.embedding IS NOT new.embedding BEGIN
+        UPDATE layout_input_revision SET revision=revision+1 WHERE id=1;
+      END;
+      CREATE TRIGGER IF NOT EXISTS layout_vector_delete AFTER DELETE ON files WHEN old.embedding IS NOT NULL BEGIN
+        UPDATE layout_input_revision SET revision=revision+1 WHERE id=1;
+      END;
+    `)
   }
 
   loadExisting(): boolean {
@@ -102,51 +118,52 @@ export class Relayouter {
       .map(f => f.embedding)
       .filter((e): e is Float32Array => e !== null)
 
-    // F4 — capture old eigenvectors so we can detect per-axis sign flips.
-    // PCA SVD is sign-ambiguous: the "same" semantic axis can flip on a
-    // refit, and any pinned files would otherwise jump to the mirror world
-    // position. detectSignFlips → applyPinSignFlips negates α/β where the
-    // axis flipped (and logs where the axis became unstable).
+    const pca = StarPca.train(embeddings)
+    const rawPositions = embeddings.map(e => pca.project(e))
+    return this.applyTraining(files, pca, rawPositions)
+  }
+
+  /** Fit/project in a worker; publish only if its inputs and active model still match. */
+  trainAsync(): Promise<boolean> {
+    if (this.training) return this.training
+    const files = this.db.listWithEmbeddings()
+    if (files.length < LAYOUT_THRESHOLD) return Promise.resolve(false)
+    const revision = this.inputRevision(), version = this.layoutVersion
+    const worker = new Worker(join(__dirname, 'pca-worker.cjs'), { workerData: { vectors: files.map(f => f.embedding) } })
+    this.training = new Promise<boolean>((resolve, reject) => {
+      const timer = setTimeout(() => { void worker.terminate(); reject(new Error('PCA training timed out')) }, 120_000)
+      worker.once('message', (result: { model: PcaModel; positions: [number, number][]; error?: string }) => {
+        clearTimeout(timer)
+        if (result.error) { reject(new Error(result.error)); return }
+        if (revision !== this.inputRevision() || version !== this.layoutVersion) { resolve(false); return }
+        try { resolve(this.applyTraining(files, StarPca.deserialize(Buffer.from(JSON.stringify(result.model))), result.positions)) }
+        catch (error) { reject(error) }
+      })
+      worker.once('error', error => { clearTimeout(timer); reject(error) })
+      worker.once('exit', code => { clearTimeout(timer); if (code !== 0) reject(new Error(`PCA worker exited (${code})`)) })
+    }).finally(() => { this.training = null })
+    return this.training
+  }
+
+  private inputRevision(): number {
+    return (this.db.db.prepare('SELECT revision FROM layout_input_revision WHERE id=1').get() as { revision: number }).revision
+  }
+
+  private applyTraining(files: IndexedFile[], pca: StarPca, rawPositions: [number, number][]): boolean {
     const oldComponents = this.pca?.toJSON().components ?? null
-
-    this.pca = StarPca.train(embeddings)
-
-    if (oldComponents) {
-      const newComponents = this.pca.toJSON().components
-      const flips = detectSignFlips(oldComponents, newComponents)
-      this.db.applyPinSignFlips(flips)
-    }
-
-    // Project all and scale to [-500, 500]. Capture the linear transform on
-    // the PCA model so projectOne (single-file inserts after training) can
-    // apply the same transform — without it, post-train files land at raw
-    // PCA scale (~±1) and visually stack at the world origin.
-    const rawPositions = embeddings.map(e => this.pca!.project(e))
     const { scaled, params } = scalePositions(rawPositions, 1000)
-    this.pca.setScale(params)
-
-    this.layoutVersion++
-
-    // Write positions + bump layout_version per file
-    const updateStmt = this.db.db.prepare(`
-      UPDATE files SET x = ?, y = ?, layout_version = ? WHERE id = ?
-    `)
-    const updateAll = this.db.db.transaction(() => {
+    pca.setScale(params)
+    const version = this.layoutVersion + 1
+    const update = this.db.db.prepare('UPDATE files SET x=?,y=?,layout_version=? WHERE id=?')
+    this.db.db.transaction(() => {
+      if (oldComponents) this.db.applyPinSignFlips(detectSignFlips(oldComponents, pca.toJSON().components))
       for (let i = 0; i < files.length; i++) {
-        const [x, y] = scaled[i]
         const [jx, jy] = jitterFor(files[i].id)
-        updateStmt.run(x + jx, y + jy, this.layoutVersion, files[i].id)
+        update.run(scaled[i][0] + jx, scaled[i][1] + jy, version, files[i].id)
       }
-    })
-    updateAll()
-
-    // Persist model
-    this.db.saveLayoutMeta(
-      this.layoutVersion,
-      'pca',
-      this.pca.serialize(),
-      files.length
-    )
+      this.db.saveLayoutMeta(version, 'pca', pca.serialize(), files.length)
+    })()
+    this.pca = pca; this.layoutVersion = version
 
     // Recompute clusters and their centroids
     recomputeClusters(this.db)

@@ -12,10 +12,18 @@ export class TextExtractor {
   private sequence = 0
   private timer: ReturnType<typeof setTimeout> | null = null
   private closed = false
+  private pending = new Map<string, Promise<ExtractedText>>()
 
-  extract(path: string): Promise<ExtractedText> {
+  extract(path: string, revision = ''): Promise<ExtractedText> {
     if (this.closed) return Promise.resolve({ text: '', status: 'unavailable', error: 'Extractor closed' })
-    return new Promise(resolve => { this.queue.push({ id: ++this.sequence, path, resolve }); this.pump() })
+    const key = path + '\0' + revision
+    const existing = this.pending.get(key)
+    if (existing) return existing
+    if (this.queue.length >= 64) return Promise.resolve({ text: '', status: 'unavailable', error: 'Preview queue is busy; try again' })
+    const result = new Promise<ExtractedText>(resolve => { this.queue.push({ id: ++this.sequence, path, resolve }); this.pump() })
+      .finally(() => this.pending.delete(key))
+    this.pending.set(key, result)
+    return result
   }
 
   private pump(): void {
@@ -55,4 +63,13 @@ export class TextExtractor {
     for (const task of [...this.queue, ...(this.active ? [this.active] : [])]) task.resolve({ text: '', status: 'unavailable', error: 'Extractor closed' })
     this.queue = []; this.active = null
   }
+}
+
+// Shared bounded extraction for explicit reindex and advanced experiments.
+const sharedExtractor = new TextExtractor()
+export async function extractContent(path: string, category: string): Promise<Buffer> {
+  if (category === 'media') return Buffer.alloc(0)
+  const result = await sharedExtractor.extract(path)
+  if (result.status === 'unavailable') throw new Error(result.error ?? 'File unavailable')
+  return Buffer.from(result.text, 'utf8')
 }
