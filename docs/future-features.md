@@ -50,6 +50,48 @@ Preserve the library and local checkout changes. Never discard edits, reset dive
 
 Suggested sequencing from the proposal: place destinations first, then automatic refresh and indexing responsiveness, an illustrated-constellation prototype for visual review, and the Mac app as a larger release. Fullscreen fits the current work on collapsible panels; the Update action improves the existing source-install experience. This is a suggested order, not a delivery commitment.
 
+## September 5: astronomy-led exploration and history
+
+The user prefers starting with interesting astronomical phenomena and finding useful memory-palace meanings for them. They welcomed solar-system document interiors, binary relationships, wavelength lenses, and personal asterisms; comets were considered fun but not useful enough to pursue. They explicitly requested recording the astronomical clock/version-history concept. These requests are not implemented. The user also wants a deliberately small next feature scope.
+
+### FR-08: An astronomical clock and local version history
+
+Explore a sky that evolves slowly and can be rewound. A time control reconstructs the library as recorded at an earlier date: files arriving, document versions changing, and authored relationships or constellations developing. Past states remain browsable and historical content can be compared with the present.
+
+Keep observation and restoration distinct operations. Moving the clock does not write to original files. Offer explicit per-file restoration as a copy, or replacement with the current version preserved first. Begin history when capture is enabled; never imply that old bytes are recoverable from modification timestamps or metadata alone.
+
+Use Git for the first content-history implementation, in a separate local archive, with a change history for stable file identities, names, memberships, and map state. The user narrowed the feature to **text documents and source files only**, explicitly naming `.md`, `.txt`, and `.py`; Git-backed text history is the selected scope. This is not a request to initialize all source folders as repositories. Preserve existing repositories and original directory structures. Current atlas snapshots contain positions and regions only; they do not reconstruct past libraries or preserve file contents.
+
+Capture settled saves, coalesce edit bursts into useful checkpoints, and support named milestones. Enable content history per folder with visible storage use and retention controls; protect explicit milestones from ordinary retention pruning. Include Markdown, plain text, and common textual source/config formats, validating actual text content as well as names; define bounded size/encoding eligibility and explain skipped files. Exclude images, video, PDF/DOCX containers, archives, and other binary contents from this feature. Distinguish historical metadata from retained content, and define recoverable behavior for missing originals and interrupted captures. A local archive is not an independent-device backup.
+
+First useful slice: **rewind one constellation**. Enable history on a writing or source folder, capture subsequent text edits, explore an earlier state, compare versions, and recover a passage or a draft. Stable identity and reliable incremental refresh from FR-01 are prerequisites for complete historical reconstruction. The first text-history slice must explicitly describe any move/rename limitations rather than claiming complete reconstruction. Whole-library rollback remains deferred; binary/media version storage is outside the selected scope.
+
+The user likes extremely slow galaxy evolution and moving orbits. Explore deterministic clock-driven motion so revisiting a recorded date yields reproducible positions. Any galaxy-wide drift would explicitly revise today's fixed-position contract and needs a bounded, opt-in visual design review; recording this request does not authorize changing ordinary indexing layout. Keep restoration of map state distinct from restoration of file contents.
+
+### FR-09: Solar-system document interiors
+
+Enter a document's star deliberately to explore a local solar system: sections as planets, with subsections or annotations as moons. Start with reliable Markdown headings and links back to exact passages; preserve the return location in the outer atlas.
+
+The user explicitly prefers **very slow moving orbits**, somewhat sped up from real planetary timescales, over frozen planets. Explore deterministic per-document planets with gently evolving, wavy procedural atmospheres or cloud bands. Orbital tracks and recognizable planet appearances provide continuity while positions change. Support pause/reduced motion and reliable keyboard/pointing selection; camera follow is a design option for an inspected planet. Generate detail only for the active system with bounded graphics work. Prototype visual appeal and navigation usefulness before extending to complex document formats.
+
+### FR-10: Binary stars and stellar families
+
+Give explicitly related files a paired or family appearance: paper/supplement, original/edited image, manuscript/translation. Users can establish the relationship or accept an evidence-backed suggestion. Distinguish authored pairing from generic content similarity, duplicate detection, favorites, and folder membership. Explore connecting or shared-halo treatments at existing atlas positions before considering any motion or relocation.
+
+### FR-11: Wavelength lenses
+
+Use astronomical observing modes as the visual language for filters. Show different information in the same familiar sky: folder relationships, content similarity, recent changes, or file size. Preserve camera and coordinates when switching; clearly identify the active lens and provide a simple return to the canonical sky.
+
+Start with a small set based on existing data, with a compact control and legible meaning. Preserve explicit favorite silhouettes, selection cues, searchable access to every file, and bounded rendering work. Recent-change coloring must describe the available timestamp's meaning, not imply a recorded version history before FR-08 exists. Additional lenses need a concrete browsing use rather than merely adding decoration.
+
+### FR-03 extension: Personal asterisms and sky lore
+
+The user particularly liked drawing and naming sparse connections among arbitrary files, including across folders, with a short explanation: “The three papers that changed my mind.” Asterisms can overlap, and are user-authored associations rather than inferred similarity. Build on collections and the existing faint-line language, preserving positions and individual access. Illustrations remain optional later work; a named figure and a sentence can provide the core utility.
+
+### Proposed small next scope
+
+Updated recommendation after the user's text-only Git decision: a bounded FR-08 text-history slice for daily usefulness, supported by the incremental change capture it requires, and a compact first set of FR-11 wavelength lenses for astronomy-led exploration. FR-06 fullscreen is a small companion. The user's decision selects the text/Git scope; this proposed combination is still for discussion. Keep full historical-sky reconstruction, durable indexing pause/resume, rename identity, solar-system interiors, and broader distribution work separately scoped rather than bundling the entire backlog into one release. Solar systems merit the next visual prototype; the full astronomical clock follows reliable refresh and identity.
+
 ## September 5 implementation and design pass
 
 The user authorized parallel work and selected Clouds & landmarks. Native Vim browsing, folder connections, canonical stellar artwork, persistent favorites, and evidence-led nebulae are now integrated into the atlas branch. Zodiac illustrations and image-specific similarity detection remain deferred. The original requests below are retained as design history.
