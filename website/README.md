@@ -46,7 +46,7 @@ Sources checked September 5, 2026: [GitHub custom domains](https://docs.github.c
 
 ## Copy direction
 
-Use the user's wording: “A memory palace for constellations of files.” Keep the stargazing/Sharepoint description. Prefer nouns or questions for headings. Avoid repeating the same product explanation in multiple cards; use the celestial artwork in its place.
+Use the user's wording: “A memory palace for constellations of files.” Keep the stargazing/SharePoint description. Use sentence case for headings, buttons, and labels. Preserve proper names (Star Palace, Mac, GitHub, SharePoint), acronyms (PDF, CSV), and byte-unit casing (KiB, MiB, GiB). Prefer nouns or questions for headings. Avoid repeating the same product explanation in multiple cards; use the celestial artwork in its place.
 
 ## Stellar identity
 
@@ -58,7 +58,7 @@ Use the user's wording: “A memory palace for constellations of files.” Keep 
 
 `website/src/main.ts` draws the illustrative galaxy only on interaction or resize; no animation loop. `stellarVisual.ts` and `drawStellarObject` in `celestialSprites.ts` supply the same pale starlight, size curve, and object artwork as the app. Ten example files remain ordinary stars, while two explicit favorites have pulsar/black-hole silhouettes. Byte sizes alter ordinary stars' presence; file extensions do not assign exotic object types. Faint blue, rose, and amber clouds follow three authored fictional groups. Connections follow the selected file's direct folder. This illustrative data does not run the app's similarity algorithm.
 
-`website/src/demo.ts` owns fictional content and search matching. `website/index.html` owns the user's product copy, installation instructions, and accessible form. Keep the user's exact main headings and stargazing/Sharepoint wording.
+`website/src/demo.ts` owns fictional content and search matching. `website/index.html` owns the user's product copy, installation instructions, and accessible form. Keep the user's exact main headings and stargazing/SharePoint wording.
 
 To regenerate the share card while the local site runs:
 

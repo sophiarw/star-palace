@@ -41,7 +41,7 @@ function select(file: ExampleFile): void {
   selected = file
   buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(exampleFiles[i] === file)))
   element('preview-name').textContent = file.name
-  element('preview-kind').textContent = (file.kind + ' · ' + formatBytes(file.bytes) + (file.favorite ? ' · Favorite' : '')).toUpperCase()
+  element('preview-kind').textContent = file.kind + ' · ' + formatBytes(file.bytes) + (file.favorite ? ' · Favorite' : '')
   element('preview-path').textContent = file.folder
   element('preview-heading').textContent = file.name.replace(/\.[^.]+$/, '')
   element('preview-text').textContent = file.text
@@ -131,7 +131,7 @@ document.querySelectorAll<HTMLCanvasElement>('canvas[data-object]').forEach((can
 const tutorial = [
   { title: 'Folder indexing', description: 'In Finder, select a folder and press Option–Command–C to copy its path. In Star Palace, open Manage sources, paste it into Folder path, and choose Index folder. Start with one small folder. Names and text previews work without Ollama.', tip: 'Tip: reindex the same source to pick up changes.', visual: '<strong>Your sources</strong><span class="mini-label">Folder path</span><div class="mini-input">/Users/you/Documents/Field notes</div><span class="mini-button">Index folder ↗</span>' },
   { title: 'Search', description: 'Press ⌘ K and type a filename or a phrase from a document. Choose a result to find its place on the map. With Ollama running and your files embedded, Related meaning can help when you remember the idea but not the words.', tip: 'Tip: arrow keys select a result; Enter opens it.', visual: '<div class="mini-input">⌕ &nbsp; garden</div><div class="mini-row"><span>✧</span>A small garden.md<small>Markdown</small></div><div class="mini-row"><span>✦</span>Planting calendar.csv<small>CSV</small></div><div class="mini-row"><span>✧</span>Botany reading.pdf<small>PDF</small></div>' },
-  { title: 'The reader', description: 'Select a celestial object to preview its file. Choose Expand, or press Enter, for the full reader. Use Open original to work in the file’s usual app, or Reveal in Finder to see its folder. Map, list, and grid views offer different ways to browse.', tip: 'Tip: scroll to zoom; drag the map to look around.', visual: '<span class="mini-label">FIELD NOTES / GARDEN</span><strong>A small garden.md</strong><p class="mini-text">Basil for the evenings,<br />mint for tea.</p><span class="mini-caption">Open original ↗ &nbsp; · &nbsp; Expand ↗</span>' },
+  { title: 'The reader', description: 'Select a celestial object to preview its file. Choose Expand, or press Enter, for the full reader. Use Open original to work in the file’s usual app, or Reveal in Finder to see its folder. Map, list, and grid views offer different ways to browse.', tip: 'Tip: scroll to zoom; drag the map to look around.', visual: '<span class="mini-label">Field notes / Garden</span><strong>A small garden.md</strong><p class="mini-text">Basil for the evenings,<br />mint for tea.</p><span class="mini-caption">Open original ↗ &nbsp; · &nbsp; Expand ↗</span>' },
   { title: 'Pins & saved places', description: 'Use Save place to remember the current view. Shift-drag a file to pin it somewhere meaningful, or add a tag in its file details. Save a set of search results as a collection. Choose Your atlas to return to the whole galaxy.', tip: 'Tip: ordinary indexing keeps existing file positions.', visual: '<strong>✧ &nbsp; Your places</strong><div class="mini-row"><span>✧</span>The whole galaxy</div><div class="mini-row"><span>⌖</span>The windowsill garden</div><span class="mini-button">Save place +</span>' },
 ]
 const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-step]')]
@@ -141,7 +141,7 @@ function setStep(next: number, focus = false): void {
   const value = tutorial[step]
   tabs.forEach((tab, i) => { tab.setAttribute('aria-selected', String(i === step)); tab.tabIndex = i === step ? 0 : -1 })
   element('tutorial-panel').setAttribute('aria-labelledby', 'step-' + step)
-  element('tutorial-count').textContent = 'STEP 0' + (step + 1)
+  element('tutorial-count').textContent = 'Step 0' + (step + 1)
   element('tutorial-title').textContent = value.title
   element('tutorial-description').textContent = value.description
   element('tutorial-tip').textContent = value.tip

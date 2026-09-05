@@ -13,10 +13,10 @@ test('stellar identity keeps the supplied art quiet and reserves special objects
   await expect(page.locator('.file-star[data-favorite="true"] canvas[data-object-type="pulsar"]')).toHaveCount(1)
   await expect(page.locator('.file-star[data-favorite="true"] canvas[data-object-type="black-hole"]')).toHaveCount(1)
   await page.getByRole('button', { name: 'Preview Show and tell.pptx', exact: true }).click()
-  await expect(page.locator('#preview-kind')).toContainText('FAVORITE')
+  await expect(page.locator('#preview-kind')).toContainText('Favorite')
   await page.getByRole('button', { name: 'Preview Window light.jpg', exact: true }).click()
-  await expect(page.locator('#preview-kind')).toContainText('8 MIB')
-  await expect(page.locator('#preview-kind')).not.toContainText('NEBULA')
+  await expect(page.locator('#preview-kind')).toContainText('8 MiB')
+  await expect(page.locator('#preview-kind')).not.toContainText('Nebula')
 })
 
 test('search highlights stationary example files and Enter previews a result', async ({ page }) => {
