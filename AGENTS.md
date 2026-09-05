@@ -12,6 +12,9 @@
 - [docs/future-features.md](docs/future-features.md): user-requested ideas intentionally deferred, including folder constellation lines and zodiac-like illustrations.
 - [website/README.md](website/README.md): public website, fictional demo, feedback handoff, GitHub Pages deployment, and Squarespace DNS.
 - [docs/mac-distribution.md](docs/mac-distribution.md): Mac packaging investigation, tested build foundation, and remaining distribution work.
+- [docs/vim-browsing.md](docs/vim-browsing.md): native browsing command mapping, context rules, and unsupported Vim semantics.
+- [docs/folder-constellations.md](docs/folder-constellations.md): stable folder graph, cache invalidation, rendering budgets, and measured cold construction costs.
+- [docs/design/stellar-semantics.md](docs/design/stellar-semantics.md): three proposed visual languages; the user permits rethinking file-type identities, but production artwork awaits selection.
 
 ## Working agreement
 
@@ -38,6 +41,8 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 - `src/daemon/layout/`: projection and clustering.
 - `src/daemon/embedding/`: model adapter, strategies, and experiments.
 - `src/renderer/src/atlas/`: default workspace, reader, search, semantic zoom, GPU/Canvas renderer, and bounded per-file procedural sprite cache.
+- `src/renderer/src/atlas/useVimBrowsing.ts`, `vimCommands.ts`: context-aware browsing controller and bounded command grammar; preserve native typing and focused control activation.
+- `src/daemon/atlas/folderConstellations.ts`, `src/renderer/src/atlas/folderConstellations.ts`: complete-folder derived graph and bounded line painter. Geometry never depends on the current viewport.
 - `src/renderer/src/LegacyApp.tsx`: preserved advanced workspace.
 - `src/shared/celestial.ts`: canonical file-type/object mapping; both renderers share it.
 - `src/shared/atlas.ts`: new atlas HTTP contracts.
@@ -52,6 +57,8 @@ Before committing, run `npm run typecheck`, `npm run lint`, and `npm test`. Buil
 Renderer code must not import Node APIs. Embeddings entering HNSW remain L2 normalized. ANN lookup precedes the SQL transaction and ANN insertion follows commit. Derived search/layout indexes should be recoverable and versioned; user-authored state remains authoritative in SQLite.
 
 The user specifically wants intermixed celestial file types and deterministic per-file artwork. Preserve these. Close-up generation must remain bounded and must not create a per-file texture cache for the whole library. New file placement must not separate neighborhoods solely by file type.
+
+September 5 clarification: the user now permits rethinking which file properties determine celestial appearance. The three stellar-language proposals explore main-sequence stars, exceptional-file landmarks, and similarity nebulae. Keep the current production artwork until that design is selected; preserve manual metadata and stable positions under any future automatic mapping.
 
 ## Continuous map and organic layout
 

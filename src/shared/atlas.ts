@@ -20,7 +20,11 @@ export interface AtlasFile extends Star {
   tags: string[]
   hasEmbedding: boolean
   extractionStatus: string
+  /** Full-folder graph neighbors, supplied by viewport hydration. */
+  folderLinks?: AtlasFolderLink[]
 }
+
+export interface AtlasFolderLink { id: string; x: number; y: number }
 
 export interface AtlasScope {
   galaxyIds?: number[]

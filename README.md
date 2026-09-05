@@ -60,10 +60,15 @@ ollama pull nomic-embed-text
 | Explore | Scroll continuously into the galaxy; click a heading to visit a region; use Your atlas to return to the full view |
 | Pan / zoom | Drag / wheel, `h j k l`, `+` / `−` |
 | Inspect an object | Select it and zoom in; close-up detail is seeded by its file ID |
-| Search | `⌘/Ctrl K` or `⌘/Ctrl F`; arrow keys select a result, Enter opens it |
+| Search | `/` forward, `?` backward, `⌘/Ctrl K` or `⌘/Ctrl F`; arrow keys select a result, Enter opens it; Escape leaves typing with the query intact |
 | Read | Select a file to preview; **Expand** or Enter opens the full reader |
 | Next / previous file | `n` / `N` outside text fields |
-| Fit view | **Fit view** or `g g` |
+| First / last file | `g g` / `G`; counts such as `12G` select within the loaded page |
+| Fit view | **Fit view** or `z f` |
+| Folder connections | **Folder constellations** selects all folders, the selected folder, or off |
+| File ranges | `v`, then motions; `y` copies paths and `:collection` saves the range through a form |
+| Marks / jumps | `ma` saves session mark a, `'a` returns; `Ctrl O/I` visits older/newer keyboard jumps |
+| Keyboard reference | **Commands**, `:help`, or F1; [full mapping and limits](docs/vim-browsing.md) |
 | Pin | Shift-drag a file, or use its file details |
 | Save a place | **Save place** captures scope, selection, and camera |
 | Change an object's type | **Tags, pinning & file details → Star type** |
@@ -73,6 +78,8 @@ ollama pull nomic-embed-text
 | Advanced tools | **Commands → Embedding lab, PCA & classic themes**, or `?view=classic` |
 
 The reader supports Markdown with a contents list, highlighted text/code with line numbers, virtualized CSV/TSV tables, image zoom, and PDF pages or extracted text. Search opens matching passages. Text extraction is capped at 2 MiB; PDF/DOCX containers over 32 MiB remain accessible as metadata. Scanned PDFs need external OCR. Filename identity is path-derived: moving a file is currently an indexing change, not a guaranteed identity-preserving rename.
+
+Folder constellations connect direct siblings at their existing coordinates; [geometry and rendering notes](docs/folder-constellations.md) explain the limits. A [three-proposal visual study](docs/design/stellar-atlas-study.html) explores the next stellar artwork and file-size language; those new appearances are awaiting review.
 
 See [implementation and rollback notes](docs/revamp-progress.md), [measured performance](docs/atlas-validation.md), and the [approved vision](docs/revamp-vision.md).
 

@@ -144,9 +144,18 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
   const moveMatch = (step: number) => {
     const marks = articleRef.current?.querySelectorAll<HTMLElement>('[data-match]')
     if (!marks?.length) return
-    const next = (matchIndex + step + marks.length) % marks.length
+    const next = ((matchIndex + step) % marks.length + marks.length) % marks.length
     setMatchIndex(next); marks[next].scrollIntoView({ block: 'center', behavior: 'auto' })
   }
+  useEffect(() => {
+    const move = (event: Event) => moveMatch((event as CustomEvent<number>).detail)
+    window.addEventListener('atlas-reader-match', move)
+    return () => window.removeEventListener('atlas-reader-match', move)
+  })
+  useEffect(() => {
+    const marks = articleRef.current?.querySelectorAll<HTMLElement>('[data-match]')
+    marks?.forEach((mark, index) => { mark.dataset.vimCurrentMatch = String(index === matchIndex) })
+  }, [matchIndex, content, query, pdfText])
   const action = async (operation: () => Promise<void>) => {
     setBusy(true); setError(null)
     try { await operation() } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
@@ -160,7 +169,7 @@ export function Reader({ file, expanded, query, collections, onExpand, onClose, 
     <div className="atlas-reader-toolbar"><span className="atlas-eyebrow">{expanded ? 'Reader' : 'File preview'}</span><div>
       <button className="atlas-text-button" onClick={onExpand}>{expanded ? '↙ Back to atlas' : 'Expand ↗'}</button><button className="atlas-icon-button" onClick={onClose} aria-label="Close reader">×</button>
     </div></div>
-    <div className="atlas-reader-scroll" ref={scrollRef} onScroll={e => writeStored('scroll.' + file.id, e.currentTarget.scrollTop)}>
+    <div className="atlas-reader-scroll" tabIndex={-1} ref={scrollRef} onScroll={e => writeStored('scroll.' + file.id, e.currentTarget.scrollTop)}>
       <div className="atlas-reader-page"><div className="atlas-file-emblem">{file.name.split('.').pop()?.slice(0, 5).toUpperCase()}</div>
         <h2 className="atlas-document-title">{file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')}</h2><div className="atlas-document-path" title={file.path}>{file.path}</div>
         <div className="atlas-document-meta">{readableBytes(file.size)}<span>·</span>{new Date(file.modifiedAt).toLocaleDateString()}<span>·</span>{file.hasEmbedding ? 'Semantic + text index' : 'Name + text index'}</div>

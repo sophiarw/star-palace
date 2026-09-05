@@ -6,6 +6,7 @@ import { basename, dirname, relative, sep } from 'path'
 import type { FileIndex, IndexedFile } from '../db/FileIndex'
 import type { AtlasFile, AtlasScope, AtlasRegion, AtlasSummary, AtlasHit, AtlasSnapshot, AtlasMarker } from '../../shared/atlas'
 import { ATLAS_COLORS } from '../../shared/atlas'
+import { folderConstellations, type FolderPoint } from './folderConstellations'
 
 const GROUP_CAP = 96
 const REGION_CAP = 24
@@ -35,6 +36,7 @@ export function ftsQuery(query: string): string {
 }
 
 export class AtlasStore {
+  private folderGraph: { paths: Map<string, string>; links: ReturnType<typeof folderConstellations> } | null = null
   constructor(readonly index: FileIndex) {
     index.db.exec(`
       CREATE TABLE IF NOT EXISTS atlas_state (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1);
@@ -98,6 +100,8 @@ export class AtlasStore {
     this.index.db.transaction(() => {
       for (const { id } of rows) {
         const file = this.index.get(id)
+        // Extraction, tags, and classifications do not change folder geometry.
+        if (this.folderGraph && this.folderGraph.paths.get(id) !== file?.path) this.folderGraph = null
         if (file) {
           if (!this.position(id)) this.place(file)
           this.updateObjectType(id, celestialType(file))
@@ -139,6 +143,7 @@ export class AtlasStore {
   }
 
   private place(file: IndexedFile): void {
+    this.folderGraph = null
     const galaxy = file.galaxyId === null ? null : this.index.db.prepare('SELECT name,root_path FROM galaxies WHERE id=?').get(file.galaxyId) as { name: string; root_path: string } | undefined
     const rel = galaxy && !galaxy.root_path.startsWith('__default__') ? relative(galaxy.root_path, file.path) : file.name
     const parts = rel.split(sep)
@@ -204,6 +209,7 @@ export class AtlasStore {
   }
 
   reshapeOrganic(): number {
+    this.folderGraph = null
     const files = this.index.db.prepare('SELECT id,path,x,y FROM files ORDER BY id').all() as LayoutFile[]
     const neighbors = new Map<string, string[]>()
     for (const edge of this.index.db.prepare('SELECT src_id,dst_id FROM edges ORDER BY weight DESC').all() as { src_id: string; dst_id: string }[]) {
@@ -343,7 +349,14 @@ export class AtlasStore {
     const ids = this.index.db.prepare(`SELECT p.id FROM atlas_positions p JOIN files f ON f.id=p.id
       WHERE p.x BETWEEN ? AND ? AND p.y BETWEEN ? AND ?${filter.sql} ORDER BY p.id LIMIT ?`)
       .all(bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, ...filter.args, limit) as { id: string }[]
-    return ids.map(({ id }) => this.file(id)!).filter(Boolean)
+    if (ids.length && !this.folderGraph) {
+      const points = this.index.db.prepare('SELECT f.id,f.path,p.x,p.y FROM files f JOIN atlas_positions p ON p.id=f.id').all() as FolderPoint[]
+      this.folderGraph = { paths: new Map(points.map(point => [point.id, point.path])), links: folderConstellations(points) }
+    }
+    return ids.map(({ id }) => {
+      const file = this.file(id)
+      return file ? { ...file, folderLinks: this.folderGraph?.links.get(id) ?? [] } : null
+    }).filter((file): file is AtlasFile & { folderLinks: NonNullable<AtlasFile['folderLinks']> } => file !== null)
   }
 
   lexical(query: string, scope: AtlasScope, limit: number): AtlasHit[] {
@@ -391,6 +404,7 @@ export class AtlasStore {
 
   pin(id: string, x: number | null, y: number | null): boolean {
     if (!this.position(id)) return false
+    this.folderGraph = null
     this.index.db.prepare('UPDATE atlas_positions SET x=COALESCE(?,natural_x),y=COALESCE(?,natural_y),pinned=? WHERE id=?').run(x, y, x === null ? 0 : 1, id)
     this.bump(); return true
   }
@@ -410,6 +424,7 @@ export class AtlasStore {
   restore(id: number): boolean {
     const snapshot = this.index.db.prepare('SELECT payload FROM atlas_snapshots WHERE id=?').get(id) as { payload: string } | undefined
     if (!snapshot) return false
+    this.folderGraph = null
     const data = JSON.parse(snapshot.payload) as { positions: PositionRow[]; regions: RegionRow[] }
     this.index.db.transaction(() => {
       for (const r of data.regions) this.index.db.prepare('UPDATE atlas_regions SET label=?,x=?,y=?,radius=? WHERE id=?').run(r.label, r.x, r.y, r.radius, r.id)

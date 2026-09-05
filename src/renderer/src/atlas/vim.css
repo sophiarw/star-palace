@@ -1,0 +1,8 @@
+.atlas-vim-status { color: #c9d8e8; font: 10px ui-monospace, monospace; letter-spacing: .05em; }
+.atlas-vim-status:empty { display: none; }
+.atlas-vim-status button { margin-left: 8px; }
+.atlas-file-tile.is-vim-selected, .atlas-result.is-vim-selected { outline: 1px solid #91baf0; outline-offset: -2px; background: #91baf018; }
+.atlas-vim-reference { display: grid; gap: 16px; }
+.atlas-vim-reference dt { color: #e5edf8; line-height: 1.6; }
+.atlas-vim-reference dd { margin: 4px 0 0; color: #9caec0; font-size: 12px; line-height: 1.6; }
+.atlas-stage:focus-visible, .atlas-reader-scroll:focus-visible { outline: 1px solid #91baf0; outline-offset: -2px; }

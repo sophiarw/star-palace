@@ -7,6 +7,7 @@ import type { AtlasFile, AtlasRegion, AtlasMarker, AtlasScope } from '@shared/at
 import { canvasRenderer, gpuRenderer, SPRITE_BYTES, type PointRenderer } from './pointRenderer'
 import { fitCamera, zoomAt, objectRadius, project, seedFor, unproject, type Camera, type ScenePoint } from './scene'
 import { readStored, writeStored } from './storage'
+import { FolderConstellationPainter, folderFor, visibleFolderEdges, type ConstellationVisibility } from './folderConstellations'
 
 interface Props {
   regions: AtlasRegion[]
@@ -19,6 +20,7 @@ interface Props {
   selectedId: string | null
   highlights: Set<string>
   theme: string
+  constellations?: ConstellationVisibility
   onRegion: (region: AtlasRegion) => void
   onSelect: (file: AtlasFile) => void
   onRead: () => void
@@ -40,7 +42,14 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
   const pointCanvas = useRef<HTMLCanvasElement | null>(null), renderer = useRef<PointRenderer | null>(null)
   const camera = useRef<Camera>({ x: 0, y: 0, zoom: .3 }), size = useRef({ width: 800, height: 600, dpr: 1 })
   const tiles = useAtlasTiles(props.filter, props.revision)
-  const files = useMemo(() => [...new Map([...tiles.files, ...props.files].map(f => [f.id, f])).values()], [tiles.files, props.files])
+  const files = useMemo(() => {
+    const merged = new Map(tiles.files.map(file => [file.id, file]))
+    for (const file of props.files) merged.set(file.id, { ...file, folderLinks: file.folderLinks ?? merged.get(file.id)?.folderLinks })
+    return [...merged.values()]
+  }, [tiles.files, props.files])
+  const folderEdges = useMemo(() => visibleFolderEdges(files, props.markers, props.selectedId), [files, props.markers, props.selectedId])
+  const edgesRef = useRef(folderEdges); edgesRef.current = folderEdges
+  const constellationPainter = useRef(new FolderConstellationPainter())
   const { onFiles } = props
   useEffect(() => { onFiles(files) }, [files, onFiles])
   const latest = useRef({ ...props, files }); latest.current = { ...props, files }
@@ -165,6 +174,14 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
         sky.globalAlpha = .45 * Math.max(0, Math.min(1, (.3 - camera.current.zoom) / .2))
         sky.drawImage(glow.canvas, x, y, glow.width * camera.current.zoom, glow.height * camera.current.zoom)
       }
+      const selection = latest.current.files.find(file => file.id === latest.current.selectedId)
+      const constellation = constellationPainter.current.draw(sky, edgesRef.current, camera.current, width, height, {
+        visibility: latest.current.constellations ?? 'all', selectedFolder: selection ? folderFor(selection) : null,
+        highlights: latest.current.highlights, reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        moving: moving?.file && moving.wx !== undefined && moving.wy !== undefined ? { id: moving.file.id, x: moving.wx, y: moving.wy } : undefined,
+      })
+      if (constellation.pending) invalidate()
+      if (host.current) host.current.dataset.constellationEdges = String(constellation.count)
     }
     renderer.current.draw(camera.current, width, height, dpr)
     const ctx = labelCanvas.current?.getContext('2d')
@@ -345,7 +362,7 @@ export const AtlasMap = forwardRef<MapHandle, Props>(function AtlasMap(props, re
       else animateTo(next)
     }
     invalidate()
-  }, [scene, props.scopeKey, props.regions, files, props.selectedId, invalidate, fitted, animateTo])
+  }, [scene, props.scopeKey, props.regions, files, props.selectedId, props.constellations, invalidate, fitted, animateTo])
 
   const destinations = props.destination ? props.regions.filter(r => r.parentId === props.destination!.id) : props.regions.filter(r => r.kind === 'region')
 

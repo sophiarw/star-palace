@@ -2,6 +2,14 @@
 
 These are recorded product ideas, not implemented features or commitments for the current website work.
 
+## September 5 implementation and design pass
+
+The user subsequently authorized parallel work on these requests. Vim browsing and folder connections are now in development. Stellar appearance and file-size semantics are being explored in reviewable proposals before changing the production atlas artwork.
+
+The user explicitly reopened the old file-type/object mapping: ordinary files might be main-sequence stars, exceptionally large files might become pulsars, and unusually similar groups (such as image series) might read as nebulae. Compare alternative systems instead of treating the old mapping as a requirement for the new design. Folder membership and content similarity are separate relationships. Preserve stable positions and access to every individual file in all proposals.
+
+The deferral notes below describe the original request context; this later authorization supersedes them for the current pass. Zodiac-like figure artwork and the final brand treatment still need visual review.
+
 ## Bright, glowing celestial icons
 
 Requested September 5, 2026. The user explicitly wants the main atlas file icons to adopt the aesthetic of their [revised stellar-calligraphy image](design/palace-stellar-calligraphy-reference.jpg): bright, saturated celestial colors surrounded by glow, with luminous cores and softer halos. The blue, white, yellow, orange, and red stars in this reference are the visual target.
