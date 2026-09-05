@@ -2,6 +2,7 @@ import { TextExtractor } from '../index/extractors/text'
 import type { AtlasStore } from './AtlasStore'
 import type { EmbeddingEngine } from '../embedding/EmbeddingEngine'
 import type { AtlasHit, AtlasScope } from '../../shared/atlas'
+import { stat } from 'node:fs/promises'
 
 export class AtlasService {
   private extractor = new TextExtractor()
@@ -12,6 +13,20 @@ export class AtlasService {
 
   start(): void { this.stopped = false; this.schedule(0) }
   stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.extractor.close() }
+  async refreshText(id: string): Promise<void> {
+    const file = this.store.index.get(id)
+    if (!file || file.platform !== 'local' || !/\.(md|markdown|txt|text)$/i.test(file.path)) throw new Error('Choose a local Markdown or plain-text document.')
+    const before = await stat(file.path)
+    if (!before.isFile()) throw new Error('This document is not a regular file.')
+    const result = await this.extractor.extract(file.path, `${before.mtimeMs}:${before.size}:${before.ctimeMs}`)
+    const after = await stat(file.path)
+    if (before.ino !== after.ino || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs || before.size !== after.size) throw new Error('This document is still changing. Try refreshing again after saving.')
+    if (!['ready', 'truncated', 'no-text'].includes(result.status)) throw new Error('This document could not be refreshed as text.')
+    this.store.index.db.transaction(() => {
+      this.store.index.db.prepare('UPDATE files SET size=?,modified_at=? WHERE id=? AND path=?').run(after.size, after.mtimeMs, id, file.path)
+      this.store.setText(id, result.text, result.status, `${after.mtimeMs}:${after.size}`, result.error)
+    })()
+  }
   async text(id: string): Promise<void> {
     const file = this.store.index.get(id)
     if (!file) return

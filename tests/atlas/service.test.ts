@@ -45,6 +45,31 @@ describe('Atlas HTTP and asynchronous retrieval', () => {
     expect((await request(server).post('/atlas/file/paper/edit').send({})).body).toEqual({ error: 'No editor installed' })
   })
 
+  it('validates section editor coordinates before invoking the launcher', async () => {
+    add('paper')
+    const edit = vi.fn(async (_file: import('../../src/shared/atlas').AtlasFile, _section?: import('../../src/shared/section').EditorSection) => ({ editor: 'vim' as const }))
+    const server = express().use(express.json()).use('/atlas', atlasRoutes(service, edit))
+    for (const body of [{ line: '+!bad', sourceLine: '# paper' }, { line: 0, sourceLine: '# paper' }, { line: 1 }, { line: 1, sourceLine: 'a\nb' }]) expect((await request(server).post('/atlas/file/paper/edit').send(body)).status).toBe(400)
+    expect(edit).not.toHaveBeenCalled()
+    expect((await request(server).post('/atlas/file/paper/edit').set('Origin', 'https://example.com').send({ line: 1, sourceLine: '# paper', contentHash: 'a'.repeat(64) })).status).toBe(403)
+    expect((await request(server).post('/atlas/file/paper/edit').send({ line: 1, sourceLine: '# paper', contentHash: 'a'.repeat(64) })).status).toBe(200)
+    expect(edit.mock.calls[0]?.[1]).toEqual({ line: 1, sourceLine: '# paper', contentHash: 'a'.repeat(64) })
+  })
+
+  it('refreshes edited Markdown text and metadata without embedding or changing its place and favorite', async () => {
+    add('paper'); store.pin('paper', 12, 34); store.favorite('paper', true, 'pulsar')
+    await service.text('paper')
+    const previous = store.file('paper')!
+    writeFileSync(previous.path, '# Renamed heading\nA newly saved passage.')
+    const response = await request(app()).post('/atlas/file/paper/refresh-text').send({})
+    expect(response.status).toBe(200)
+    expect(response.body.file).toMatchObject({ x: previous.x, y: previous.y, isPinned: true, isFavorite: true, favoriteAppearance: 'pulsar' })
+    expect(store.document('paper')?.text).toContain('newly saved passage')
+    expect(store.lexical('newly saved passage', {}, 20)).toHaveLength(1)
+    expect(embed).not.toHaveBeenCalled()
+    expect((await request(app()).post('/atlas/file/paper/refresh-text').set('Origin', 'https://example.com').send({})).status).toBe(403)
+  })
+
   it('validates favorite mutations and returns consistent typed marker metadata', async () => {
     add('paper')
     const original = store.file('paper')!, before = store.revision

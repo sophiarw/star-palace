@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -38,6 +39,21 @@ describe('Mac terminal editor launch', () => {
     await expect(openInTerminalEditor(file(path), { platform: 'darwin', findEditor: async () => ({ name: 'nvim', path: '/opt/homebrew/bin/nvim' }), launch })).resolves.toEqual({ editor: 'nvim' })
     expect(launch).toHaveBeenCalledWith('/usr/bin/osascript', ['-e', TERMINAL_EDITOR_SCRIPT, terminalEditorCommand('/opt/homebrew/bin/nvim', path)])
     expect(TERMINAL_EDITOR_SCRIPT).not.toContain(path)
+  })
+  it('opens a validated section line and refuses stale or command-shaped locations', async () => {
+    const path = join(directory, 'sections.md'), text = '# Title\r\n\r\n## Methods\r\nContent'
+    await writeFile(path, text)
+    const contentHash = createHash('sha256').update(text).digest('hex')
+    const launch = vi.fn(async () => {}), dependencies = { platform: 'darwin' as const, launch, findEditor: async () => ({ name: 'nvim' as const, path: '/opt/homebrew/bin/nvim' }) }
+    await openInTerminalEditor(file(path), { ...dependencies, section: { line: 3, sourceLine: '## Methods', contentHash } })
+    expect(launch).toHaveBeenLastCalledWith('/usr/bin/osascript', ['-e', TERMINAL_EDITOR_SCRIPT, terminalEditorCommand('/opt/homebrew/bin/nvim', path, 3)])
+    expect(terminalEditorCommand('/usr/bin/vim', path, 3)).toContain(' +3 -- ')
+    launch.mockClear()
+    await writeFile(path, '# Title\nNew line\n\n## Methods\nContent')
+    await expect(openInTerminalEditor(file(path), { ...dependencies, section: { line: 3, sourceLine: '## Methods', contentHash } })).rejects.toMatchObject({ status: 409 })
+    for (const line of [0, -1, 1.5, Infinity, 2097153]) expect(() => terminalEditorCommand('/usr/bin/vim', path, line)).toThrow()
+    await expect(openInTerminalEditor(file(path), { ...dependencies, section: { line: 2, sourceLine: 'x\ny', contentHash } })).rejects.toMatchObject({ status: 400 })
+    expect(launch).not.toHaveBeenCalled()
   })
   it('rejects unsupported, binary, missing, directory, and control-character paths without launching', async () => {
     const path = join(directory, 'binary.txt'); await writeFile(path, Buffer.from([0, 1, 2, 3]))

@@ -3,6 +3,8 @@ import { Router } from 'express'
 import type { AtlasFile, AtlasScope } from '../../shared/atlas'
 import type { FileCategory } from '../../shared/types'
 import type { AtlasService } from './service'
+import type { EditorSection } from '../../shared/section'
+import { localRequest } from '../util/localRequest'
 
 function bounded(value: unknown, fallback: number, max: number): number {
   if (value === undefined) return fallback
@@ -30,7 +32,7 @@ export function parseScope(raw: Record<string, unknown>): AtlasScope {
   return scope
 }
 
-export function atlasRoutes(service: AtlasService, editFile: (file: AtlasFile) => Promise<{ editor: 'nvim' | 'vim' }> = openInTerminalEditor): Router {
+export function atlasRoutes(service: AtlasService, editFile: (file: AtlasFile, section?: EditorSection) => Promise<{ editor: 'nvim' | 'vim' }> = (file, section) => openInTerminalEditor(file, { section })): Router {
   const router = Router(), store = service.store
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
   router.get('/summary', (req, res) => {
@@ -79,11 +81,18 @@ export function atlasRoutes(service: AtlasService, editFile: (file: AtlasFile) =
       } else res.json({ results: store.lexical(query, scope, limit), semanticAvailable: true, elapsedMs: performance.now() - start })
     } catch (e) { res.status(400).json({ error: String(e) }) }
   })
-  router.post('/file/:id/edit', async (req, res) => {
+  router.post('/file/:id/edit', localRequest, async (req, res) => {
     const file = store.file(req.params.id)
     if (!file) return res.status(404).json({ error: 'File not found' })
-    try { return res.json(await editFile(file)) }
+    const { line, sourceLine, contentHash } = req.body ?? {}
+    if ((line !== undefined || sourceLine !== undefined || contentHash !== undefined) && (!Number.isSafeInteger(line) || line < 1 || line > 2097152 || typeof sourceLine !== 'string' || sourceLine.length > 8192 || /[\r\n]/.test(sourceLine) || typeof contentHash !== 'string' || !/^[a-f0-9]{64}$/.test(contentHash))) return res.status(400).json({ error: 'Invalid section location' })
+    try { return res.json(await editFile(file, line === undefined ? undefined : { line, sourceLine, contentHash })) }
     catch (error) { return res.status(error instanceof TerminalEditorError ? error.status : 500).json({ error: error instanceof TerminalEditorError ? error.message : 'Could not open the terminal editor' }) }
+  })
+  router.post('/file/:id/refresh-text', localRequest, async (req, res) => {
+    if (!store.file(req.params.id)) return res.status(404).json({ error: 'File not found' })
+    try { await service.refreshText(req.params.id); return res.json({ file: store.file(req.params.id) }) }
+    catch (error) { return res.status(409).json({ error: error instanceof Error ? error.message : 'Could not refresh document' }) }
   })
   router.post('/file/:id/favorite', (req, res) => {
     const { isFavorite, favoriteAppearance } = req.body ?? {}
