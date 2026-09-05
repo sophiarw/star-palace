@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 300" role="img" aria-labelledby="title"><title id="title">Palace — stellar calligraphy</title><defs><linearGradient id="spectrum"><stop stop-color="#a9d7f0"/><stop offset=".34" stop-color="#f1f1e9"/><stop offset=".65" stop-color="#ead2a0"/><stop offset="1" stop-color="#d8aaa0"/></linearGradient><filter id="aura" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"/></filter><g id="brush-shape">
+<path d="M104 13Q125 16 135 43L120 48Q119 30 104 13Z"/>
+<path d="M45 61Q48 81 41 105Q36 116 28 115Q23 105 29 88Z"/>
+<path d="M47 77Q108 68 179 53Q198 49 209 61Q210 72 190 91L183 88L191 66Q134 72 66 87Q51 90 47 77Z"/>
+<path d="M66 107L80 112L90 148L75 158Q69 139 66 107Z"/>
+<path d="M78 112Q116 105 160 91Q177 89 178 101L164 150Q126 148 91 159L85 148L151 136L159 105L90 122Z"/>
+<path d="M53 191L70 194Q74 226 70 261L55 274Q50 239 53 191Z"/>
+<path d="M66 192Q121 175 181 171Q196 174 196 184L194 244Q185 258 168 264Q115 261 70 274L66 260Q119 245 177 247L181 187Q126 188 77 204Z"/>
+</g><clipPath id="brush-clip"><use href="#brush-shape"/></clipPath><pattern id="grain" width="17" height="19" patternUnits="userSpaceOnUse"><circle cx="3" cy="4" r=".65" fill="#fffef4" opacity=".75"/><circle cx="12" cy="13" r=".4" fill="#fffef4" opacity=".6"/></pattern></defs><use href="#brush-shape" fill="url(#spectrum)" filter="url(#aura)" opacity=".35"/><use href="#brush-shape" fill="url(#spectrum)"/><use href="#brush-shape" fill="url(#grain)"/><g fill="#fffef4"><circle cx="124" cy="35" r="2.1"/><circle cx="36" cy="100" r="2.4"/><circle cx="108" cy="72" r="1.8"/><circle cx="186" cy="62" r="2.1"/><circle cx="78" cy="138" r="1.6"/><circle cx="157" cy="144" r="2.2"/><circle cx="62" cy="239" r="2.1"/><circle cx="132" cy="187" r="1.8"/><circle cx="184" cy="232" r="2.4"/></g></svg>

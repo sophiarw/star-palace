@@ -1,5 +1,24 @@
 import { test, expect } from '@playwright/test'
 
+test('stellar identity keeps the supplied art quiet and reserves special objects for favorites', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A memory palace for constellations of files.')
+  await expect(page.locator('.hero-art')).toHaveCount(1)
+  await expect(page.locator('.hero-art')).toHaveCSS('opacity', '0.1')
+  await expect(page.locator('.hero-art')).toHaveAttribute('aria-hidden', 'true')
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(3, 5, 7)')
+  await expect(page.locator('.site-header .mark')).toHaveAttribute('src', '/palace-calligraphy.svg')
+  await expect(page.locator('.file-star canvas[data-object-type="main-sequence"]')).toHaveCount(10)
+  await expect(page.locator('.file-star[data-favorite="true"]')).toHaveCount(2)
+  await expect(page.locator('.file-star[data-favorite="true"] canvas[data-object-type="pulsar"]')).toHaveCount(1)
+  await expect(page.locator('.file-star[data-favorite="true"] canvas[data-object-type="black-hole"]')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Preview Show and tell.pptx', exact: true }).click()
+  await expect(page.locator('#preview-kind')).toContainText('FAVORITE')
+  await page.getByRole('button', { name: 'Preview Window light.jpg', exact: true }).click()
+  await expect(page.locator('#preview-kind')).toContainText('8 MIB')
+  await expect(page.locator('#preview-kind')).not.toContainText('NEBULA')
+})
+
 test('search highlights stationary example files and Enter previews a result', async ({ page }) => {
   const calls: string[] = []
   page.on('request', request => { if (/\/api\//.test(request.url())) calls.push(request.url()) })
@@ -60,7 +79,10 @@ test('commands copy exactly, including newlines', async ({ page, context }) => {
   await page.locator('[data-copy="install-code"]').click()
   await expect(page.locator('[data-copy="install-code"]')).toHaveText('Copied')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    'git clone --branch feat/atlas-revamp https://github.com/sophiarw/star-palace.git\ncd star-palace\nnpm ci\nnpm start')
+    'cd ~\ngit clone --branch feat/atlas-revamp https://github.com/sophiarw/star-palace.git\ncd star-palace\nnpm ci\nnpm start')
+  await page.getByText(/^Next launch/).click()
+  await page.locator('[data-copy="launch-code"]').click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('cd ~/star-palace\nnpm start')
 })
 
 test('mobile and reduced motion remain readable without horizontal overflow', async ({ page }) => {
@@ -70,6 +92,7 @@ test('mobile and reduced motion remain readable without horizontal overflow', as
     await page.goto('/')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(page.locator('.hero-art')).toHaveCSS('opacity', '0.1')
     await page.getByRole('button', { name: 'Preview Window light.jpg', exact: true }).click()
     await expect(page.locator('#preview-name')).toHaveText('Window light.jpg')
   }

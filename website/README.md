@@ -1,6 +1,6 @@
 # Star Palace website
 
-A static, responsive site for starpalace.ai. Source lives separately from the app, but imports its Canvas celestial artwork. It contains only fictional example files. No analytics, third-party fonts, uploaded library data, or feedback server.
+A static, responsive site for starpalace.ai. Source lives separately from the app, but imports its canonical stellar palette, byte-size curve, and Canvas artwork. It contains only fictional example files. No analytics, third-party fonts, uploaded library data, or feedback server.
 
 ## Local preview
 
@@ -48,13 +48,17 @@ Sources checked September 5, 2026: [GitHub custom domains](https://docs.github.c
 
 Use the user's wording: “A memory palace for constellations of files.” Keep the stargazing/Sharepoint description. Prefer nouns or questions for headings. Avoid repeating the same product explanation in multiple cards; use the celestial artwork in its place.
 
-## Logo
+## Stellar identity
 
-`public/palace-constellation.svg` forms 宫 (palace) from slightly irregular stars with pale connecting lines and blue, gold, and violet glows. The roof and two 口 shapes stay distinct. The favicon uses the same arrangement with stronger lines for small sizes. Use this mark instead of the earlier compass/starburst.
+`public/palace-calligraphy.svg` is an editable brush silhouette of 宫 with pale blue, ivory, gold, and soft red color, a few bright cores, and a restrained aura. The favicon uses its simpler ivory silhouette. These replace the rejected constellation-dot logo.
+
+`public/palace-stellar-calligraphy.jpg` is an unchanged copy of the user's revised Gemini reference, preserved in `docs/design/palace-stellar-calligraphy-reference.jpg`. It appears once as decorative hero background shading at **0.10 opacity**, following the user's explicit instruction not to feature AI art front and center. CSS handles desaturation and placement; the source image is not modified. The near-black page background is `#030507`.
 
 ## Graphics and changes
 
-`website/src/main.ts` draws the illustrative galaxy only on interaction or resize; no animation loop. The object family uses `celestialSprites.ts`, so changes to app artwork flow into the website. `website/src/demo.ts` owns fictional content and search matching. `website/index.html` owns product/install copy.
+`website/src/main.ts` draws the illustrative galaxy only on interaction or resize; no animation loop. `stellarVisual.ts` and `drawStellarObject` in `celestialSprites.ts` supply the same pale starlight, size curve, and object artwork as the app. Ten example files remain ordinary stars, while two explicit favorites have pulsar/black-hole silhouettes. Byte sizes alter ordinary stars' presence; file extensions do not assign exotic object types. Faint blue, rose, and amber clouds follow three authored fictional groups. Connections follow the selected file's direct folder. This illustrative data does not run the app's similarity algorithm.
+
+`website/src/demo.ts` owns fictional content and search matching. `website/index.html` owns the user's product copy, installation instructions, and accessible form. Keep the user's exact main headings and stargazing/Sharepoint wording.
 
 To regenerate the share card while the local site runs:
 
@@ -62,14 +66,18 @@ To regenerate the share card while the local site runs:
 node scripts/generate-site-social.mjs
 ```
 
-The 1200×630 `public/social.png` is generated from code and the app's existing artwork. No external image assets or fonts are required.
+The 1200×630 `public/social.png` uses the vector mark, fictional app artwork, and the same 0.10-opacity reference background. No external fonts or image hosts are required.
 
 ## Validation
 
-Six browser checks cover stationary search highlights, previews, keyboard tutorial controls, escaped feedback handoff, clipboard contents, disabled JavaScript, and responsive layouts at 320/390/768/1440 pixels. Desktop/mobile screenshots were also inspected locally. The browser tests intercept GitHub navigation and never submit feedback.
+Browser checks cover stationary search highlights, previews, keyboard tutorial controls, escaped feedback handoff, clipboard contents, disabled JavaScript, responsive layouts at 320/390/768/1440 pixels, restrained background opacity, and ordinary-star/favorite semantics. Desktop/mobile screenshots were also inspected locally. The browser tests intercept GitHub navigation and never submit feedback.
 
-Production output after copy/logo review: HTML approximately 13.5 KB, CSS 20.4 KB, JavaScript 14.3 KB before compression (roughly 4.5/5.2/6 KB gzip); social artwork is fetched by social crawlers rather than loaded by the page.
+The original hero background is approximately 699 KiB and loads once. The share card is for social crawlers; it is not loaded by the page. Run `npm run build:site` for current bundle sizes.
 
 ## License
 
 See [LICENSE](../LICENSE): PolyForm Noncommercial 1.0.0 with an additional permission for personal and internal workplace use. It permits using Star Palace in paid work, but not selling or monetizing Star Palace itself. This is source-available software, not an OSI open-source license. Third-party dependencies retain their own licenses.
+
+## First installation
+
+The public instructions explicitly clone `feat/atlas-revamp`, the current application branch, over HTTPS. They place the checkout at `~/star-palace`, install locked dependencies with `npm ci`, and launch both local processes with `npm start`. Prerequisites are Node.js 22 and Apple command line tools (including Git); the visitor finishes those installations before copying the app commands. The tutorial explains copying a folder path from Finder and using Manage sources → Index folder. A separate Next launch section makes returning to the app explicit. This remains a source installation; no downloadable Mac app is advertised as available.

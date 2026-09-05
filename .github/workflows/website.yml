@@ -6,6 +6,7 @@ on:
     paths:
       - 'website/**'
       - 'src/renderer/src/atlas/celestialSprites.ts'
+      - 'src/renderer/src/atlas/stellarVisual.ts'
       - 'src/shared/types.ts'
       - 'vite.site.config.ts'
       - 'tsconfig.site.json'

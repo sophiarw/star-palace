@@ -1,16 +1,23 @@
-import { drawObject } from '../../src/renderer/src/atlas/celestialSprites'
-import { isStarType } from '../../src/shared/types'
+import { drawStellarObject } from '../../src/renderer/src/atlas/celestialSprites'
+import { stellarAppearance } from '../../src/renderer/src/atlas/stellarVisual'
+import { seedFor } from '../../src/renderer/src/atlas/scene'
 import { exampleFiles, matchingFiles, feedbackUrl, type ExampleFile } from './demo'
 
 function element<T extends HTMLElement>(id: string): T { return document.getElementById(id) as T }
-function object(canvas: HTMLCanvasElement, file: Pick<ExampleFile, 'type'>, seed: number): void {
+function object(canvas: HTMLCanvasElement, file: Pick<ExampleFile, 'bytes' | 'favorite'>, seed: number, close = false): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save(); ctx.translate(canvas.width / 2, canvas.height / 2)
-  const scale = Math.min(canvas.width, canvas.height) / 125
-  ctx.scale(scale, scale); drawObject(ctx, file.type, seed, true); ctx.restore()
+  const appearance = stellarAppearance(seed, file.bytes, file.favorite)
+  const size = close ? 1 : appearance.radiusScale / 2.1
+  const scale = Math.min(canvas.width, canvas.height) / 128 * size
+  ctx.scale(scale, scale)
+  drawStellarObject(ctx, appearance.objectType, seed, appearance.color, true)
+  ctx.restore()
+  canvas.dataset.objectType = appearance.objectType
 }
+const formatBytes = (bytes: number): string => bytes < 1048576 ? Math.round(bytes / 1024) + ' KiB' : bytes < 1073741824 ? Math.round(bytes / 1048576) + ' MiB' : (bytes / 1073741824).toFixed(0) + ' GiB'
 const search = element<HTMLInputElement>('galaxy-search')
 const stars = element<HTMLDivElement>('file-stars')
 let selected = exampleFiles[0]
@@ -25,7 +32,8 @@ const buttons = exampleFiles.map((file, index) => {
   const name = document.createElement('span')
   name.className = 'star-name'; name.textContent = file.name
   button.append(canvas, name); stars.append(button)
-  object(canvas, file, index * 779 + 142)
+  object(canvas, file, seedFor(file.name))
+  button.dataset.favorite = String(!!file.favorite)
   button.addEventListener('click', () => select(file))
   return button
 })
@@ -33,12 +41,12 @@ function select(file: ExampleFile): void {
   selected = file
   buttons.forEach((button, i) => button.setAttribute('aria-pressed', String(exampleFiles[i] === file)))
   element('preview-name').textContent = file.name
-  element('preview-kind').textContent = file.kind.toUpperCase()
+  element('preview-kind').textContent = (file.kind + ' · ' + formatBytes(file.bytes) + (file.favorite ? ' · Favorite' : '')).toUpperCase()
   element('preview-path').textContent = file.folder
   element('preview-heading').textContent = file.name.replace(/\.[^.]+$/, '')
   element('preview-text').textContent = file.text
   element('preview-tag').textContent = file.tag
-  object(element<HTMLCanvasElement>('preview-object'), file, exampleFiles.indexOf(file) * 779 + 142)
+  object(element<HTMLCanvasElement>('preview-object'), file, seedFor(file.name), true)
   drawGalaxy()
 }
 function filter(): void {
@@ -69,36 +77,59 @@ function drawGalaxy(): void {
   // Static, seeded dust follows an irregular trail. Redraw only on interaction/resize.
   let state = 73091
   const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296 }
-  for (let i = 0; i < 11; i++) {
-    const x = (.16 + i * .066) * w, y = (.55 - Math.sin(i * .67) * .18) * h
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, w * .22)
-    glow.addColorStop(0, i % 2 ? '#6277970b' : '#9c829c0a'); glow.addColorStop(1, '#26354a00')
-    ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h)
+  const groups = [
+    { tag: 'garden', color: '#719ed1' },
+    { tag: 'making', color: '#c08eab' },
+    { tag: 'coast', color: '#cba16f' },
+  ]
+  for (const group of groups) {
+    const members = exampleFiles.filter(file => file.tag === group.tag)
+    for (const file of members) {
+      const x = file.x / 100 * w, y = file.y / 100 * h
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, w * .14)
+      glow.addColorStop(0, group.color + '19'); glow.addColorStop(.38, group.color + '0c'); glow.addColorStop(1, group.color + '00')
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h)
+    }
   }
-  for (let i = 0; i < 550; i++) {
+  for (let i = 0; i < 440; i++) {
     const t = random(), spread = (random() + random() + random() - 1.5)
     const x = (t * 1.02 + spread * .13) * w
     const y = (.53 - Math.sin(t * 7) * .15 + spread * .32) * h
-    ctx.globalAlpha = .1 + random() * .35
-    ctx.fillStyle = i % 3 ? '#9fb4d1' : '#d9c59f'
-    ctx.beginPath(); ctx.arc(x, y, .35 + random() * .75, 0, Math.PI * 2); ctx.fill()
+    ctx.globalAlpha = .1 + random() * .44
+    ctx.fillStyle = ['#f1f1e9', '#f1f1e9', '#eadfca', '#ead2a0', '#c4dcf1'][i % 5]
+    ctx.beginPath(); ctx.arc(x, y, .25 + random() ** 3 * .8, 0, Math.PI * 2); ctx.fill()
   }
   ctx.globalAlpha = 1
-  const group = exampleFiles.filter(file => file.tag === selected.tag)
-  ctx.strokeStyle = '#c3b59530'; ctx.lineWidth = .7
+  const siblings = exampleFiles.filter(file => file.folder === selected.folder)
+  ctx.strokeStyle = '#c5d9ef35'; ctx.lineWidth = .7
   ctx.beginPath()
-  group.forEach((file, i) => { const x = file.x / 100 * w, y = file.y / 100 * h; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) })
+  siblings.forEach((file, i) => { const x = file.x / 100 * w, y = file.y / 100 * h; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) })
   ctx.stroke()
+
 }
 new ResizeObserver(drawGalaxy).observe(galaxy)
 select(selected)
 document.querySelectorAll<HTMLCanvasElement>('canvas[data-object]').forEach((canvas, index) => {
-  const type = canvas.dataset.object
-  if (isStarType(type)) object(canvas, { type }, index * 227 + 47)
+  if (canvas.dataset.object !== 'cloud') {
+    object(canvas, { bytes: Number(canvas.dataset.bytes ?? 1048576), favorite: canvas.dataset.object === 'pulsar' ? 'pulsar' : undefined }, index * 227 + 47)
+    return
+  }
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const members = [[.25, .56], [.39, .39], [.52, .52], [.64, .34], [.75, .6]]
+  for (const [x, y] of members) {
+    const glow = ctx.createRadialGradient(x * canvas.width, y * canvas.height, 0, x * canvas.width, y * canvas.height, canvas.width * .24)
+    glow.addColorStop(0, '#719ed148'); glow.addColorStop(.5, '#719ed118'); glow.addColorStop(1, '#719ed100')
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  members.forEach(([x, y], i) => {
+    ctx.save(); ctx.translate(x * canvas.width, y * canvas.height); ctx.scale(.22, .22)
+    drawStellarObject(ctx, 'main-sequence', i * 47, i % 2 ? '#ead2a0' : '#f1f1e9'); ctx.restore()
+  })
 })
 
 const tutorial = [
-  { title: 'Folder indexing', description: 'Open Manage sources, enter a folder path, give it a name if you like, and choose Index folder. Start small while you get a feel for the map. Names and text previews work without Ollama.', tip: 'Tip: reindex the same source to pick up changes.', visual: '<strong>Your sources</strong><span class="mini-label">Folder path</span><div class="mini-input">/Users/you/Documents/Field notes</div><span class="mini-button">Index folder ↗</span>' },
+  { title: 'Folder indexing', description: 'In Finder, select a folder and press Option–Command–C to copy its path. In Star Palace, open Manage sources, paste it into Folder path, and choose Index folder. Start with one small folder. Names and text previews work without Ollama.', tip: 'Tip: reindex the same source to pick up changes.', visual: '<strong>Your sources</strong><span class="mini-label">Folder path</span><div class="mini-input">/Users/you/Documents/Field notes</div><span class="mini-button">Index folder ↗</span>' },
   { title: 'Search', description: 'Press ⌘ K and type a filename or a phrase from a document. Choose a result to find its place on the map. With Ollama running and your files embedded, Related meaning can help when you remember the idea but not the words.', tip: 'Tip: arrow keys select a result; Enter opens it.', visual: '<div class="mini-input">⌕ &nbsp; garden</div><div class="mini-row"><span>✧</span>A small garden.md<small>Markdown</small></div><div class="mini-row"><span>✦</span>Planting calendar.csv<small>CSV</small></div><div class="mini-row"><span>✧</span>Botany reading.pdf<small>PDF</small></div>' },
   { title: 'The reader', description: 'Select a celestial object to preview its file. Choose Expand, or press Enter, for the full reader. Use Open original to work in the file’s usual app, or Reveal in Finder to see its folder. Map, list, and grid views offer different ways to browse.', tip: 'Tip: scroll to zoom; drag the map to look around.', visual: '<span class="mini-label">FIELD NOTES / GARDEN</span><strong>A small garden.md</strong><p class="mini-text">Basil for the evenings,<br />mint for tea.</p><span class="mini-caption">Open original ↗ &nbsp; · &nbsp; Expand ↗</span>' },
   { title: 'Pins & saved places', description: 'Use Save place to remember the current view. Shift-drag a file to pin it somewhere meaningful, or add a tag in its file details. Save a set of search results as a collection. Choose Your atlas to return to the whole galaxy.', tip: 'Tip: ordinary indexing keeps existing file positions.', visual: '<strong>✧ &nbsp; Your places</strong><div class="mini-row"><span>✧</span>The whole galaxy</div><div class="mini-row"><span>⌖</span>The windowsill garden</div><span class="mini-button">Save place +</span>' },

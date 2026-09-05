@@ -25,6 +25,18 @@ Sources: [Electron distribution](https://www.electronjs.org/docs/latest/tutorial
 
 This proves that the application service can run without the TypeScript development loader. It does not prove an Electron build, Electron-native module compatibility, or a clean-machine install.
 
+## Website source-install check
+
+The website's public HTTPS clone, `npm ci`, and `npm start` path has now been exercised in a fresh temporary checkout with current release sources overlaid and no copied dependencies or library. On Apple Silicon macOS with Node 22.17.0, npm 11.4.2, Git, and Xcode developer tools already installed, `npm ci` installed 611 packages in approximately seven seconds. This is a clean repository/dependency installation on an existing development Mac, not an otherwise pristine operating-system test and not an Intel Mac validation.
+
+The real first-run browser flow indexed two temporary documents through the source form (including a folder path with spaces), found a phrase in extracted content, displayed its reader preview, and stopped both servers with Control C. It passed with Ollama available and again with an unavailable endpoint and zero embeddings. The daemon now accepts optional `STARPALACE_OLLAMA_URL`; default behavior remains the local service on port 11434. The unavailable-model check uses an unused loopback port instead of stopping the user's model service.
+
+The fresh library exposed a blocked **Add your first folder** button underneath the map canvas. The empty overlay stacking is corrected, and a browser regression covers the pointer interaction. Repeat the complete isolated flow with `node scripts/check-source-install.mjs` and `node scripts/check-source-install.mjs --without-model` after installing dependencies; Chrome is used by the verification script. See [detailed source-install evidence](source-install-validation.md).
+
+The installed lockfile's npm audit reported 15 advisories: one critical, eight high, five moderate, and one low. The critical item concerns Vitest's UI server, which ordinary app startup does not run. High findings include the Vite development server that **does** run under `npm start`, undici, and transitive tooling packages. Dependency updates require a compatibility-tested follow-up; this source-install check is not a claim of a clean dependency audit. No forced major upgrade was performed during installation validation.
+
+The normal website installation is still **source installation**, requiring Node/Git/developer tools and a running Terminal. There is no signed standalone executable or Applications-folder installer yet.
+
 ## Remaining work for a real download
 
 1. **Native dependencies.** Build `better-sqlite3` and `hnswlib-node` for the chosen Electron ABI, in a separate packaging directory. Never rebuild the developer checkout's modules in place. Unpack native binaries and any required worker resources from the application archive.
