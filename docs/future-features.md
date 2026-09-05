@@ -1,6 +1,54 @@
 # Future ideas
 
-These are recorded product ideas, not implemented features or commitments for the current website work.
+This backlog distinguishes approved feature requests from historical design exploration. Approval to record a request does not mean it is implemented or scheduled.
+
+## September 5: daily use and distribution requests
+
+The user approved the first six requests below for the backlog, then added an Update button as a seventh. Implementation remains future work; the current task is documentation and discussion of larger product directions.
+
+### FR-01: A living library
+
+Automatically refresh indexed metadata and searchable text after external edits, including saves from Vim/Neovim. Catch up on changes made while Star Palace was closed. Follow with identity-preserving renames and moves so positions, favorites, tags, pins, and collection membership survive.
+
+Current limitation: refresh requires reindexing and file IDs are path-derived. Implement incremental refresh first, then carefully establish move/rename identity. Matching content alone must not merge distinct duplicate files. Validate atomic editor saves, offline changes, ambiguous moves, and metadata preservation with isolated fixtures; ordinary refresh must not rearrange the atlas.
+
+### FR-02: Places in search
+
+Return folders, sources, and collections as navigable search results alongside documents. For example, searching “Incoming” offers “Incoming — folder, 37 files”; selecting it visits that place and supports browsing its members and revealing the folder in Finder.
+
+Folder paths and atlas labels already match member files. This request adds place destinations, with clear result types, paths to distinguish identically named folders, predictable keyboard navigation, and scope-aware counts. Typing a query must not move the camera; explicit navigation should preserve a way back.
+
+### FR-03: Personal constellations
+
+Build on existing collections with optional recognizable figures or emblems, a short description, and a designated starting document. A writing project might have a fox illustration; travel documents might have a ship.
+
+Extend the deferred illustrated-constellation idea below to authored collections while keeping folders, collections, and content similarity distinct. Illustrations and faint connecting lines follow existing file coordinates and appear gently on focus. Start with a visual prototype for review; preserve individual file access, readable labels, and bounded rendering costs.
+
+### FR-04: Quiet indexing
+
+Support pause/resume and durable progress across app restarts. Distinguish files discovered, searchable, and processed for similarity so the user can understand readiness without needing implementation details. Keep active browsing, reading, and search responsive during ingestion.
+
+Measure foreground interaction while indexing roughly 2,000 representative files, including operation without an embedding model. Existing navigation measurements on an already indexed library do not establish concurrent-indexing performance. Preserve the current bounded extraction and early metadata availability; this extends the indexing workflow rather than replacing those capabilities.
+
+### FR-05: A Mac application
+
+Provide a downloadable Mac app: drag into Applications, choose folders, and browse. Manage the daemon lifecycle within the app and offer an optional system-wide quick-search shortcut that returns to the existing atlas.
+
+Continue the investigation in [Mac distribution](mac-distribution.md), including signing/notarization, first-run behavior, upgrades, shutdown, and preservation of existing libraries. Current distribution remains source installation; no signed installer is available. Scope is macOS only.
+
+### FR-06: Atlas fullscreen
+
+Add an expand control that hides the toolbar and panels so the galaxy fills the app window. Search remains available on demand as an overlay. Escape exits this mode and restores the prior panel layout, camera, selection, and focus. Support `:fullscreen` through the native Vim command system.
+
+Distinguish the app's immersive atlas mode from operating-system/browser fullscreen during implementation. Handle nested overlays predictably: Escape dismisses the active overlay before leaving the immersive atlas. Ordinary typing and existing keyboard navigation must continue to work; entering or leaving fullscreen must not fit or reset the map.
+
+### FR-07: Update button
+
+Provide an in-app Update action that pulls the current published version from the project's repository automatically, without requiring Terminal commands. For source installations, check the configured official release branch, fetch and fast-forward safely, install changed dependencies when needed, and coordinate rebuilding/restarting with a clear progress and completion state.
+
+Preserve the library and local checkout changes. Never discard edits, reset divergent branches, or silently switch a development worktree to the release branch. Explain conflicts and failed/offline updates with an actionable status, preserve a recovery path, and ensure interrupted updates do not leave the app claiming success. Coordinate restart with active indexing. Keep repository operations in the local launcher/daemon, outside the renderer. The later packaged Mac app should offer the same user-facing action through an appropriate application updater rather than requiring a Git checkout.
+
+Suggested sequencing from the proposal: place destinations first, then automatic refresh and indexing responsiveness, an illustrated-constellation prototype for visual review, and the Mac app as a larger release. Fullscreen fits the current work on collapsible panels; the Update action improves the existing source-install experience. This is a suggested order, not a delivery commitment.
 
 ## September 5 implementation and design pass
 
