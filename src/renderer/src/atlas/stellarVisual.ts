@@ -1,4 +1,5 @@
 import type { StarType } from '@shared/types'
+import { LENS_PALETTE } from './lensPalette'
 
 export const STELLAR_BASE_COLORS = ['#f1f1e9', '#f1f1e9', '#eadfca', '#ead2a0', '#c4dcf1', '#dfb994'] as const
 export const FAVORITE_COLOR = '#d5dfe9'
@@ -6,7 +7,7 @@ function mixColor(base: string, target: string, amount: number): string {
   return '#' + [1, 3, 5].map(at => Math.round(parseInt(base.slice(at, at + 2), 16) * (1 - amount) + parseInt(target.slice(at, at + 2), 16) * amount).toString(16).padStart(2, '0')).join('')
 }
 /** A finite palette bakes pale cores correctly in both Canvas and WebGL. */
-export const STELLAR_PALETTE = [...new Set(STELLAR_BASE_COLORS.flatMap(base => [base, ...['#e88e72', '#6eace6'].flatMap(target => [.24, .48, .72].map(amount => mixColor(base, target, amount)))]))]
+export const STELLAR_PALETTE = [...new Set(STELLAR_BASE_COLORS.flatMap(base => [base, ...['#e88e72', '#6eace6'].flatMap(target => [.24, .48, .72].map(amount => mixColor(base, target, amount)))])), ...LENS_PALETTE]
 export function stellarMagnitude(bytes: number | undefined): number {
   if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return .5
   return Math.max(0, Math.min(1, (Math.log2(Math.max(1024, bytes)) - 10) / 20))
@@ -41,7 +42,7 @@ export function pointStellarAppearance(point: StellarPoint): StellarAppearance {
   const previous = pointAppearances.get(point)
   if (previous && previous.id === point.id && Object.is(previous.bytes, point.sizeBytes) && previous.type === point.objectType && previous.color === point.lensColor) return previous.value
   const value = stellarAppearance(stellarSeed(point.id ?? ''), point.sizeBytes, point.objectType === 'pulsar' || point.objectType === 'black-hole' ? point.objectType : undefined)
-  if (point.lensColor) value.color = point.lensColor
+  if (point.lensColor) { value.color = point.lensColor; value.paletteIndex = STELLAR_PALETTE.indexOf(point.lensColor) }
   pointAppearances.set(point, { color: point.lensColor, id: point.id, bytes: point.sizeBytes, type: point.objectType, value })
   return value
 }

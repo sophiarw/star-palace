@@ -26,6 +26,7 @@ test('lenses retain the camera and restore the user’s constellation setting', 
   await page.goto('/')
   const map = page.locator('.atlas-map'), lens = page.getByRole('combobox', { name: 'Wavelength lens' })
   await expect(map).toHaveAttribute('data-camera', /zoom/)
+  await expect(map).toHaveAttribute('data-labels', /[a-f0-9]/) // Initial library fit must precede the comparison.
   const camera = await map.getAttribute('data-camera')
   await page.getByRole('combobox', { name: 'Folder constellations' }).selectOption('off')
   for (const value of ['recent', 'size', 'connections', 'visible']) {
@@ -34,6 +35,41 @@ test('lenses retain the camera and restore the user’s constellation setting', 
   await expect(page.getByRole('combobox', { name: 'Folder constellations' })).toHaveValue('off')
   await page.locator('.atlas-context h1').click(); await page.keyboard.type(':'); await page.getByRole('textbox', { name: 'Vim command' }).fill('fullscreen'); await page.keyboard.press('Enter')
   await expect(page.locator('.atlas-shell')).toHaveClass(/atlas-fullscreen/)
+})
+
+test('both renderers tint ordinary and favorite stars violet/red at overview and close-up', async ({ page }) => {
+  await page.goto('/')
+  const samples = await page.evaluate(async () => {
+    const rendererPath = '/src/atlas/pointRenderer.ts', lensPath = '/src/atlas/lenses.ts'
+    const { canvasRenderer, gpuRenderer } = await import(rendererPath)
+    const { lensAppearance } = await import(lensPath)
+    const samples: { kind: string; type: string; lens: string; zoom: number; rgb: number[] }[] = []
+    for (const factory of [canvasRenderer, gpuRenderer]) {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256
+      const renderer = factory(canvas)
+      if (!renderer) throw new Error('Chrome must provide WebGL2 for lens parity validation')
+      const copy = document.createElement('canvas'); copy.width = copy.height = 256
+      const ctx = copy.getContext('2d')!
+      for (const type of ['main-sequence', 'pulsar', 'black-hole']) for (const lens of ['recent', 'size']) for (const zoom of [1, 20]) {
+        const color = lensAppearance(lens, { size: 1024, modifiedAt: 100000000 }, 100000000).color
+        renderer.setPoints([{ id: 'lens-fixture', x: 0, y: 0, radius: 25, stellar: true, sizeBytes: 1024 ** 2, objectType: type, zoomable: true, lensColor: color, color: '#fff', alpha: 1 }])
+        renderer.draw({ x: 0, y: 0, zoom }, 256, 256, 1)
+        ctx.clearRect(0, 0, 256, 256); ctx.drawImage(canvas, 0, 0)
+        const pixels = ctx.getImageData(0, 0, 256, 256).data, rgb = [0, 0, 0]
+        for (let i = 0; i < pixels.length; i += 4) for (let c = 0; c < 3; c++) rgb[c] += pixels[i + c] * pixels[i + 3] / 255
+        samples.push({ kind: renderer.kind, type, lens, zoom, rgb })
+      }
+      renderer.destroy()
+    }
+    return samples
+  })
+  expect(samples).toHaveLength(24)
+  for (const sample of samples) {
+    const [r, g, b] = sample.rgb
+    expect(r + g + b, JSON.stringify(sample)).toBeGreaterThan(100)
+    if (sample.lens === 'recent') { expect(b, JSON.stringify(sample)).toBeGreaterThan(r); expect(r, JSON.stringify(sample)).toBeGreaterThan(g) }
+    else { expect(r, JSON.stringify(sample)).toBeGreaterThan(b); expect(r, JSON.stringify(sample)).toBeGreaterThan(g) }
+  }
 })
 
 test('history explains source enablement and offers saved contents, diffs, and copy recovery', async ({ page }) => {

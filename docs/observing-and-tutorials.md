@@ -2,11 +2,11 @@
 
 ## Wavelength lenses
 
-Use the map's lower-left control. **Visible** retains the canonical artwork. **Ultraviolet** colors/emphasizes files by recorded modification time (blue within one day, ivory within a week, gold older). **Infrared** shows byte-size bands (blue under 1 MiB, ivory through 16 MiB, gold above). **Radio** emphasizes folder connections and similarity haze. These are astronomical metaphors, not physical wavelength measurements.
+Use the map's lower-left control. **Visible** retains the canonical artwork. **Ultraviolet** colors/emphasizes files by recorded modification time (bright violet within one day, lavender within a week, muted violet older). **Infrared** shows byte-size bands (red under 1 MiB, orange through 16 MiB, bright amber above). **Radio** emphasizes folder connections and similarity haze. These are astronomical metaphors, not physical wavelength measurements.
 
 Lens switches preserve coordinates, camera, selection, favorite silhouettes, and search highlights. They do not change retrieval scope. Radio temporarily exposes all folder lines; returning to another lens restores the user's previous visibility setting. Summary markers carry modification timestamps, so hydration uses the same data rules as distant markers. Missing timestamps have an explicit dim treatment. Time bands refresh when scene data changes or a lens is selected; no animation loop is introduced just to age the colors.
 
-`lenses.ts` owns labels and transfer rules. `AtlasMap.tsx` supplies the scene treatment; `stellarVisual.ts` applies a shared color override to GPU/Canvas sprites and close-ups. Existing sprite-cache budgets remain unchanged.
+`lenses.ts` owns labels and transfer rules. `AtlasMap.tsx` supplies the scene treatment; `stellarVisual.ts` applies a shared color override to GPU/Canvas sprites and close-ups. The fixed sprite sheet includes each lens tint for ordinary stars and both favorite silhouettes; close-ups use those same colors. Existing sprite-cache budgets remain unchanged.
 
 ## Fullscreen
 

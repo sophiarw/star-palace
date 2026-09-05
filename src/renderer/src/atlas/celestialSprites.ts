@@ -1,5 +1,6 @@
 import { STAR_TYPES, type StarType } from '@shared/types'
 import { FAVORITE_COLOR, STELLAR_PALETTE } from './stellarVisual'
+import { LENS_PALETTE } from './lensPalette'
 
 // Fixed legacy plus canonical stellar palette sheet; no per-file overview textures.
 export const SPRITE_CELL = 128
@@ -10,7 +11,10 @@ let sheet: HTMLCanvasElement | null = null
 const STELLAR_OFFSET = 1 + STAR_TYPES.length * VARIANTS
 export const spriteIndex = (type?: StarType, seed = 0, color?: string): number => {
   if (color && type === 'main-sequence') return STELLAR_OFFSET + Math.max(0, STELLAR_PALETTE.indexOf(color))
-  if (color && (type === 'pulsar' || type === 'black-hole')) return STELLAR_OFFSET + STELLAR_PALETTE.length + (type === 'pulsar' ? 0 : 1)
+  if (color && (type === 'pulsar' || type === 'black-hole')) {
+    const lens = LENS_PALETTE.indexOf(color)
+    return STELLAR_OFFSET + STELLAR_PALETTE.length + (lens < 0 ? 0 : 2 + lens * 2) + (type === 'pulsar' ? 0 : 1)
+  }
   return type ? 1 + STAR_TYPES.indexOf(type) * VARIANTS + (seed >>> 0) % VARIANTS : 0
 }
 
@@ -25,11 +29,13 @@ export function celestialSheet(): HTMLCanvasElement {
     drawObject(ctx, i === 0 ? undefined : STAR_TYPES[Math.floor((i - 1) / VARIANTS)], (i - 1) % VARIANTS)
     ctx.restore()
   }
-  for (let i = 0; i < STELLAR_PALETTE.length + 2; i++) {
+  for (let i = 0; i < STELLAR_PALETTE.length + 2 + LENS_PALETTE.length * 2; i++) {
     const index = STELLAR_OFFSET + i
     ctx.save(); ctx.translate(index % SPRITE_COLUMNS * SPRITE_CELL + 64, Math.floor(index / SPRITE_COLUMNS) * SPRITE_CELL + 64)
     ctx.beginPath(); ctx.rect(-63, -63, 126, 126); ctx.clip()
-    drawStellarObject(ctx, i < STELLAR_PALETTE.length ? 'main-sequence' : i === STELLAR_PALETTE.length ? 'pulsar' : 'black-hole', 42, STELLAR_PALETTE[i] ?? FAVORITE_COLOR)
+    const favorite = i - STELLAR_PALETTE.length
+    const color = i < STELLAR_PALETTE.length ? STELLAR_PALETTE[i] : favorite < 2 ? FAVORITE_COLOR : LENS_PALETTE[Math.floor((favorite - 2) / 2)]
+    drawStellarObject(ctx, i < STELLAR_PALETTE.length ? 'main-sequence' : favorite % 2 === 0 ? 'pulsar' : 'black-hole', 42, color)
     ctx.restore()
   }
   sheet = canvas
