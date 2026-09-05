@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MapStats } from '@shared/types'
-import type { VimMode } from '../../hooks/useVimMode'
 import type { ThemeSummary } from '../../themes/types'
 import type { ClassificationMode } from '../../hooks/useClassificationMode'
 
@@ -11,7 +10,6 @@ interface Props {
   // off. Drives a small "(M hidden)" suffix next to the in-view count.
   // Optional so existing call sites still compile.
   hiddenStarCount?: number
-  vimMode?: VimMode
   // F11 — theme picker. `themes` and `currentThemeId` together drive the
   // dropdown; `onThemeChange` fires on click. Optional so existing call
   // sites compile during the rollout.
@@ -25,11 +23,6 @@ interface Props {
   onClassModeChange?: (m: ClassificationMode) => void
 }
 
-const VIM_MODE_LABELS: Record<VimMode, string> = {
-  normal: '-- NORMAL --',
-  search: '-- SEARCH --',
-}
-
 const CLASS_MODE_LABELS: Record<ClassificationMode, string> = {
   type: 'Type',
   usage: 'Usage',
@@ -37,7 +30,7 @@ const CLASS_MODE_LABELS: Record<ClassificationMode, string> = {
 
 const CLASS_MODE_ORDER: ClassificationMode[] = ['type', 'usage']
 
-export default function StatsBar({ stats, starCount, hiddenStarCount, vimMode, themes, currentThemeId, onThemeChange, classMode, onClassModeChange }: Props) {
+export default function StatsBar({ stats, starCount, hiddenStarCount, themes, currentThemeId, onThemeChange, classMode, onClassModeChange }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -79,11 +72,6 @@ export default function StatsBar({ stats, starCount, hiddenStarCount, vimMode, t
         : <span>indexing... ({stats.indexedWithEmbedding}/200)</span>
       }
       {starCount > 0 && <span>{starCount} in view</span>}
-      {vimMode && (
-        <span className={`stats-bar-mode stats-bar-mode--${vimMode}`}>
-          {VIM_MODE_LABELS[vimMode]}
-        </span>
-      )}
       {classMode && onClassModeChange && (
         // F10 — segmented control. Sits next to the theme picker. Two pills
         // total; one-click flip; whole sky re-renders via the consumer's

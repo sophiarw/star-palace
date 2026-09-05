@@ -442,7 +442,7 @@ export default function App() {
     }
   }, [experimentPreview, rawStarsById, galaxyOffsetById, themeCtx.theme.ui.accentColor])
 
-  const { mode, cycleSearch } = useVimMode({
+  const { cycleSearch } = useVimMode({
     onAction: dispatchVimAction,
     onToggleSearch: handleToggleSearch,
     onEscape: handleEscape,
@@ -519,7 +519,6 @@ export default function App() {
         stats={stats}
         starCount={visibleStars.length}
         hiddenStarCount={hiddenStarCount}
-        vimMode={mode}
         themes={themeCtx.available}
         currentThemeId={themeCtx.theme.id}
         onThemeChange={themeCtx.setTheme}

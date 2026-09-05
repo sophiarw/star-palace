@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { Star, StarType } from '@shared/types'
 import { STAR_TYPES } from '@shared/types'
 import { openFile, revealFile, setStarType } from '../api'
-
-export type VimMode = 'normal' | 'search'
 
 export type VimAction =
   | { type: 'panVelocity'; vx: number; vy: number }   // screen px/sec; held-key continuous pan
@@ -32,6 +30,10 @@ interface UseVimModeOptions {
   // App owns the visibility state so it can also be toggled via the panel's
   // own close button.
   onToggleCollections: () => void
+}
+
+export interface UseVimModeReturn {
+  cycleSearch: (dir: 1 | -1) => void
 }
 
 // Velocity in screen pixels per second. StarMap divides by zoom so screen-
@@ -67,9 +69,7 @@ export function useVimMode({
   onToggleCheatsheet,
   onOpenTypeDropdown,
   onToggleCollections,
-}: UseVimModeOptions): { mode: VimMode; setMode: (m: VimMode) => void; cycleSearch: (dir: 1 | -1) => void } {
-  const [mode, setMode] = useState<VimMode>('normal')
-  const modeRef = useRef<VimMode>('normal')
+}: UseVimModeOptions): UseVimModeReturn {
   const lastKeyRef = useRef<string>('')
   const lastKeyTimeRef = useRef<number>(0)
   const searchIndexRef = useRef<number>(-1)
@@ -79,11 +79,6 @@ export function useVimMode({
   // the keyboard handler would.
   const highlightsRef = useRef<{ id: string; x: number; y: number }[]>(searchHighlights)
   highlightsRef.current = searchHighlights
-
-  const setModeSync = useCallback((m: VimMode) => {
-    modeRef.current = m
-    setMode(m)
-  }, [])
 
   // Reset cycle index whenever the highlight set changes by content, not just
   // by array reference. Keying on the joined IDs covers the case where a
@@ -105,8 +100,7 @@ export function useVimMode({
     searchIndexRef.current = ((searchIndexRef.current + dir) % len + len) % len
     const hit = hits[searchIndexRef.current]
     onSelectStar(hit.id)
-    onAction({ type: 'panTo', wx: hit.x, wy: hit.y })
-  }, [onAction, onSelectStar])
+  }, [onSelectStar])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -116,13 +110,11 @@ export function useVimMode({
       // Don't capture while typing in input/textarea — but still handle Escape and Cmd/Ctrl+F
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         if (e.key === 'Escape') {
-          setModeSync('normal')
           onEscape()
           return
         }
         if (isCmdF) {
           e.preventDefault()
-          // Stay in search mode; bar just hides so n/N can cycle.
           onToggleSearch()
           return
         }
@@ -131,174 +123,148 @@ export function useVimMode({
 
       if (isCmdF) {
         e.preventDefault()
-        setModeSync('search')
         onToggleSearch()
         return
       }
 
-      const currentMode = modeRef.current
       const key = e.key
       const now = Date.now()
 
-      if (currentMode === 'normal') {
-        const timeSinceLast = now - lastKeyTimeRef.current
-        const prevKey = lastKeyRef.current
-        const prevWasG = prevKey === 'g' && timeSinceLast < 500
-        const isDoubleG = key === 'g' && prevWasG
+      const timeSinceLast = now - lastKeyTimeRef.current
+      const prevKey = lastKeyRef.current
+      const prevWasG = prevKey === 'g' && timeSinceLast < 500
+      const isDoubleG = key === 'g' && prevWasG
 
-        // gh sequence: fit current cluster. Wins over the pan-key branch so
-        // the user's "g then h" intent isn't swallowed by the velocity start.
-        if (key === 'h' && prevWasG) {
-          e.preventDefault()
-          lastKeyRef.current = key
-          lastKeyTimeRef.current = now
-          if (selectedStar !== null && selectedStar.clusterId !== null) {
-            onAction({ type: 'fitCluster', clusterId: selectedStar.clusterId })
-          }
-          return
-        }
-
-        // Pan keys: smooth velocity. First keydown for a pan key adds it to
-        // the held set and emits an updated velocity vector. Subsequent
-        // auto-repeat keydowns are no-ops (already in set).
-        if (isPanKey(key)) {
-          e.preventDefault()
-          lastKeyRef.current = key
-          lastKeyTimeRef.current = now
-          if (!heldPanKeysRef.current.has(key)) {
-            heldPanKeysRef.current.add(key)
-            let vx = 0, vy = 0
-            for (const k of heldPanKeysRef.current) {
-              const v = KEY_VEL[k]
-              if (v) { vx += v[0]; vy += v[1] }
-            }
-            onAction({ type: 'panVelocity', vx, vy })
-          }
-          return
-        }
-
-        // Update last key tracking
+      // gh sequence: fit current cluster. Wins over the pan-key branch so
+      // the user's "g then h" intent isn't swallowed by the velocity start.
+      if (key === 'h' && prevWasG) {
+        e.preventDefault()
         lastKeyRef.current = key
         lastKeyTimeRef.current = now
+        if (selectedStar !== null && selectedStar.clusterId !== null) {
+          onAction({ type: 'fitCluster', clusterId: selectedStar.clusterId })
+        }
+        return
+      }
 
-        switch (key) {
-          case '+':
-          case '=':
-            e.preventDefault()
-            onAction({ type: 'zoom', factor: ZOOM_FACTOR })
-            break
-          case '-':
-          case '_':
-            e.preventDefault()
-            onAction({ type: 'zoom', factor: 1 / ZOOM_FACTOR })
-            break
-          case 'g':
-            if (isDoubleG) {
-              e.preventDefault()
-              onAction({ type: 'fitAll' })
-            }
-            // If not double-g, wait — stored in lastKeyRef for the next keypress
-            break
-          case 'Escape':
-            e.preventDefault()
-            onEscape()
-            break
-          case 'n':
-            e.preventDefault()
-            cycleSearch(1)
-            break
-          case 'N':
-            e.preventDefault()
-            cycleSearch(-1)
-            break
-          case 'Enter':
-            e.preventDefault()
-            if (getHoveredId() !== null) {
-              onSelectHovered()
-            }
-            break
-          case 'o':
-            e.preventDefault()
-            if (selectedId) {
-              openFile(selectedId).catch((err) => console.warn('openFile failed:', err))
-            }
-            break
-          case 'O':
-            // F14 — capital O reveals the selected file in the OS file
-            // explorer (Finder / Explorer); arrives as a distinct e.key
-            // value from lowercase 'o' so the switch handles it directly.
-            e.preventDefault()
-            if (selectedId) {
-              revealFile(selectedId).catch((err) => console.warn('revealFile failed:', err))
-            }
-            break
-          case 't':
-            e.preventDefault()
-            if (selectedId) {
-              onOpenTypeDropdown()
-            }
-            break
-          case 'T': {
-            e.preventDefault()
-            if (!selectedId || !selectedStar) break
-            const types = STAR_TYPES as readonly StarType[]
-            const currentType = selectedStar.starType
-            const currentIdx = currentType !== null ? types.indexOf(currentType) : -1
-            const nextType = types[(currentIdx + 1) % types.length]
-            setStarType(selectedId, nextType)
-              .then(() => onStarTypeChange(selectedId, nextType))
-              .catch((err) => console.warn('setStarType failed:', err))
-            break
+      // Pan keys: smooth velocity. First keydown for a pan key adds it to
+      // the held set and emits an updated velocity vector. Subsequent
+      // auto-repeat keydowns are no-ops (already in set).
+      if (isPanKey(key)) {
+        e.preventDefault()
+        lastKeyRef.current = key
+        lastKeyTimeRef.current = now
+        if (!heldPanKeysRef.current.has(key)) {
+          heldPanKeysRef.current.add(key)
+          let vx = 0, vy = 0
+          for (const k of heldPanKeysRef.current) {
+            const v = KEY_VEL[k]
+            if (v) { vx += v[0]; vy += v[1] }
           }
-          case '?':
-            e.preventDefault()
-            onToggleCheatsheet()
-            break
-          case 'c':
-            // F5 — toggle the Collections sidebar. Lowercase only; uppercase C
-            // is reserved in case we want a "create new collection" shortcut.
-            e.preventDefault()
-            onToggleCollections()
-            break
-          case 'i': {
-            e.preventDefault()
-            const focusInput = () => {
-              const el = document.getElementById('galaxy-panel-path-input') as HTMLInputElement | null
-              if (el) {
-                el.focus()
-                el.select()
-              }
-            }
-            const input = document.getElementById('galaxy-panel-path-input')
-            if (input) {
-              focusInput()
-            } else {
-              const expand = document.querySelector<HTMLButtonElement>('.galaxy-panel-collapsed')
-              expand?.click()
-              setTimeout(focusInput, 0)
-            }
-            break
-          }
+          onAction({ type: 'panVelocity', vx, vy })
         }
-      } else if (currentMode === 'search') {
-        if (key === 'Escape') {
+        return
+      }
+
+      lastKeyRef.current = key
+      lastKeyTimeRef.current = now
+
+      switch (key) {
+        case '+':
+        case '=':
           e.preventDefault()
-          setModeSync('normal')
+          onAction({ type: 'zoom', factor: ZOOM_FACTOR })
+          break
+        case '-':
+        case '_':
+          e.preventDefault()
+          onAction({ type: 'zoom', factor: 1 / ZOOM_FACTOR })
+          break
+        case 'g':
+          if (isDoubleG) {
+            e.preventDefault()
+            onAction({ type: 'fitAll' })
+          }
+          break
+        case 'Escape':
+          e.preventDefault()
           onEscape()
-          return
-        }
-        if (key === 'n' || key === 'N') {
+          break
+        case 'n':
           e.preventDefault()
-          cycleSearch(key === 'n' ? 1 : -1)
-          return
-        }
-        // B8 — Enter selects the hovered star (cheatsheet promises this).
-        // Mirrors the normal-mode binding so the user can keep search
-        // highlights up after Cmd+F-hide and still grab a star with Enter.
-        if (key === 'Enter') {
+          cycleSearch(1)
+          break
+        case 'N':
           e.preventDefault()
-          if (getHoveredId() !== null) onSelectHovered()
-          return
+          cycleSearch(-1)
+          break
+        case 'Enter':
+          e.preventDefault()
+          if (getHoveredId() !== null) {
+            onSelectHovered()
+          }
+          break
+        case 'o':
+          e.preventDefault()
+          if (selectedId) {
+            openFile(selectedId).catch((err) => console.warn('openFile failed:', err))
+          }
+          break
+        case 'O':
+          // F14 — capital O reveals the selected file in the OS file
+          // explorer (Finder / Explorer); arrives as a distinct e.key
+          // value from lowercase 'o' so the switch handles it directly.
+          e.preventDefault()
+          if (selectedId) {
+            revealFile(selectedId).catch((err) => console.warn('revealFile failed:', err))
+          }
+          break
+        case 't':
+          e.preventDefault()
+          if (selectedId) {
+            onOpenTypeDropdown()
+          }
+          break
+        case 'T': {
+          e.preventDefault()
+          if (!selectedId || !selectedStar) break
+          const types = STAR_TYPES as readonly StarType[]
+          const currentType = selectedStar.starType
+          const currentIdx = currentType !== null ? types.indexOf(currentType) : -1
+          const nextType = types[(currentIdx + 1) % types.length]
+          setStarType(selectedId, nextType)
+            .then(() => onStarTypeChange(selectedId, nextType))
+            .catch((err) => console.warn('setStarType failed:', err))
+          break
+        }
+        case '?':
+          e.preventDefault()
+          onToggleCheatsheet()
+          break
+        case 'c':
+          // F5 — toggle the Collections sidebar. Lowercase only; uppercase C
+          // is reserved in case we want a "create new collection" shortcut.
+          e.preventDefault()
+          onToggleCollections()
+          break
+        case 'i': {
+          e.preventDefault()
+          const focusInput = () => {
+            const el = document.getElementById('galaxy-panel-path-input') as HTMLInputElement | null
+            if (el) {
+              el.focus()
+              el.select()
+            }
+          }
+          const input = document.getElementById('galaxy-panel-path-input')
+          if (input) {
+            focusInput()
+          } else {
+            const expand = document.querySelector<HTMLButtonElement>('.galaxy-panel-collapsed')
+            expand?.click()
+            setTimeout(focusInput, 0)
+          }
+          break
         }
       }
     }
@@ -333,7 +299,6 @@ export function useVimMode({
       window.removeEventListener('blur', onBlur)
     }
   }, [
-    setModeSync,
     onAction,
     onToggleSearch,
     onEscape,
@@ -349,5 +314,5 @@ export function useVimMode({
     onToggleCollections,
   ])
 
-  return { mode, setMode: setModeSync, cycleSearch }
+  return { cycleSearch }
 }

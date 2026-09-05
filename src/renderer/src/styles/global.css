@@ -755,25 +755,6 @@ body {
   color: var(--text-muted);
 }
 
-/* Vim mode indicator in stats bar */
-
-.stats-bar-mode {
-  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  padding: 1px 5px;
-  border-radius: 3px;
-  border: 1px solid currentColor;
-}
-
-.stats-bar-mode--normal {
-  color: #4a9eff;
-}
-
-.stats-bar-mode--search {
-  color: var(--starpalace-accent);
-}
-
 /* F10 — classification mode segmented toggle. Two pills inline next to the
    theme picker. Active pill picks up the theme accent so it reads at a
    glance which mode is live. */

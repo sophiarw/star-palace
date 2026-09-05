@@ -164,7 +164,7 @@ export default function SearchBar({
     // B12 — intercept n / N when the parent has search hits to cycle.
     // preventDefault stops the input from accepting the keystroke;
     // stopPropagation is unneeded because the window-level vim listener
-    // early-returns whenever an input is focused (useVimMode.ts:99-112),
+    // early-returns whenever an input is focused (see useVimMode.ts),
     // but we'd still call it if that ever changes.
     if ((e.key === 'n' || e.key === 'N') && (onCycleNext || onCyclePrev)) {
       e.preventDefault()
