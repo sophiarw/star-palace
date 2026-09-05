@@ -33,6 +33,7 @@ export interface AtlasScope {
   regionId?: string
   neighborhoodId?: string
   collectionId?: number
+  extension?: string
   category?: FileCategory
   tag?: string
 }
@@ -60,6 +61,7 @@ export interface AtlasNebula {
 }
 
 export interface AtlasSummary {
+  extensions?: { extension: string; count: number }[]
   nebulaEpoch?: number
   nebulae?: AtlasNebula[]
   layoutEpoch?: number

@@ -32,6 +32,15 @@ function add(id: string, embedding: Float32Array | null = null): void {
 const app = () => express().use(express.json()).use('/atlas', atlasRoutes(service))
 
 describe('Atlas HTTP and asynchronous retrieval', () => {
+  it('accepts case-insensitive extensions through HTTP and rejects malformed scopes', async () => {
+    add('note')
+    expect((await request(app()).get('/atlas/files').query({ extension: '.MD' })).body.total).toBe(1)
+    expect((await request(app()).post('/atlas/search').send({ query: 'note', mode: 'exact', extension: '.txt' })).body.results).toEqual([])
+    for (const extension of ['md', '../md', '.m/d', ['.md'], '.m\\d']) {
+      expect((await request(app()).post('/atlas/search').send({ query: 'note', extension })).status).toBe(400)
+    }
+  })
+
   it('edits only the indexed file resolved from its id and returns launcher errors', async () => {
     add('paper')
     const edit = vi.fn(async (_file: import('../../src/shared/atlas').AtlasFile) => ({ editor: 'nvim' as const }))

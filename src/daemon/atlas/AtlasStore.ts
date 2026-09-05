@@ -1,3 +1,4 @@
+import { fileExtension } from '../../shared/fileExtension'
 import type { FavoriteAppearance } from '../../shared/types'
 import { organicLayout, cloudOffset, LEGACY_ATLAS_SCALE, type LayoutFile } from './organicLayout'
 import { celestialType } from '../../shared/celestial'
@@ -41,6 +42,7 @@ export class AtlasStore {
   private readonly nebulaStore: NebulaStore
   private folderGraph: { paths: Map<string, string>; links: ReturnType<typeof folderConstellations> } | null = null
   constructor(readonly index: FileIndex) {
+    index.db.function('atlas_extension', { deterministic: true }, name => fileExtension(String(name)))
     index.db.exec(`
       CREATE TABLE IF NOT EXISTS atlas_state (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1);
       INSERT OR IGNORE INTO atlas_state(id) VALUES(1);
@@ -296,6 +298,7 @@ export class AtlasStore {
     for (const [value, column] of [[scope.regionId, 'p.region_id'], [scope.neighborhoodId, 'p.neighborhood_id'], [scope.category, 'f.category']] as const) {
       if (value !== undefined) { clauses.push(`${column}=?`); args.push(value) }
     }
+    if (scope.extension !== undefined) { clauses.push('atlas_extension(f.name)=?'); args.push(scope.extension.toLowerCase()) }
     if (scope.collectionId !== undefined) { clauses.push('EXISTS(SELECT 1 FROM collection_members c WHERE c.file_id=f.id AND c.collection_id=?)'); args.push(scope.collectionId) }
     if (scope.tag) { clauses.push("EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(f.tags) THEN f.tags ELSE '[]' END) WHERE value=?)"); args.push(scope.tag) }
     return { sql: clauses.length ? ' AND ' + clauses.join(' AND ') : '', args }
@@ -303,6 +306,9 @@ export class AtlasStore {
 
   summary(scope: AtlasScope = {}): AtlasSummary {
     const filter = this.scope(scope)
+    const { extension: _extension, ...extensionScope } = scope
+    const extensionFilter = this.scope(extensionScope)
+    const extensions = this.index.db.prepare(`SELECT atlas_extension(f.name) extension,count(*) count FROM files f JOIN atlas_positions p ON p.id=f.id WHERE 1${extensionFilter.sql} GROUP BY extension ORDER BY extension`).all(...extensionFilter.args) as { extension: string; count: number }[]
     const counts = !filter.sql ? [] : this.index.db.prepare(`SELECT p.region_id,p.neighborhood_id,count(*) n FROM files f JOIN atlas_positions p ON p.id=f.id WHERE 1${filter.sql} GROUP BY p.region_id,p.neighborhood_id`).all(...filter.args) as { region_id: string; neighborhood_id: string; n: number }[]
     const memberCounts = new Map<string, number>()
     for (const c of counts) { memberCounts.set(c.neighborhood_id, c.n); memberCounts.set(c.region_id, (memberCounts.get(c.region_id) ?? 0) + c.n) }
@@ -329,7 +335,7 @@ export class AtlasStore {
     const stride = Math.max(1, Math.ceil(groups.length / 4096))
     if (!markers.length) for (let i = 0; i < groups.length; i += stride) markers.push(...sample.all(groups[i].id, ...filter.args, sampleCount) as AtlasMarker[])
     const layoutEpoch = (this.index.db.prepare('SELECT layout_epoch FROM atlas_state WHERE id=1').get() as { layout_epoch: number }).layout_epoch
-    return { layoutEpoch, nebulaEpoch: this.nebulaStore.epoch, markers: markers.map(marker => ({ ...marker, isFavorite: Boolean(marker.isFavorite) })), revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
+    return { extensions, layoutEpoch, nebulaEpoch: this.nebulaStore.epoch, markers: markers.map(marker => ({ ...marker, isFavorite: Boolean(marker.isFavorite) })), revision: this.revision, total: this.index.count(), positioned: regions.filter(r => r.kind === 'region').reduce((n, r) => n + r.count, 0),
       searchable: (this.index.db.prepare("SELECT count(*) n FROM atlas_documents WHERE status != 'pending'").get() as { n: number }).n,
       pending: (this.index.db.prepare('SELECT count(*) n FROM atlas_dirty').get() as { n: number }).n, regions,
       nebulae: this.nebulaStore.groups(new Set(markers.map(marker => marker.id))) }

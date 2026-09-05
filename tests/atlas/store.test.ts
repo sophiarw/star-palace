@@ -37,6 +37,24 @@ describe('Atlas persistence and retrieval', () => {
     expect(atlas.favorite('missing', true)).toBe(false)
   })
 
+  it('filters actual filename extensions consistently without changing files or positions', () => {
+    const names = ['note.MD', 'note.txt', 'archive.tar.gz', 'README', '.gitignore', '.config.py', 'trail.', 'odd.m%d', 'not.mad']
+    for (const name of names) db.upsert(fixture(name, { name, path: `/library/research/${name}` }))
+    sync()
+    const before = atlas.list({}, 0, 100).files
+    expect(atlas.summary().extensions).toEqual(expect.arrayContaining([{ extension: '.md', count: 1 }, { extension: '', count: 3 }, { extension: '.gz', count: 1 }]))
+    for (const [extension, expected] of [['.md', ['note.MD']], ['', ['.gitignore', 'README', 'trail.']], ['.py', ['.config.py']], ['.m%d', ['odd.m%d']]] as const) {
+      const scope = { extension }
+      expect(atlas.list(scope).files.map(f => f.name).sort()).toEqual([...expected].sort())
+      expect(atlas.summary(scope).positioned).toBe(expected.length)
+      expect(atlas.viewport(scope, { minX: -1e8, maxX: 1e8, minY: -1e8, maxY: 1e8 }).map(f => f.name).sort()).toEqual([...expected].sort())
+      expect(atlas.lexical('research', scope, 100).map(h => h.file.name).sort()).toEqual([...expected].sort())
+    }
+    expect(atlas.summary({ extension: '.md' }).extensions).toEqual(atlas.summary().extensions)
+    expect(atlas.summary({ extension: '.md', galaxyIds: [] }).extensions).toEqual([])
+    expect(atlas.list({}, 0, 100).files).toEqual(before)
+  })
+
   it('covers small libraries and media without embeddings or a PCA model', () => {
     db.upsert(fixture('photo', { category: 'media', mimeType: 'image/png' }))
     db.upsert(fixture('note')); sync()

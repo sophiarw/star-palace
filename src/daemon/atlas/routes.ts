@@ -25,6 +25,10 @@ export function parseScope(raw: Record<string, unknown>): AtlasScope {
     scope[key] = raw[key]
   }
   if (raw.collectionId !== undefined) scope.collectionId = bounded(raw.collectionId, 0, 2 ** 31 - 1)
+  if (raw.extension !== undefined) {
+    if (typeof raw.extension !== 'string' || raw.extension.length > 255 || (raw.extension !== '' && (!raw.extension.startsWith('.') || /[./\\]/.test(raw.extension.slice(1)) || [...raw.extension].some(c => c.charCodeAt(0) < 32)))) throw new Error('Invalid file extension')
+    scope.extension = raw.extension.toLowerCase()
+  }
   if (raw.category !== undefined) {
     if (!['document', 'code', 'data', 'media', 'unknown'].includes(String(raw.category))) throw new Error('Invalid file type')
     scope.category = raw.category as FileCategory
