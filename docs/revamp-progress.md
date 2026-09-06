@@ -188,3 +188,11 @@ Validation: 477 unit/integration tests passed (3 historical skips); the full 49-
 Rollback baseline: `2cf4938`. Revert the focused release commits to restore previous controls; no database rollback is necessary. Development stays in the atlas worktree; the original checkout remains intact.
 
 Final read-only acceptance in the restarted existing preview confirmed Udemy renders exactly its 151 member stars and Auris returns nine name/text matches while Udemy is selected. Browser error capture was empty. Real-library review images stayed in private temporary files and were not used for tutorial or repository assets.
+
+## Private website feedback preparation
+
+The user requested inbox delivery without publishing the recipient address. Added a FormSubmit integration gated by an opaque public form ID, native POST fallback, optional reply email, in-page submission status, duplicate-click protection, and draft retention on failure. No recipient address is present in source. An empty configuration retains the existing GitHub draft flow until delivery is activated. Provider setup and retention are documented in `website/README.md`.
+
+Activation remains pending: automatic approval review rejected sharing the destination address with the third-party provider without explicit intermediary approval. No activation or real feedback was sent. The recipient must approve the provider, verify their inbox, and supply the public form ID before this can be enabled.
+
+Validation: typecheck, lint, site build and 477 repository tests passed (3 historical skips); 11 website browser checks passed, including four new provider-intercepted email tests. The email tests were rerun after the final DOM typing adjustment. The no-JavaScript rerun initially timed out waiting for animated anchor scrolling; its native-submit check now uses Enter in the summary field. An initial repository test run encountered the documented intermittent native teardown SIGSEGV after assertions; its clean rerun completed successfully. No real delivery has been verified.

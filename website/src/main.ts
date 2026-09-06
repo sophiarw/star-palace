@@ -1,6 +1,7 @@
 import { drawStellarObject } from '../../src/renderer/src/atlas/celestialSprites'
 import { stellarAppearance } from '../../src/renderer/src/atlas/stellarVisual'
 import { seedFor } from '../../src/renderer/src/atlas/scene'
+import { setupEmailFeedback } from './feedback'
 import { exampleFiles, matchingFiles, feedbackUrl, type ExampleFile } from './demo'
 
 function element<T extends HTMLElement>(id: string): T { return document.getElementById(id) as T }
@@ -173,7 +174,9 @@ document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach(button => {
     setTimeout(() => { button.textContent = 'Copy' }, 2500)
   })
 })
-element<HTMLFormElement>('feedback-form').addEventListener('submit', event => {
+const feedbackForm = element<HTMLFormElement>('feedback-form')
+if (feedbackForm.dataset.emailFeedback === 'true') setupEmailFeedback(feedbackForm)
+else feedbackForm.addEventListener('submit', event => {
   event.preventDefault()
   const form = event.currentTarget as HTMLFormElement
   if (!form.reportValidity()) return

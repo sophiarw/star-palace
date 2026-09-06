@@ -56,6 +56,7 @@ test('tutorial supports keyboard navigation and all four steps', async ({ page }
 
 test('feedback requires a draft and opens an encoded GitHub review without sending it', async ({ page }) => {
   await page.goto('/#feedback')
+  test.skip(await page.locator('[data-email-feedback]').count() > 0, 'Email delivery is configured; covered by private-form tests.')
   await page.getByRole('button', { name: 'Continue on GitHub' }).click()
   await expect(page).toHaveURL(/#feedback$/)
   await page.getByLabel('A short summary').fill('A & B # café')
@@ -103,6 +104,7 @@ test('static explanations and install instructions survive disabled JavaScript',
   await page.goto('http://127.0.0.1:5180')
   await expect(page.getByRole('heading', { name: 'Humans are visual creatures.' })).toBeVisible()
   await expect(page.locator('#install-code')).toContainText('npm start')
-  await expect(page.getByRole('link', { name: 'open a GitHub issue', exact: true })).toBeVisible()
+  if (await page.locator('[data-email-feedback]').count()) await expect(page.locator('#feedback-form')).toHaveAttribute('method', 'post')
+  else await expect(page.getByRole('link', { name: 'open a GitHub issue', exact: true })).toBeVisible()
   await page.close()
 })

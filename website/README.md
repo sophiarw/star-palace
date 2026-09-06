@@ -1,6 +1,6 @@
 # Star Palace website
 
-A static, responsive site for starpalace.ai. Source lives separately from the app, but imports its canonical stellar palette, byte-size curve, and Canvas artwork. It contains only fictional example files. No analytics, third-party fonts, uploaded library data, or feedback server.
+A static, responsive site for starpalace.ai. Source lives separately from the app, but imports its canonical stellar palette, byte-size curve, and Canvas artwork. It contains only fictional example files. No analytics, third-party fonts, uploaded library data, or self-hosted feedback server.
 
 ## Local preview
 
@@ -16,7 +16,18 @@ npm run build:site
 
 The production output is `dist-site/`. The site does not run or contact the local file daemon. JavaScript enhances the search illustration, accessible tutorial tabs, copy buttons, and feedback handoff. The explanatory copy and install instructions are static HTML.
 
-The feedback form opens an encoded draft at `sophiarw/star-palace/issues/new`. The visitor needs a GitHub account and reviews/submits there. It does not silently create an issue, collect an email address, or send the draft to a separate service. A future private intake needs a backend/provider and an explicit privacy/retention policy.
+Email feedback is prepared using FormSubmit's opaque form ID. Until the recipient verifies delivery and `FEEDBACK_FORM_ID` is set in `website/feedback.config.ts`, the site retains its existing public GitHub draft handoff. Do not claim email delivery is active while this value is empty.
+
+### Private recipient setup
+
+1. Obtain approval to share the intended recipient address with FormSubmit for delivery. Request its activation email privately; never put the recipient in public HTML, JavaScript, configuration, issues, or committed setup scripts.
+2. The recipient activates delivery from their inbox and supplies only the public random form ID supplied by FormSubmit. Do not request or commit their activation link, archive API key, password, or email address.
+3. Put that opaque ID in `website/feedback.config.ts`, build/test, and publish. The configuration rejects email addresses and URLs. The form ID is public routing information, not a secret.
+4. Send one clearly identified test submission and have the recipient confirm receipt before calling delivery verified. Automated tests intercept all provider requests.
+
+With an ID configured, the build emits a native POST form that also works without JavaScript. The enhanced form submits in place, prevents duplicate clicks, retains drafts on failures/timeouts, and clears only after provider acceptance. A provider acknowledgment does not prove inbox delivery. Reply email is optional; no attachments are accepted. The native flow retains provider CAPTCHA defaults; a honeypot is also present. The copy identifies FormSubmit and its documented 30-day submission retention. Feedback is delivered to the recipient rather than published as a GitHub issue; it is still processed by the external provider and email services.
+
+Provider documentation checked September 6, 2026: [opaque form IDs and retention](https://formsubmit.co/documentation), [AJAX submission](https://formsubmit.co/ajax-documentation), [privacy policy](https://formsubmit.co/privacy.pdf).
 
 ## Publishing
 
@@ -70,7 +81,7 @@ The 1200×630 `public/social.png` uses the vector mark, fictional app artwork, a
 
 ## Validation
 
-Browser checks cover stationary search highlights, previews, keyboard tutorial controls, escaped feedback handoff, clipboard contents, disabled JavaScript, responsive layouts at 320/390/768/1440 pixels, restrained background opacity, and ordinary-star/favorite semantics. Desktop/mobile screenshots were also inspected locally. The browser tests intercept GitHub navigation and never submit feedback.
+Browser checks cover stationary search highlights, previews, keyboard tutorial controls, escaped feedback handoff, clipboard contents, disabled JavaScript, responsive layouts at 320/390/768/1440 pixels, restrained background opacity, and ordinary-star/favorite semantics. Desktop/mobile screenshots were also inspected locally. The browser tests intercept GitHub navigation and every FormSubmit request; they never submit real feedback. Email tests cover validation, duplicate clicks, provider/network failures, draft retention, optional reply email, opaque configuration, and native POST without JavaScript.
 
 The original hero background is approximately 699 KiB and loads once. The share card is for social crawlers; it is not loaded by the page. Run `npm run build:site` for current bundle sizes.
 
