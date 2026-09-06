@@ -16,7 +16,7 @@ npm run build:site
 
 The production output is `dist-site/`. The site does not run or contact the local file daemon. JavaScript enhances the search illustration, accessible tutorial tabs, copy buttons, and feedback handoff. The explanatory copy and install instructions are static HTML.
 
-Email feedback is prepared using FormSubmit's opaque form ID. Until the recipient verifies delivery and `FEEDBACK_FORM_ID` is set in `website/feedback.config.ts`, the site retains its existing public GitHub draft handoff. Do not claim email delivery is active while this value is empty.
+Email feedback uses the recipient-activated FormSubmit ID in `website/feedback.config.ts`. The public form contains only this opaque ID. Clearing it restores the previous GitHub draft handoff for rollback. Provider acceptance and confirmed inbox receipt are separate checks.
 
 ### Private recipient setup
 
@@ -26,6 +26,8 @@ Email feedback is prepared using FormSubmit's opaque form ID. Until the recipien
 4. Send one clearly identified test submission and have the recipient confirm receipt before calling delivery verified. Automated tests intercept all provider requests.
 
 With an ID configured, the build emits a native POST form that also works without JavaScript. The enhanced form submits in place, prevents duplicate clicks, retains drafts on failures/timeouts, and clears only after provider acceptance. A provider acknowledgment does not prove inbox delivery. Reply email is optional; no attachments are accepted. The native flow retains provider CAPTCHA defaults; a honeypot is also present. The copy identifies FormSubmit and its documented 30-day submission retention. Feedback is delivered to the recipient rather than published as a GitHub issue; it is still processed by the external provider and email services.
+
+Live validation on September 6 returned provider acceptance from `https://starpalace.ai`; localhost submissions were rejected as needing activation. Keep automated/local checks intercepted, and use the canonical site origin for any explicitly authorized delivery check.
 
 Provider documentation checked September 6, 2026: [opaque form IDs and retention](https://formsubmit.co/documentation), [AJAX submission](https://formsubmit.co/ajax-documentation), [privacy policy](https://formsubmit.co/privacy.pdf).
 
