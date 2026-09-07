@@ -14,10 +14,10 @@ try {
     ctx.globalAlpha = .1; ctx.drawImage(document.querySelector('.hero-art'), 510, -120, 690, 737); ctx.globalAlpha = 1
     ctx.drawImage(document.querySelector('.site-header .mark'), 67, 45, 42, 52)
     ctx.fillStyle = '#f1f1e9'; ctx.font = '26px Georgia'; ctx.fillText('Star Palace', 127, 81)
-    ctx.font = '54px Georgia'; ctx.fillText('A memory palace', 70, 238)
-    ctx.fillStyle = '#ead2a0'; ctx.font = '52px Georgia'; ctx.fillText('for constellations', 70, 307); ctx.fillText('of files.', 70, 371)
+    ctx.font = '54px Georgia'; ctx.fillText('A constellation', 70, 238)
+    ctx.fillStyle = '#ead2a0'; ctx.font = '52px Georgia'; ctx.fillText('of files.', 70, 307)
     ctx.fillStyle = '#adb5c2'; ctx.font = '20px -apple-system, sans-serif'
-    ctx.fillText('A search-first file browser.', 73, 450)
+    ctx.fillText('A file browser for Mac.', 73, 450)
     ctx.fillStyle = '#91a0b3'; ctx.font = '16px -apple-system, sans-serif'; ctx.fillText('Mac · Local files · Source available', 73, 484)
     ctx.fillText('starpalace.ai', 73, 560)
     const x = 670, y = 165, width = 470, height = 365

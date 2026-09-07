@@ -59,11 +59,13 @@ Sources checked September 5, 2026: [GitHub custom domains](https://docs.github.c
 
 ## Copy direction
 
-Use the user's wording: “A memory palace for constellations of files.” Keep the stargazing/SharePoint description. Use sentence case for headings, buttons, and labels. Preserve proper names (Star Palace, Mac, GitHub, SharePoint), acronyms (PDF, CSV), and byte-unit casing (KiB, MiB, GiB). Prefer nouns or questions for headings. Avoid repeating the same product explanation in multiple cards; use the celestial artwork in its place.
+The current headline is “A constellation of files.” The user explicitly retired the previous memory-palace headline and stargazing/SharePoint paragraph. Use descriptive nouns, labels, and captions, without promotional prose or decorative adjectives. Keep instructions where needed for installation, tutorial controls, and feedback privacy. Use sentence case; preserve proper names, file extensions, and byte units.
+
+The [design sketch and references](../docs/design/website-observing-atlas.md) record the observing-atlas composition. The opening combines a title and an interactive fictional sky. The stellar key, screenshot tutorial, installation commands, and inbox form follow as separate sections divided by fine rules.
 
 ## Stellar identity
 
-`public/palace-calligraphy.svg` is an editable brush silhouette of 宫 with pale blue, ivory, gold, and soft red color, a few bright cores, and a restrained aura. The favicon uses its simpler ivory silhouette. These replace the rejected constellation-dot logo.
+`public/palace-calligraphy.svg` preserves the approved brush silhouette of 宫. Vector star cores, tapered rays, restrained colored halos, and clipped grain make the strokes stellar. The favicon omits fine grain for readability at small sizes.
 
 `public/palace-stellar-calligraphy.jpg` is an unchanged copy of the user's revised Gemini reference, preserved in `docs/design/palace-stellar-calligraphy-reference.jpg`. It appears once as decorative hero background shading at **0.10 opacity**, following the user's explicit instruction not to feature AI art front and center. CSS handles desaturation and placement; the source image is not modified. The near-black page background is `#030507`.
 
@@ -71,7 +73,7 @@ Use the user's wording: “A memory palace for constellations of files.” Keep 
 
 `website/src/main.ts` draws the illustrative galaxy only on interaction or resize; no animation loop. `stellarVisual.ts` and `drawStellarObject` in `celestialSprites.ts` supply the same pale starlight, size curve, and object artwork as the app. Ten example files remain ordinary stars, while two explicit favorites have pulsar/black-hole silhouettes. Byte sizes alter ordinary stars' presence; file extensions do not assign exotic object types. Faint blue, rose, and amber clouds follow three authored fictional groups. Connections follow the selected file's direct folder. This illustrative data does not run the app's similarity algorithm.
 
-`website/src/demo.ts` owns fictional content and search matching. `website/index.html` owns the user's product copy, installation instructions, and accessible form. Keep the user's exact main headings and stargazing/SharePoint wording.
+`website/src/demo.ts` owns fictional content and search matching. `website/index.html` owns the user's product copy, installation instructions, and accessible form. The current user-approved copy constraint above supersedes the original prose.
 
 To regenerate the share card while the local site runs:
 
@@ -93,4 +95,10 @@ See [LICENSE](../LICENSE): PolyForm Noncommercial 1.0.0 with an additional permi
 
 ## First installation
 
-The public instructions use a normal HTTPS clone of the repository. Its default branch, `main`, contains the current application. They place the checkout at `~/star-palace`, install locked dependencies with `npm ci`, and launch both local processes with `npm start`. Prerequisites are Node.js 22 and Apple command line tools (including Git); the visitor finishes those installations before copying the app commands. The tutorial explains copying a folder path from Finder and using Library → Manage sources → Index folder. A separate Next launch section makes returning to the app explicit. This remains a source installation; no downloadable Mac app is advertised as available.
+The public instructions use a normal HTTPS clone of the repository. Its default branch, `main`, contains the current application. They place the checkout at `~/star-palace`, install locked dependencies with `npm ci`, and launch both local processes with `npm start`. Prerequisites are Node.js 22 and Apple command line tools (including Git); the visitor finishes those installations before copying the app commands. The tutorial explains copying a folder path from Finder and using Library → Manage sources → Index folder. A Launch section makes returning to the app explicit. This remains a source installation; no downloadable Mac app is advertised as available.
+
+## Screenshot tutorial
+
+The website uses sources, search, reader, and places images from `src/renderer/public/tutorials/`, generated using the guarded fictional app library. The first screenshot is copied to `website/public/tutorials/sources.png` for native HTML in both development and production; refresh that copy when app tutorials change. The remaining three images use Vite imports and fingerprinted output. Screenshots load lazily on their tutorial step. The first image and instructions remain available without JavaScript. Each screenshot links to its full-resolution file. Arrow keys, Home/End, and Next navigate the four steps. The app retains its full tutorial catalog.
+
+The page draws approximately 3,400 static dust points on resize or interaction, with no animation loop. It uses system fonts and no additional dependencies. These are implementation bounds, not a foreground performance benchmark.

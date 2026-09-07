@@ -1,8 +1,13 @@
+import searchImage from '../../src/renderer/public/tutorials/search.png'
+import readerImage from '../../src/renderer/public/tutorials/reader.png'
+import placesImage from '../../src/renderer/public/tutorials/places.png'
 import { drawStellarObject } from '../../src/renderer/src/atlas/celestialSprites'
 import { stellarAppearance } from '../../src/renderer/src/atlas/stellarVisual'
 import { seedFor } from '../../src/renderer/src/atlas/scene'
 import { setupEmailFeedback } from './feedback'
 import { exampleFiles, matchingFiles, feedbackUrl, type ExampleFile } from './demo'
+
+const sourcesImage = '/tutorials/sources.png'
 
 function element<T extends HTMLElement>(id: string): T { return document.getElementById(id) as T }
 function object(canvas: HTMLCanvasElement, file: Pick<ExampleFile, 'bytes' | 'favorite'>, seed: number, close = false): void {
@@ -11,7 +16,7 @@ function object(canvas: HTMLCanvasElement, file: Pick<ExampleFile, 'bytes' | 'fa
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save(); ctx.translate(canvas.width / 2, canvas.height / 2)
   const appearance = stellarAppearance(seed, file.bytes, file.favorite)
-  const size = close ? 1 : appearance.radiusScale / 2.1
+  const size = close ? 1 : appearance.radiusScale / (canvas.closest('.file-star') ? 1.35 : 2.1)
   const scale = Math.min(canvas.width, canvas.height) / 128 * size
   ctx.scale(scale, scale)
   drawStellarObject(ctx, appearance.objectType, seed, appearance.color, true)
@@ -44,9 +49,7 @@ function select(file: ExampleFile): void {
   element('preview-name').textContent = file.name
   element('preview-kind').textContent = file.kind + ' · ' + formatBytes(file.bytes) + (file.favorite ? ' · Favorite' : '')
   element('preview-path').textContent = file.folder
-  element('preview-heading').textContent = file.name.replace(/\.[^.]+$/, '')
   element('preview-text').textContent = file.text
-  element('preview-tag').textContent = file.tag
   object(element<HTMLCanvasElement>('preview-object'), file, seedFor(file.name), true)
   drawGalaxy()
 }
@@ -55,7 +58,7 @@ function filter(): void {
   buttons.forEach((button, i) => button.classList.toggle('is-dim', !matches.includes(exampleFiles[i])))
   element('demo-status').textContent = search.value.trim()
     ? matches.length + (matches.length === 1 ? ' match' : ' matches') + '. Choose a star to preview it.'
-    : 'Try searching “garden”, or choose a star.'
+    : 'Search “garden” or select a star.'
   drawGalaxy()
 }
 search.addEventListener('input', filter)
@@ -92,17 +95,26 @@ function drawGalaxy(): void {
       ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h)
     }
   }
-  for (let i = 0; i < 440; i++) {
+  for (let i = 0; i < 1500; i++) {
+    const file = exampleFiles[i % exampleFiles.length]
+    const angle = random() * Math.PI * 2, distance = random() ** 1.5
+    const x = file.x / 100 * w + Math.cos(angle) * distance * w * .11
+    const y = file.y / 100 * h + Math.sin(angle) * distance * h * .085
+    ctx.globalAlpha = .07 + random() * .28
+    ctx.fillStyle = ['#c4dcf1', '#ead2a0', '#f1f1e9'][i % 3]
+    ctx.fillRect(x, y, .45 + random() * .5, .45 + random() * .5)
+  }
+  for (let i = 0; i < 1900; i++) {
     const t = random(), spread = (random() + random() + random() - 1.5)
     const x = (t * 1.02 + spread * .13) * w
     const y = (.53 - Math.sin(t * 7) * .15 + spread * .32) * h
-    ctx.globalAlpha = .1 + random() * .44
+    ctx.globalAlpha = .12 + random() * .6
     ctx.fillStyle = ['#f1f1e9', '#f1f1e9', '#eadfca', '#ead2a0', '#c4dcf1'][i % 5]
-    ctx.beginPath(); ctx.arc(x, y, .25 + random() ** 3 * .8, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(x, y, .22 + random() ** 6 * 1.3, 0, Math.PI * 2); ctx.fill()
   }
   ctx.globalAlpha = 1
   const siblings = exampleFiles.filter(file => file.folder === selected.folder)
-  ctx.strokeStyle = '#c5d9ef35'; ctx.lineWidth = .7
+  ctx.strokeStyle = '#f1f1e947'; ctx.lineWidth = .7
   ctx.beginPath()
   siblings.forEach((file, i) => { const x = file.x / 100 * w, y = file.y / 100 * h; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) })
   ctx.stroke()
@@ -130,10 +142,10 @@ document.querySelectorAll<HTMLCanvasElement>('canvas[data-object]').forEach((can
 })
 
 const tutorial = [
-  { title: 'Folder indexing', description: 'In Finder, select a folder and press Option–Command–C to copy its path. In Star Palace, open Library → Manage sources, paste it into Folder path, and choose Index folder. Start with one small folder. Names and text previews work without Ollama.', tip: 'Tip: reindex the same source to pick up changes.', visual: '<strong>Your sources</strong><span class="mini-label">Folder path</span><div class="mini-input">/Users/you/Documents/Field notes</div><span class="mini-button">Index folder ↗</span>' },
-  { title: 'Search', description: 'Press ⌘ K and type a filename or a phrase from a document. Choose a result to find its place on the map. With Ollama running and your files embedded, Related meaning can help when you remember the idea but not the words.', tip: 'Tip: arrow keys select a result; Enter opens it.', visual: '<div class="mini-input">⌕ &nbsp; garden</div><div class="mini-row"><span>✧</span>A small garden.md<small>Markdown</small></div><div class="mini-row"><span>✦</span>Planting calendar.csv<small>CSV</small></div><div class="mini-row"><span>✧</span>Botany reading.pdf<small>PDF</small></div>' },
-  { title: 'The reader', description: 'Select a celestial object to preview its file. Choose Expand, or press Enter, for the full reader. Use Open original to work in the file’s usual app, or Reveal in Finder to see its folder. Map, list, and grid views offer different ways to browse.', tip: 'Tip: scroll to zoom; drag the map to look around.', visual: '<span class="mini-label">Field notes / Garden</span><strong>A small garden.md</strong><p class="mini-text">Basil for the evenings,<br />mint for tea.</p><span class="mini-caption">Open original ↗ &nbsp; · &nbsp; Expand ↗</span>' },
-  { title: 'Pins & saved places', description: 'Use Save place to remember the current view. Shift-drag a file to pin it somewhere meaningful, or add a tag in its file details. Save a set of search results as a collection. Choose Your atlas to return to the whole galaxy.', tip: 'Tip: ordinary indexing keeps existing file positions.', visual: '<strong>✧ &nbsp; Your places</strong><div class="mini-row"><span>✧</span>The whole galaxy</div><div class="mini-row"><span>⌖</span>The windowsill garden</div><span class="mini-button">Save place +</span>' },
+  { title: 'Folders', description: '1. In Finder, select a folder. Press Option–Command–C to copy its path. 2. Open Library → Manage sources. 3. Paste the path and choose Index folder.', tip: 'Reindex: files added or changed since the last scan.', image: sourcesImage, alt: 'Folder path input and Index folder button in the app’s source manager.' },
+  { title: 'Search', description: '1. Press ⌘ K. 2. Enter a filename, folder, or text. 3. Select a result to locate it on the atlas.', tip: 'Related meaning: requires Ollama and indexed embeddings.', image: searchImage, alt: 'Search results and highlighted stars in the fictional demo library.' },
+  { title: 'Reader', description: '1. Select a star. 2. Press Enter to expand the reader. 3. Choose Open in app to edit the original. Markdown: Explore solar system opens section planets.', tip: 'Section planets: select a planet to read its heading.', image: readerImage, alt: 'Markdown document in the app’s reader, with a table of contents.' },
+  { title: 'Places', description: '1. Navigate to a region. 2. Choose Save place. 3. Return through Saved places in Library. Shift-drag a file to pin its position.', tip: 'Favorites: pulsars or black holes. Pins: file positions.', image: placesImage, alt: 'Saved places in the Library panel beside the fictional atlas.' },
 ]
 const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-step]')]
 let step = 0
@@ -144,17 +156,23 @@ function setStep(next: number, focus = false): void {
   element('tutorial-panel').setAttribute('aria-labelledby', 'step-' + step)
   element('tutorial-count').textContent = 'Step 0' + (step + 1)
   element('tutorial-title').textContent = value.title
-  element('tutorial-description').textContent = value.description
+  const instructions = value.description.split(/(?:^| )\d\. /).filter(Boolean).map(text => {
+    const item = document.createElement('li'); item.textContent = text; return item
+  })
+  element('tutorial-description').replaceChildren(...instructions)
   element('tutorial-tip').textContent = value.tip
-  // All markup is authored above; no user input is rendered as HTML.
-  element('tutorial-visual').innerHTML = '<div class="mini-window">' + value.visual + '</div>'
-  element('next-step').innerHTML = step === 3 ? 'Start again <span aria-hidden="true">↺</span>' : 'Next <span aria-hidden="true">→</span>'
+  const screenshot = document.createElement('img')
+  screenshot.src = value.image; screenshot.alt = value.alt; screenshot.loading = 'lazy'; screenshot.decoding = 'async'
+  element('tutorial-visual').replaceChildren(screenshot)
+  element<HTMLAnchorElement>('tutorial-image').href = value.image
+  element('tutorial-image').setAttribute('aria-label', 'Screenshot: ' + value.title)
+  element('next-step').innerHTML = step === 3 ? 'First step <span aria-hidden="true">↺</span>' : 'Next <span aria-hidden="true">→</span>'
   if (focus) tabs[step].focus()
 }
 tabs.forEach((tab, index) => {
   tab.addEventListener('click', () => setStep(index))
   tab.addEventListener('keydown', event => {
-    const next = event.key === 'ArrowDown' ? step + 1 : event.key === 'ArrowUp' ? step - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : null
+    const next = ['ArrowDown', 'ArrowRight'].includes(event.key) ? step + 1 : ['ArrowUp', 'ArrowLeft'].includes(event.key) ? step - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : null
     if (next !== null) { event.preventDefault(); setStep(next, true) }
   })
 })

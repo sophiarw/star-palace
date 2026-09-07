@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test('stellar identity keeps the supplied art quiet and reserves special objects for favorites', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A memory palace for constellations of files.')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A constellation of files.')
   await expect(page.locator('.hero-art')).toHaveCount(1)
   await expect(page.locator('.hero-art')).toHaveCSS('opacity', '0.1')
   await expect(page.locator('.hero-art')).toHaveAttribute('aria-hidden', 'true')
@@ -45,8 +45,10 @@ test('tutorial supports keyboard navigation and all four steps', async ({ page }
   await first.press('ArrowDown')
   await expect(page.getByRole('tab').nth(1)).toBeFocused()
   await expect(page.locator('#tutorial-title')).toHaveText('Search')
+  await expect(page.locator('#tutorial-image')).toHaveAttribute('href', /search.*\.png/)
+  await expect.poll(() => page.locator('#tutorial-visual img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Next tutorial step' }).click()
-  await expect(page.locator('#tutorial-title')).toHaveText('The reader')
+  await expect(page.locator('#tutorial-title')).toHaveText('Reader')
   await page.getByRole('tab').nth(3).click()
   await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'step-3')
   await expect(page.locator('#tutorial-description')).toContainText('Shift-drag')
@@ -59,8 +61,8 @@ test('feedback requires a draft and opens an encoded GitHub review without sendi
   test.skip(await page.locator('[data-email-feedback]').count() > 0, 'Email delivery is configured; covered by private-form tests.')
   await page.getByRole('button', { name: 'Continue on GitHub' }).click()
   await expect(page).toHaveURL(/#feedback$/)
-  await page.getByLabel('A short summary').fill('A & B # café')
-  await page.getByLabel('Tell us a little more').fill('Line one\n<script>alert("hello")</script>\nA private draft to review.')
+  await page.getByLabel('Subject').fill('A & B # café')
+  await page.getByLabel('Message').fill('Line one\n<script>alert("hello")</script>\nA private draft to review.')
   let destination = ''
   await page.route('https://github.com/sophiarw/star-palace/issues/new?**', async route => {
     destination = route.request().url()
@@ -81,7 +83,7 @@ test('commands copy exactly, including newlines', async ({ page, context }) => {
   await expect(page.locator('[data-copy="install-code"]')).toHaveText('Copied')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     'cd ~\ngit clone https://github.com/sophiarw/star-palace.git\ncd star-palace\nnpm ci\nnpm start')
-  await page.getByText(/^Next launch/).click()
+  await page.getByText(/^Launch/).click()
   await page.locator('[data-copy="launch-code"]').click()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('cd ~/star-palace\nnpm start')
 })
@@ -102,8 +104,10 @@ test('mobile and reduced motion remain readable without horizontal overflow', as
 test('static explanations and install instructions survive disabled JavaScript', async ({ browser }) => {
   const page = await browser.newPage({ javaScriptEnabled: false })
   await page.goto('http://127.0.0.1:5180')
-  await expect(page.getByRole('heading', { name: 'Humans are visual creatures.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Files & constellations' })).toBeVisible()
   await expect(page.locator('#install-code')).toContainText('npm start')
+  await expect(page.locator('#tutorial-image')).toHaveAttribute('href', /sources.*\.png/)
+  await expect.poll(() => page.locator('#tutorial-visual img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)
   if (await page.locator('[data-email-feedback]').count()) await expect(page.locator('#feedback-form')).toHaveAttribute('method', 'post')
   else await expect(page.getByRole('link', { name: 'open a GitHub issue', exact: true })).toBeVisible()
   await page.close()
